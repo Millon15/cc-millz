@@ -59,7 +59,7 @@ Core ideas:
 
 ### 🧰 essentials
 
-General-purpose personal skills. My taste — install at **user scope only**, never enable in a team repo's versioned settings.
+General-purpose personal skills. My taste — default to **user-scope** install; enabling in a team repo's versioned settings is a deliberate owner decision (I do it in mine).
 
 | Component | Trigger | Description |
 |-----------|---------|-------------|
