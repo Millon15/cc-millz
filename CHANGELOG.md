@@ -1,5 +1,11 @@
 # Changelog
 
+## essentials v0.1.1 - 2026-07-14
+
+### Other
+
+- Softened scope guidance: user-scope is the default, team-wide enablement is a deliberate repo-owner decision (plugin.json, README, CLAUDE.md)
+
 ## codex-delegation v0.1.0 - 2026-07-14
 
 ### New Features

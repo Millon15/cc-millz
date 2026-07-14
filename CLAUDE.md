@@ -12,7 +12,7 @@ Millon15 personal Claude Code plugin marketplace — skills, agents, (future) ho
 - **README style sacred**: emoji-prefixed titles + main list items, lists over prose, concise per-plugin sections, TOC table with anchor links.
 - MIT-licensed. Personal project by Millon15.
 - **No machine-specific paths** in shipped plugin content — use `${CLAUDE_PLUGIN_ROOT}` inside skills/hooks (plugin files copied to cache dir on install; relative paths break). Exception: openai-codex plugin cache refs resolved by Glob at runtime, documented in skills.
-- **Personal-taste plugins (essentials) user-scope only** — never tell consumers to enable in project versioned settings; imposes personal preferences on teams.
+- **Personal-taste plugins (essentials) default to user scope** — enabling in a project's versioned settings is a deliberate repo-owner decision, never a silent default.
 
 ## Conventions
 
