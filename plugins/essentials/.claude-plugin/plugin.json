@@ -1,0 +1,8 @@
+{
+  "name": "essentials",
+  "description": "Millon15's general-purpose personal skills — code-style (personal code taste: declarative orchestrators, SLAP, flat control flow, typed VOs, fail-fast) and future everyday skills. Personal preference set — install at user scope, never impose on teams via project settings.",
+  "version": "0.1.0",
+  "author": {
+    "name": "Millon15"
+  }
+}
