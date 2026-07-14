@@ -1,0 +1,13 @@
+{
+  "name": "cc-millz",
+  "owner": {
+    "name": "Millon15"
+  },
+  "plugins": [
+    {
+      "name": "codex-delegation",
+      "source": "./plugins/codex-delegation",
+      "description": "Delegate second-tier work to Codex CLI (gpt-5.6 top tier, gpt-5.5 bulk) — model-routing rubric, Workflow/Agent fan-out wrappers, computer-use verification. Requires the openai-codex plugin."
+    }
+  ]
+}
