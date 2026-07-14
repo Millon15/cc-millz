@@ -1,6 +1,8 @@
 # cc-millz
 
-Things to make [Claude Code](https://claude.ai/code) even better — my personal marketplace of independent plugins, by [Millon15](https://github.com/Millon15). Structure inspired by [umputun/cc-thingz](https://github.com/umputun/cc-thingz).
+Things to make [Claude Code](https://claude.ai/code) even better — my personal marketplace of independent plugins, by [Millon15](https://github.com/Millon15).
+
+> Structure inspired by [umputun/cc-thingz](https://github.com/umputun/cc-thingz).
 
 Unapologetically opinionated: every plugin here is something I actually use. If you don't need my toolbox, it may still give you ideas for building your own.
 
@@ -10,11 +12,11 @@ Add the marketplace, then install the plugins you want:
 
     /plugin marketplace add Millon15/cc-millz
 
-    /plugin install codex-delegation@cc-millz
     /plugin install essentials@cc-millz
+    /plugin install codex-delegation@cc-millz
 
 - 🧪 **Test locally**: `claude --plugin-dir plugins/codex-delegation` (+ `/reload-plugins` in-session)
-- 📌 **Or pin in a repo's versioned `.claude/settings.json`** (team-shared repos: only non-personal plugins!):
+- 📌 **Or pin in a repo's versioned `.claude/settings.json`**:
 
 ```json
 {
@@ -42,7 +44,9 @@ Add the marketplace, then install the plugins you want:
 
 Use Codex CLI as a second-tier workforce: Claude stays orchestrator + taste owner, Codex takes bulk work, second opinions, and independent verification.
 
-> ⚠️ **Depends on** the official [openai-codex plugin](https://github.com/openai/codex-plugin-cc) (`/plugin install codex@openai-codex` → `/codex:setup`) and the `codex` CLI. Plugin implementations always win — review/implementation/diagnosis route through `/codex:review`, `/codex:adversarial-review`, `codex:codex-rescue`; this plugin only adds the missing lanes.
+⚠️ **Depends on** the official [openai-codex plugin](https://github.com/openai/codex-plugin-cc) (`/plugin install codex@openai-codex` → `/codex:setup`) and the `codex` CLI.
+
+Plugin implementations always win — review/implementation/diagnosis route through `/codex:review`, `/codex:adversarial-review`, `codex:codex-rescue`; this plugin only adds the missing lanes.
 
 | Component | Trigger | Description |
 |-----------|---------|-------------|
