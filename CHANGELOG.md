@@ -1,5 +1,11 @@
 # Changelog
 
+## essentials v0.1.2 - 2026-07-21
+
+### Other
+
+- `code-style`: added Core bullets for canonical class layout (members declared at top, no `const`/property stranded between methods) and reaching for modern language features (PHP 8.0+ constructs over legacy idioms)
+
 ## essentials v0.1.1 - 2026-07-14
 
 ### Other

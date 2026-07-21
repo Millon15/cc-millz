@@ -1,7 +1,7 @@
 {
   "name": "essentials",
   "description": "Millon15's general-purpose personal skills — code-style (personal code taste: declarative orchestrators, SLAP, flat control flow, typed VOs, fail-fast) and future everyday skills. Opinionated preference set — enable for a team only as a deliberate owner decision.",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "author": {
     "name": "Millon15"
   }
