@@ -26,6 +26,8 @@ My taste. Apply to ALL code you write/refactor.
 - **No narrating comments.** Code self-explains. Docblocks are hints, not docs: method = ≤1-sentence algo summary, and only when the name doesn't already say it (>1 sentence = refactor smell); class = terse pointers (ticket link, a heavily-used collaborator) + visual aids (decision tables, lists). Only in-body comment allowed: a constraint the code can't express (load-bearing ordering, spec/ticket reason).
 - **Pure over mutating.** Helpers never mutate their args — clone-before-mutate.
 - **Typed value objects over arrays.** Small readonly VOs/DTOs, not associative arrays.
+- **Canonical class layout.** All members declared at the top in fixed order — constants → properties → constructor → public → protected → private methods. NEVER strand a `const`/property in the middle of the class between methods.
+- **Reach for modern language features.** Prefer the newest constructs the runtime supports over legacy idioms — e.g. in PHP 8.0+: constructor property promotion, `match`, enums, readonly props, named args, nullsafe `?->`, first-class callables, and typed class constants (8.3). Use them wherever they make intent clearer; don't hand-roll what the language now gives you.
 - **Fail fast.** Throw on caller/programmer-bug preconditions (message says what + why); defensive fallback only for expected/external bad input.
 - **Thread args explicitly;** bundle into a context object only when arg count hurts readability.
 - **Tests are declarative too.** Data-provider-driven, one behaviour per case; prove a refactor by re-running the same suite green (parity); real-data E2E on money/critical paths.
