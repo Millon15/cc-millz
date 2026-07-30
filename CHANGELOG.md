@@ -1,5 +1,21 @@
 # Changelog
 
+## agterm-lanes v0.1.0 - 2026-07-30
+
+### New Features
+
+- New plugin: every agterm pane running Claude Code labels itself, moved from `~/.claude/hooks/`
+- `agterm-lane.sh` — names the lane from Claude's own session title (a bare `/rename` typed into the pane, then the new title read back over OSC), then derives a role emoji, pane tint and sidebar glyph from it. Fires on the first `Stop` **or** the first `AskUserQuestion`/`ExitPlanMode`, whichever comes first: a turn that asks the user something never ends, so a session can otherwise sit unnamed forever on one unanswered question. The question path never injects keystrokes — a dialog is on screen and Return would answer it — and adopts the auto-title instead
+- `agterm-status.sh` — agent-status indicator that **replays the lane's glyph on every call**, because `--shape` rides a single status call and reverts on the next one without it. Ships here rather than patching agterm's installer-written `agent-status` script, which an agterm upgrade silently overwrites
+- `agterm-pin-resume.sh` — rewrites the pane's `session restore` pin to the live session id on every `SessionStart`, so a reboot reattaches the conversation instead of opening a bare shell. A per-pane pin bypasses `restore-denylist.conf` by design
+- Role → style map is a decision table: hue and silhouette encode the **role**, never turn state — state keeps the status palette to itself
+
+## essentials v0.2.0 - 2026-07-30
+
+### New Features
+
+- `/e15` command — re-explain the topic currently under discussion as if to a 15-year-old, simplifying the language without softening the facts. Moved from `~/.claude/commands/`
+
 ## phpstorm v0.1.0 - 2026-07-30
 
 ### New Features
