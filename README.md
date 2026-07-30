@@ -39,6 +39,7 @@ Add the marketplace, then install the plugins you want:
 |--------|-------------|
 | [🤖 codex-delegation](#-codex-delegation) | Codex CLI (gpt-5.6/gpt-5.5) as a second-tier workforce under Claude's orchestration |
 | [🧰 essentials](#-essentials) | General-purpose personal skills — code-style and friends |
+| [🐘 phpstorm](#-phpstorm) | PhpStorm MCP as an agent surface — code navigation, inspections, live Xdebug loop |
 
 ### 🤖 codex-delegation
 
@@ -69,3 +70,12 @@ General-purpose personal skills.
 | Component | Trigger | Description |
 |-----------|---------|-------------|
 | skill | `essentials:code-style` | 🎨 Personal code taste — declarative orchestrators with small intent-named helpers (SLAP), flat control flow, no narrating comments, typed value objects, fail-fast; decoded DRY/YAGNI/KISS/SOLID principles plus a patterns-to-reach-for menu |
+
+### 🐘 phpstorm
+
+Turns the PhpStorm MCP server into a first-class agent surface. Requires **PhpStorm 2026.2+** with its MCP server enabled.
+
+| Component | Trigger | Description |
+|-----------|---------|-------------|
+| skill | `phpstorm:phpstorm-mcp` | 🧭 Tool map for indexed code — `analyze_calls` call hierarchy over grep, symbol/structural search, inspections + quick fixes, refactoring, project metadata, IDE-backed SQL; covers the 2026.2 tool renames |
+| skill | `phpstorm:phpstorm-debug` | 🐞 Live Xdebug loop — attach to externally-triggered PHP (Docker, CLI, HTTP), breakpoints with conditions, stack + frame values, expression evaluation, mid-flight state mutation; preflight checklist and the Xdebug features that silently do nothing |
