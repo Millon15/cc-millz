@@ -13,6 +13,11 @@
       "name": "essentials",
       "source": "./plugins/essentials",
       "description": "General-purpose personal skills — code-style (personal code taste) and future everyday skills. Install at user scope only."
+    },
+    {
+      "name": "phpstorm",
+      "source": "./plugins/phpstorm",
+      "description": "PhpStorm MCP as an agent surface — code navigation and call hierarchy, inspections, plus a live Xdebug loop (breakpoints, frames, expression evaluation, state mutation) against local or Dockerised PHP. Requires PhpStorm 2026.2+ with its MCP server enabled."
     }
   ]
 }
