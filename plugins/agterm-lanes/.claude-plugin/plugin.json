@@ -1,0 +1,8 @@
+{
+  "name": "agterm-lanes",
+  "description": "Turn every agterm pane running Claude Code into a self-labelling lane — the session names itself from Claude's own title, picks a role emoji, pane tint and sidebar glyph, and re-pins itself so a reboot reattaches the conversation instead of opening a bare shell.",
+  "version": "0.1.0",
+  "author": {
+    "name": "Millon15"
+  }
+}
