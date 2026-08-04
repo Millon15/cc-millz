@@ -1,6 +1,21 @@
 # Changelog
 
-## essentials v0.3.0 - 2026-08-04
+## essentials v0.5.0 - 2026-08-04
+
+### New Features
+
+- `/tldr` command — re-renders the discussion already in context as `## Conclusions` +
+  `## Actionable items`, nothing else. Same form as `/e15` (re-render what is on screen, no new
+  work), opposite purpose: `/e15` simplifies the language, `/tldr` removes everything that is not
+  a conclusion or a next step. Runs the `concise-writing` fact test, keeps numbers / `file:line` /
+  SHAs / flag names and drops the derivation, caps each section at 7 one-line bullets, prefixes
+  anything blocked on the user with `**Decide:**`, and emits `- None.` rather than padding
+- `disable-model-invocation: true` on `/tldr` — user-invoked only. A model that can call it will
+  reach for it as a summariser mid-turn, which is the one place compression loses facts
+
+### Docs
+
+- README: added the missing `essentials:concise-writing` row alongside the new `/tldr` row
 
 ### New Features
 
