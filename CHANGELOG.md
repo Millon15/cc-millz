@@ -1,5 +1,15 @@
 # Changelog
 
+## essentials v0.3.0 - 2026-08-04
+
+### New Features
+
+- `concise-writing` skill — the compression procedure (the "does the reader lose a FACT?"
+  test, merge-repeats-upward, and a hard stop condition) as the concision floor for code
+  comments, commit bodies, PR descriptions and team-visible sends. Extracted after a review
+  found ~27% comment-to-code ratio in a shipped PR pair. `code-style` now delegates comment
+  prose to it and adds a <10% prose-comment ceiling
+
 ## agterm-lanes v0.1.0 - 2026-07-30
 
 ### New Features
