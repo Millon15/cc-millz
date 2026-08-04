@@ -36,6 +36,21 @@ Keep the fact, kill the derivation:
   fire on the kth, a value must sit inside…"
 - AFTER (1 line): "…which is why two hours is 5400, not 7200."
 
+## Annotations are not prose — never cut them
+
+`@throws`, `@param`, `@return`, `@var`, `@deprecated`, `@template` state facts the signature cannot.
+They are the one part of a docblock this skill NEVER touches, and a missing one is a defect:
+
+- **`@throws` on every method that can throw** — including a throw raised by a private helper it calls.
+  Without it the caller cannot know a `try/catch` is owed, and the IDE cannot warn them.
+- **`@param` / `@return` only where the type hint is not the whole truth** — generics
+  (`array<int, RefreshTarget>`, `list<string>`), a shape, a unit, a nullable's meaning. A bare
+  `@param int $id` restating `int $id` IS restatement — cut that one.
+- One clause each, on the tag line. The tag says WHAT, never WHY.
+
+The 10% comment ceiling in `code-style` excludes annotations for exactly this reason: adding a
+`@throws` never costs you budget, so there is no excuse to skip it.
+
 ## Three more moves
 
 1. **Merge repeats upward.** N siblings each re-explaining one mechanism → ONE parent explanation
@@ -56,7 +71,7 @@ constraint on thinking. Just never ship the draft.
 
 | Surface | Applies | On top of this |
 | --- | --- | --- |
-| Code comments + docblocks | YES | `code-style` — docblock = 1 sentence; a 2nd means extract a method |
+| Code comments + docblocks | YES, prose only | `code-style` — docblock = 1 sentence; a 2nd means extract a method. Annotations exempt (above) |
 | Commit message body | YES | the WHY evicted from source lands here |
 | PR description | YES | ditto |
 | Slack / Jira bodies | YES | `outbound-comms` adds nested-list shape + clickable links |
