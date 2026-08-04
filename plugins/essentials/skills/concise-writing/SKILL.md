@@ -36,20 +36,31 @@ Keep the fact, kill the derivation:
   fire on the kth, a value must sit inside…"
 - AFTER (1 line): "…which is why two hours is 5400, not 7200."
 
-## Annotations are not prose — never cut them
+## Annotations — the cut rule splits them in two
 
-`@throws`, `@param`, `@return`, `@var`, `@deprecated`, `@template` state facts the signature cannot.
-They are the one part of a docblock this skill NEVER touches, and a missing one is a defect:
+The test is the same fact test: **can the reader recover this from the signature?** Modern type
+systems (PHP 7.2+ typed params, return types, typed properties) recover most of it. What they cannot
+express is where annotations earn their keep.
 
-- **`@throws` on every method that can throw** — including a throw raised by a private helper it calls.
-  Without it the caller cannot know a `try/catch` is owed, and the IDE cannot warn them.
-- **`@param` / `@return` only where the type hint is not the whole truth** — generics
-  (`array<int, RefreshTarget>`, `list<string>`), a shape, a unit, a nullable's meaning. A bare
-  `@param int $id` restating `int $id` IS restatement — cut that one.
-- One clause each, on the tag line. The tag says WHAT, never WHY.
+**DELETE — restatement of the signature:**
 
-The 10% comment ceiling in `code-style` excludes annotations for exactly this reason: adding a
-`@throws` never costs you budget, so there is no excuse to skip it.
+- `@param int $id` above `int $id`. `@return void` above `: void`. `@var string` above `string $name`.
+- The type system already says it, so the tag says nothing. Cut the tag; cut the whole docblock if
+  that is all it held.
+
+**ADD, FIX WHEN STALE, NEVER DELETE — facts no type can carry:**
+
+| Tag | Why the signature cannot say it |
+| --- | --- |
+| `@throws` | PHP has no checked exceptions. Without it the caller cannot know a `try/catch` is owed and the IDE cannot warn them. Declare it on every method that can throw — **including a throw raised by a private helper it calls**. |
+| `@deprecated` | Names the replacement and the removal horizon. |
+| `@template` / `@extends` / `@implements` | Generics the language has no syntax for. |
+| PHPStan / Psalm shapes | `array<int, RefreshTarget>`, `list<string>`, `array{id: int, name: string}`, `non-empty-string`. A bare `array` is not a type. |
+| `@param` / `@return` carrying more than the type | a unit, a range, what `null` means, which of two array shapes. |
+
+These are code, not prose — a static analyser reads them. They never count against the 10% comment
+ceiling in `code-style`, so skipping one buys you nothing. A missing `@throws` or a stale generic is
+a defect; deleting one to "be concise" is the opposite of this skill.
 
 ## Three more moves
 
@@ -71,7 +82,7 @@ constraint on thinking. Just never ship the draft.
 
 | Surface | Applies | On top of this |
 | --- | --- | --- |
-| Code comments + docblocks | YES, prose only | `code-style` — docblock = 1 sentence; a 2nd means extract a method. Annotations exempt (above) |
+| Code comments + docblocks | YES, prose only | `code-style` — docblock = 1 sentence; a 2nd means extract a method. Annotations follow the two-bucket rule above, not the fact test |
 | Commit message body | YES | the WHY evicted from source lands here |
 | PR description | YES | ditto |
 | Slack / Jira bodies | YES | `outbound-comms` adds nested-list shape + clickable links |
