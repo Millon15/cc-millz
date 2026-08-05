@@ -1,5 +1,20 @@
 # Changelog
 
+## essentials v0.6.0 - 2026-08-05
+
+### New Features
+
+- `/recall` command — forensic search of past Claude Code sessions from a natural-language
+  description ("the session where I discussed testing FIN-1162, last 3 days"). Encodes the
+  session-archaeology procedure: transcripts in `~/.claude/projects/<flattened-cwd>/*.jsonl`,
+  `~/.claude/history.jsonl` as the index of user prompts (and the source of session "names" —
+  a session has no stored title, its name is its first prompt), loosened case-insensitive key
+  matching, in-file timestamps over mtime, and the dialog-vs-headless-worker split (ralphex /
+  review lanes / `claude -p` runs are reported separately, never as the user's conversations).
+  Report contract: TL;DR first, table with FULL untruncated session UUIDs + models + activity
+  windows, ready-to-paste `claude --resume <full-id>` line. `disable-model-invocation: true` —
+  user-invoked only
+
 ## essentials v0.5.0 - 2026-08-04
 
 ### New Features
