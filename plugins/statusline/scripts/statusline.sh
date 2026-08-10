@@ -29,8 +29,13 @@ readonly USAGE_CACHE="${TMPDIR:-/tmp}/claude-usage-${USER}.json"
 readonly USAGE_TTL="${CLAUDE_USAGE_TTL:-45}"
 readonly USAGE_URL='https://api.anthropic.com/api/oauth/usage'
 
+# One clock read for the whole render; bash 3.2 (macOS) has no EPOCHSECONDS
+NOW=$(date +%s)
+USAGE_CACHE_MTIME=0
+DIRTY_CACHE_MTIME=0
+
 # Branch names that mean "nothing in flight" — exact match, never a suffix test:
-# front legitimately sits on PRJ-123-…-refund-release, which a suffix rule would eat.
+# a feature branch may legitimately END in "-release", which a suffix rule would eat.
 # MCP tool schemas never reach the transcript, so their weight is an estimate;
 # skill weight is measured from SKILL.md on disk.
 readonly MCP_TOKENS_PER_TOOL="${CLAUDE_MCP_TOKENS_PER_TOOL:-280}"
@@ -46,11 +51,28 @@ readonly MAX_TICKET_GROUPS=2
 
 # --- Quota cache -------------------------------------------------------------
 
+# stat accepts many paths per call — every caller batches rather than looping.
+# Callers must pass only paths that exist; a missing one shifts every later line.
+stat_values() {
+	local bsd="$1" gnu="$2"
+	shift 2
+	[ "$#" -eq 0 ] && return 0
+	stat -f "$bsd" "$@" 2>/dev/null || stat -c "$gnu" "$@" 2>/dev/null
+}
+
+file_mtime() {
+	[ -e "$1" ] || {
+		printf '0'
+		return 0
+	}
+	local value
+	value=$(stat_values '%m' '%Y' "$1")
+	printf '%d' "${value:-0}"
+}
+
 usage_cache_is_fresh() {
-	[ -f "$USAGE_CACHE" ] || return 1
-	local mtime
-	mtime=$(stat -f %m "$USAGE_CACHE" 2>/dev/null || stat -c %Y "$USAGE_CACHE" 2>/dev/null || echo 0)
-	[ $(($(date +%s) - mtime)) -lt "$USAGE_TTL" ]
+	[ "$USAGE_CACHE_MTIME" -gt 0 ] 2>/dev/null || return 1
+	[ $((NOW - USAGE_CACHE_MTIME)) -lt "$USAGE_TTL" ]
 }
 
 oauth_token() {
@@ -81,13 +103,17 @@ refresh_usage_cache() {
 read_quota_fields() {
 	[ -s "$USAGE_CACHE" ] || return 0
 	jq -r '
+		# ISO8601 with microseconds and a +00:00 offset is not fromdateiso8601-
+		# parseable; normalising here keeps two `date` forks out of every render.
+		def epoch: . // "" | sub("\\.[0-9]+"; "") | sub("\\+00:00$"; "Z")
+			| (try fromdateiso8601 catch 0);
 		(.limits // []) as $limits |
 		[
 			(.five_hour.utilization // 0 | floor),
-			(.five_hour.resets_at // ""),
+			(.five_hour.resets_at | epoch),
 			([$limits[] | select(.group == "session") | .severity] | first // "normal"),
 			(.seven_day.utilization // 0 | floor),
-			(.seven_day.resets_at // ""),
+			(.seven_day.resets_at | epoch),
 			([$limits[] | select(.kind == "weekly_all") | .severity] | first // "normal"),
 			([$limits[] | select(.kind == "weekly_scoped")
 				| "\(.scope.model.display_name // "?" | ascii_downcase):\(.percent)%"] | join(" | ")),
@@ -102,12 +128,9 @@ read_quota_fields() {
 # --- Formatting primitives ---------------------------------------------------
 
 remaining_minutes() {
-	local iso="$1" reset_epoch now
-	[ -z "$iso" ] && return 0
-	reset_epoch=$(date -ju -f "%Y-%m-%dT%H:%M:%S" "${iso%%.*}" +%s 2>/dev/null || date -d "$iso" +%s 2>/dev/null || echo 0)
-	now=$(date +%s)
-	[ "$reset_epoch" -gt "$now" ] 2>/dev/null || return 0
-	printf '%d' $(((reset_epoch - now) / 60))
+	local reset_epoch="${1:-0}"
+	[ "$reset_epoch" -gt "$NOW" ] 2>/dev/null || return 0
+	printf '%d' $(((reset_epoch - NOW) / 60))
 }
 
 format_duration() {
@@ -232,21 +255,40 @@ subrepo_registry() {
 		"$root/.claude/statusline-repos.txt" \
 		"$root/.rulesync/statusline-repos.txt"; do
 		[ -n "$candidate" ] && [ -f "$candidate" ] && {
-			LC_ALL=C sed -e 's/#.*//' -e 's/[[:space:]]//g' "$candidate" | LC_ALL=C grep -v '^$'
+			local line
+			while IFS= read -r line || [ -n "$line" ]; do
+				line="${line%%#*}"
+				line="${line//[[:space:]]/}"
+				[ -n "$line" ] && printf '%s\n' "$line"
+			done <"$candidate"
 			return 0
 		}
 	done
 }
 
-# Reading .git/HEAD beats spawning git: 6ms for all 17 repos, zero processes
-branch_of() {
+# Reading .git/HEAD beats spawning git, and assigning to BRANCH rather than
+# echoing avoids a subshell fork per repo — 17 of them on a monorepo render.
+read_branch() {
+	BRANCH=""
 	local head_file="$1/.git/HEAD" ref
 	[ -f "$head_file" ] || return 0
 	read -r ref <"$head_file"
 	case "$ref" in
-	"ref: refs/heads/"*) printf '%s' "${ref#ref: refs/heads/}" ;;
-	*) printf '@%s' "${ref:0:7}" ;;
+	"ref: refs/heads/"*) BRANCH="${ref#ref: refs/heads/}" ;;
+	*) BRANCH="@${ref:0:7}" ;;
 	esac
+}
+
+# Innermost enclosing repo, without spawning git rev-parse
+repo_root_of() {
+	local dir="$1"
+	while [ -n "$dir" ] && [ "$dir" != "/" ]; do
+		[ -e "$dir/.git" ] && {
+			printf '%s' "$dir"
+			return 0
+		}
+		dir="${dir%/*}"
+	done
 }
 
 is_trunk_branch() {
@@ -289,11 +331,22 @@ dirty_cache_path() {
 
 # Fresh means young AND same HEADs — a checkout invalidates instantly,
 # only the file counts are allowed to age
+# Everything after the header line, without forking tail
+read_cache_facts() {
+	local line first=1
+	while IFS= read -r line || [ -n "$line" ]; do
+		[ "$first" = "1" ] && {
+			first=0
+			continue
+		}
+		printf '%s\n' "$line"
+	done <"$1"
+}
+
 dirty_cache_is_fresh() {
-	local cache="$1" signature="$2" mtime stored
+	local cache="$1" signature="$2" stored
 	[ -f "$cache" ] || return 1
-	mtime=$(stat -f %m "$cache" 2>/dev/null || stat -c %Y "$cache" 2>/dev/null || echo 0)
-	[ $(($(date +%s) - mtime)) -lt "$DIRTY_TTL" ] || return 1
+	[ $((NOW - DIRTY_CACHE_MTIME)) -lt "$DIRTY_TTL" ] || return 1
 	read -r stored <"$cache"
 	[ "$stored" = "$signature" ]
 }
@@ -304,16 +357,27 @@ dirty_table() {
 	local cache repo
 	cache=$(dirty_cache_path "$root")
 	dirty_cache_is_fresh "$cache" "$signature" && {
-		tail -n +2 "$cache"
+		read_cache_facts "$cache"
 		return 0
 	}
+	# Each repo costs a git status plus a rev-list; run them concurrently so the
+	# cold path is the slowest single repo, not their sum.
+	local parts="${cache}.parts" index=0
+	mkdir -p "$parts"
+	for repo in "$@"; do
+		printf '%s\t%s\n' "$repo" "$(count_dirty "$repo")" >"$parts/$index" &
+		index=$((index + 1))
+	done
+	wait
 	{
 		printf '%s\n' "$signature"
-		for repo in "$@"; do
-			printf '%s\t%s\n' "$repo" "$(count_dirty "$repo")"
+		local part=0
+		while [ "$part" -lt "$index" ]; do
+			cat "$parts/$part" 2>/dev/null
+			part=$((part + 1))
 		done
 	} >"${cache}.tmp" && mv "${cache}.tmp" "$cache"
-	tail -n +2 "$cache"
+	read_cache_facts "$cache"
 }
 
 lookup_dirty() {
@@ -406,7 +470,8 @@ repo_name_color() {
 
 cd_segment() {
 	local repo="$1" table="$2" branch tracked untracked conflicts ahead behind
-	branch=$(branch_of "$repo")
+	read_branch "$repo"
+	branch="$BRANCH"
 	[ -z "$branch" ] && return 0
 	IFS="$TAB" read -r tracked untracked conflicts ahead behind <<<"$(lookup_dirty "$table" "$repo")"
 	join_with " " \
@@ -416,13 +481,14 @@ cd_segment() {
 		"$(sync_counters "$ahead" "$behind")"
 }
 
-# Groups off-trunk subrepos by ticket key: sd:PRJ-123(front+hook+stats+booking-checker)
+# Groups off-trunk subrepos by ticket key: sd:KEY(repo·repo·repo)
 sd_segment() {
 	local root="$1" table="$2"
 	local keys=() members=() tints=() repo branch key index slot rendered="" group_count=0
 	while read -r repo; do
 		[ -z "$repo" ] && continue
-		branch=$(branch_of "$root/$repo")
+		read_branch "$root/$repo"
+		branch="$BRANCH"
 		{ [ -z "$branch" ] || is_trunk_branch "$branch"; } && continue
 		key=$(ticket_key "$branch")
 		slot=-1
@@ -523,7 +589,7 @@ normalize_mcp_server() {
 # process spawns than it saves on a dozen lines
 render_context_load() {
 	local facts="$1" tag value server bytes rendered=""
-	local skills=0 tools=0 server_count=0 seen_servers=" " skill_bytes=0
+	local skills=0 tools=0 server_count=0 seen_servers=" " skill_bytes=0 skill_files=()
 	while IFS="$TAB" read -r tag value; do
 		case "$tag" in
 		SK) skills=$((skills + 1)) ;;
@@ -538,13 +604,14 @@ render_context_load() {
 				;;
 			esac
 			;;
-		DIR)
-			[ -f "$value/SKILL.md" ] || continue
-			bytes=$(stat -f %z "$value/SKILL.md" 2>/dev/null || stat -c %s "$value/SKILL.md" 2>/dev/null || echo 0)
-			skill_bytes=$((skill_bytes + bytes))
-			;;
+		DIR) [ -f "$value/SKILL.md" ] && skill_files+=("$value/SKILL.md") ;;
 		esac
 	done <<<"$facts"
+
+	# One stat for every loaded skill rather than one per skill
+	[ "${#skill_files[@]}" -gt 0 ] && while IFS= read -r bytes; do
+		skill_bytes=$((skill_bytes + bytes))
+	done <<<"$(stat_values '%z' '%s' "${skill_files[@]}")"
 
 	local dot
 	dot="$(dim_of "$LIGHT_GREY")·${LIGHT_GREY}"
@@ -567,15 +634,14 @@ session_segment() {
 }
 
 context_load_segment() {
-	local file="$1"
+	local file="$1" size="$2"
 	[ -f "$file" ] || return 0
-	local cache size offset=0 known=""
+	local cache offset=0 known=""
 	cache="${TMPDIR:-/tmp}/claude-ctxload-v3-${USER}-${file##*/}.txt"
-	size=$(stat -f %z "$file" 2>/dev/null || stat -c %s "$file" 2>/dev/null || echo 0)
-	[ "$size" -eq 0 ] 2>/dev/null && return 0
+	[ "${size:-0}" -eq 0 ] 2>/dev/null && return 0
 	[ -f "$cache" ] && {
 		read -r offset <"$cache"
-		known=$(tail -n +2 "$cache")
+		known=$(read_cache_facts "$cache")
 		[ "${offset:-0}" -gt "$size" ] 2>/dev/null && {
 			offset=0
 			known=""
@@ -593,10 +659,12 @@ context_load_segment() {
 
 # "(1M context)" in the display name wins over the raw window size
 window_label() {
-	local model_raw="$1" size="$2" parenthesized
-	parenthesized=$(printf '%s' "$model_raw" | sed -n 's/.*(\([0-9]*[kKmM]\)[^)]*).*/\1/p' | tr '[:lower:]' '[:upper:]')
-	[ -n "$parenthesized" ] && {
-		printf ' %s' "$parenthesized"
+	local model_raw="$1" size="$2"
+	[[ "$model_raw" =~ \(([0-9]+)[[:space:]]*([kKmM]) ]] && {
+		case "${BASH_REMATCH[2]}" in
+		k | K) printf ' %sK' "${BASH_REMATCH[1]}" ;;
+		*) printf ' %sM' "${BASH_REMATCH[1]}" ;;
+		esac
 		return 0
 	}
 	[ -z "$size" ] && return 0
@@ -611,7 +679,7 @@ model_segment() {
 	local model_raw="$1" size="$2" effort="$3" style="$4"
 	[ -z "$model_raw" ] && return 0
 	local name effort_label="" fast_label=""
-	name=$(printf '%s' "$model_raw" | sed 's/ *([^)]*)//g')
+	name="${model_raw%% (*}"
 	[ -n "$effort" ] && [ "$effort" != "default" ] &&
 		effort_label=" $(printf '%s' "$effort" | awk '{print toupper(substr($0,1,1)) substr($0,2)}')"
 	[ "$style" = "fast" ] && fast_label=" Fast"
@@ -667,10 +735,13 @@ session_cost_segment() {
 
 # --- Orchestration -----------------------------------------------------------
 
-input=$(cat)
+IFS= read -r -d '' input || true
+
+settings_file="$HOME/.claude/settings.json"
+[ -f "$settings_file" ] || settings_file=/dev/null
 
 IFS="$FS" read -r cwd project_dir transcript_path session_id model_raw used_tokens used_pct ctx_size output_style effort session_cost <<<"$(
-	printf '%s' "$input" | jq -r --arg sep "$FS" '[
+	printf '%s' "$input" | jq -r --arg sep "$FS" --slurpfile settings "$settings_file" '[
 		(.cwd // .workspace.current_dir // ""),
 		(.workspace.project_dir // .cwd // ""),
 		(.transcript_path // ""),
@@ -680,37 +751,64 @@ IFS="$FS" read -r cwd project_dir transcript_path session_id model_raw used_toke
 		(.context_window.used_percentage // ""),
 		(.context_window.context_window_size // ""),
 		(.output_style.name // "default"),
-		(.effortLevel // ""),
+		(.effortLevel // $settings[0].effortLevel // ""),
 		(.cost.total_cost_usd // "")
 	] | map(tostring) | join($sep)'
 )"
 
-[ -z "$effort" ] && effort=$(jq -r '.effortLevel // empty' "$HOME/.claude/settings.json" 2>/dev/null)
 [ -z "$used_tokens" ] && [ -n "$used_pct" ] && [ -n "$ctx_size" ] &&
 	used_tokens=$(awk -v p="$used_pct" -v s="$ctx_size" 'BEGIN{printf "%d", p*s/100}')
 [ -z "$used_pct" ] && [ -n "$used_tokens" ] && [ -n "$ctx_size" ] &&
 	used_pct=$(awk -v t="$used_tokens" -v s="$ctx_size" 'BEGIN{printf "%d", (t/s)*100}')
 
 project_root="${project_dir:-$cwd}"
-cwd_repo=$(git -C "$cwd" --no-optional-locks rev-parse --show-toplevel 2>/dev/null)
+cwd_repo=$(repo_root_of "$cwd")
 
 # One pass over every HEAD: builds the cache-invalidation signature and the
 # scan set (cwd repo + off-trunk subrepos) without spawning a single git
 git_signature=""
 scan_targets=()
 [ -n "$cwd_repo" ] && {
-	git_signature="${cwd_repo}=$(branch_of "$cwd_repo");"
+	read_branch "$cwd_repo"
+	git_signature="${cwd_repo}=${BRANCH};"
 	scan_targets+=("$cwd_repo")
 }
 while read -r registry_repo; do
 	registry_path="$project_root/$registry_repo"
-	registry_branch=$(branch_of "$registry_path")
+	read_branch "$registry_path"
+	registry_branch="$BRANCH"
 	[ -z "$registry_branch" ] && continue
 	git_signature="${git_signature}${registry_repo}=${registry_branch};"
 	is_trunk_branch "$registry_branch" && continue
 	[ "$registry_path" = "$cwd_repo" ] && continue
 	scan_targets+=("$registry_path")
 done <<<"$(subrepo_registry "$project_root")"
+
+# --- Rendered-line cache ------------------------------------------------------
+# Every fast-moving input is in this fingerprint; the slow ones (working-tree
+# dirt, quota) are already TTL-cached, so a hit is never staler than those TTLs
+# already allow. Both TTLs must still be live, otherwise a hit would keep
+# serving a line whose caches were due for a refresh.
+transcript=$(transcript_file "$transcript_path" "$session_id" "$project_root")
+dirty_cache=$(dirty_cache_path "$project_root")
+DIRTY_CACHE_MTIME=$(file_mtime "$dirty_cache")
+USAGE_CACHE_MTIME=$(file_mtime "$USAGE_CACHE")
+transcript_size=0
+[ -n "$transcript" ] && transcript_size=$(stat_values '%z' '%s' "$transcript")
+
+line_cache="${TMPDIR:-/tmp}/claude-statusline-line-${USER}-${session_id:-none}.txt"
+fingerprint="${cwd}|${used_tokens}|${used_pct}|${model_raw}|${effort}|${output_style}|${session_cost}|${transcript_size:-0}|${DIRTY_CACHE_MTIME}|${USAGE_CACHE_MTIME}|${git_signature}"
+
+usage_cache_is_fresh &&
+	[ $((NOW - DIRTY_CACHE_MTIME)) -lt "$DIRTY_TTL" ] 2>/dev/null &&
+	[ -f "$line_cache" ] && {
+	read -r cached_fingerprint <"$line_cache"
+	[ "$cached_fingerprint" = "$fingerprint" ] && {
+		IFS= read -r -d '' cached_line <"$line_cache" || true
+		printf '%s' "${cached_line#*$'\n'}"
+		exit 0
+	}
+}
 
 dirty_counts=""
 [ "${#scan_targets[@]}" -gt 0 ] &&
@@ -729,7 +827,7 @@ line1=$(join_segments \
 	"$(context_segment "$used_tokens" "$used_pct")")
 
 line2=$(join_segments \
-	"$(context_load_segment "$(transcript_file "$transcript_path" "$session_id" "$project_root")")" \
+	"$(context_load_segment "$transcript" "$transcript_size")" \
 	"$(window_segment "5h" "$block_pct" "$block_reset" "$block_severity")" \
 	"$(window_segment "wk" "$week_pct" "$week_reset" "$week_severity")" \
 	"$(scoped_segment "$scoped")" \
@@ -737,5 +835,12 @@ line2=$(join_segments \
 	"$(session_cost_segment "$session_cost")" \
 	"$(session_segment "$session_id")")
 
-printf '%b' "$line1"
-[ -n "$line2" ] && printf '\n%b' "$line2"
+rendered=$(printf '%b' "$line1")
+[ -n "$line2" ] && rendered="${rendered}"$'\n'"$(printf '%b' "$line2")"
+
+{
+	printf '%s\n' "$fingerprint"
+	printf '%s' "$rendered"
+} >"${line_cache}.tmp" && mv "${line_cache}.tmp" "$line_cache"
+
+printf '%s' "$rendered"

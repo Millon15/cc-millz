@@ -75,6 +75,19 @@ simply do not render.
 
 ## Costs
 
-Roughly 130 ms per render. Repo scans are cached for 60 s and keyed on every
-`.git/HEAD`, so a checkout invalidates instantly while file counts age. The
-transcript is read incrementally — only bytes appended since the last render.
+| Path | Time | Forks |
+| --- | --- | --- |
+| Unchanged render (line cache hit) | ~41 ms | 5 |
+| Changed render | ~101 ms | 11 |
+| Repo rescan (≤ once per `CLAUDE_DIRTY_TTL`) | ~194 ms | — |
+
+Three caches, each keyed so a hit can never be staler than the layer beneath it:
+
+- **Rendered line** — fingerprint of the payload, every `.git/HEAD`, the
+  transcript size and both cache mtimes. Only consulted while the repo and quota
+  caches are themselves live, so it cannot mask a due refresh.
+- **Repo state** — keyed on the concatenated `.git/HEAD` values, so a checkout
+  invalidates instantly while file counts age out on the TTL. Repos are scanned
+  concurrently.
+- **Transcript facts** — a byte offset; only bytes appended since the last
+  render are parsed.

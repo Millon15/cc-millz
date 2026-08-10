@@ -1,7 +1,7 @@
 {
   "name": "statusline",
   "description": "Two-line Claude Code status line — git scopes for the current repo and any nested monorepo repos (branch, dirt, conflicts, ahead/behind, in-progress rebase/merge), live context window, skills and MCP schemas actually loaded this session, and real quota/spend from the Anthropic usage API. Self-installs into settings.json and re-points itself after every version bump.",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "author": {
     "name": "Millon15"
   }
