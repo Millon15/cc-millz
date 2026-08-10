@@ -17,9 +17,10 @@ below. Sessions have no stored titles — a session's "name" is its first user p
 
 ## Procedure
 
-1. **Parse the ask** into search keys and a date window. Loosen every key: `PRJ-123` →
-   `grep -iE 'FP-?227'` — branch names lowercase keys and hyphens drop. Convert relative dates
-   ("вчера", "last 3 days") to absolute `YYYY-MM-DD` before grepping.
+1. **Parse the ask** into search keys and a date window. Loosen every key: `ABC-227` →
+   `grep -iE 'ABC-?227'` — branch names lowercase keys and hyphens drop. Convert relative dates
+   ("yesterday", "last 3 days", or the same phrased in any language) to absolute `YYYY-MM-DD`
+   before grepping.
 2. **Collect candidates**: `grep -l` the keys over `*.jsonl`, keep files that also hit
    `"timestamp":"<date>` for a date inside the window. Trust in-file timestamps, never file
    mtime — a resumed session touches the file without adding entries.

@@ -5,7 +5,7 @@
 ### New Features
 
 - `/recall` command — forensic search of past Claude Code sessions from a natural-language
-  description ("the session where I discussed testing PRJ-123, last 3 days"). Encodes the
+  description ("the session where I discussed testing ABC-1162, last 3 days"). Encodes the
   session-archaeology procedure: transcripts in `~/.claude/projects/<flattened-cwd>/*.jsonl`,
   `~/.claude/history.jsonl` as the index of user prompts (and the source of session "names" —
   a session has no stored title, its name is its first prompt), loosened case-insensitive key

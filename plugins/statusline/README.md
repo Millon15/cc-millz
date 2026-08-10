@@ -3,7 +3,7 @@
 Two-line Claude Code status line.
 
 ```
-the-project ❯ cd:PRJ-123 ❯ sd:PRJ-123(front·hook·stats) ❯ [Opus 5 1M High] ❯ 340k·34%
+acme ❯ cd:PROJ-412 ❯ sd:PROJ-380(api·worker·admin) ❯ [Opus 5 1M High] ❯ 340k·34%
 sk:2·3.7k mcp:1(8)·2.2k ❯ 5h:4%·57m ❯ wk:28%·1d17h ❯ fable:22% ❯ €44/20 ❯ $1.23 ❯ b4f0635c-…
 ```
 
@@ -11,7 +11,7 @@ sk:2·3.7k mcp:1(8)·2.2k ❯ 5h:4%·57m ❯ wk:28%·1d17h ❯ fable:22% ❯ €
 
 | Segment | Meaning |
 | --- | --- |
-| `the-project` | directory basename |
+| `acme` | directory basename |
 | `cd:KEY` | branch of the repo holding the cwd, reduced to its ticket key |
 | `⎇rebase` `⚔1` `✗2` `?3` `↑2 ↓1` `⇡` | in-progress operation · conflicts · tracked edits · untracked · ahead/behind · no upstream |
 | `sd:KEY(repo·repo)` | nested repos currently off trunk, grouped by ticket key; hidden when there are none |
