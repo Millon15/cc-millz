@@ -60,7 +60,7 @@ One plugin: `codex`. Requires the `codex` CLI, then `/codex:setup`.
 
 The official Codex integration — `/codex:review` and `/codex:adversarial-review` for a second opinion on a diff, and the `codex-rescue` agent for handing a stuck task to a different model family entirely. The value is not that one model is better; it is that two model families have different blind spots, and the one reviewing your code should not be the one that wrote it.
 
-Pairs with [`codex-delegation@cc-millz`](README.md#-codex-delegation), which depends on this plugin and adds a model-routing rubric and fan-out lanes on top. The official implementations always take precedence.
+Pairs with [`codex-delegation@cc-millz`](plugins/codex-delegation/README.md), which depends on this plugin and adds a model-routing rubric and fan-out lanes on top. The official implementations always take precedence.
 
 ## 🎓 [mattpocock/skills](https://github.com/mattpocock/skills)
 
@@ -82,4 +82,4 @@ JetBrains' own PHP skills, and they are good precisely because they are backed b
 
 A `PostToolUse` hook runs inspections after every PHP edit. It exits immediately on non-PHP files, so it costs nothing on the rest of your tree.
 
-Pairs with [`phpstorm@cc-millz`](README.md#-phpstorm) rather than competing with it — theirs covers the PHP language and project domain, mine covers the IDE tooling surface and the live Xdebug loop.
+Pairs with [`phpstorm@cc-millz`](plugins/phpstorm/README.md) rather than competing with it — theirs covers the PHP language and project domain, mine covers the IDE tooling surface and the live Xdebug loop.

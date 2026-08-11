@@ -1,6 +1,8 @@
-# statusline
+# 📟 statusline
 
-Two-line Claude Code status line.
+    /plugin install statusline@cc-millz
+
+Two-line Claude Code status line. Self-installs into `~/.claude/settings.json` on every session start, so a version bump re-points it automatically.
 
 ```
 acme ❯ cd:PROJ-412 ❯ sd:PROJ-380(api·worker·admin) ❯ [Opus 5 1M High] ❯ 340k·34%
@@ -91,3 +93,7 @@ Three caches, each keyed so a hit can never be staler than the layer beneath it:
   concurrently.
 - **Transcript facts** — a byte offset; only bytes appended since the last
   render are parsed.
+
+---
+
+Part of [cc-millz](../../README.md).
