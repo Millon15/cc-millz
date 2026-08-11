@@ -6,6 +6,16 @@ Things that make [Claude Code](https://claude.ai/code) even better — my person
 
 This is an unapologetically opinionated set: every plugin here is something I actually use. Even if you don't need my particular toolbox, it may give you ideas for building your own.
 
+---
+
+> ## 🌟 [Other people's plugins I actually use →](RECOMMENDED.md)
+>
+> Six third-party marketplaces worth a `/plugin marketplace add`: design dialogue, TUI diff annotation, autonomous execution, Codex, engineering skills, PhpStorm.
+>
+> Deliberately **not** re-exported here — install them upstream and keep their updates.
+
+---
+
 ## 📦 Install
 
 Add the marketplace, then install the plugins you want:
