@@ -1,5 +1,17 @@
 # Changelog
 
+## essentials v0.6.1 - 2026-08-13
+
+### Changes
+
+- `code-style` — new Core rule **"Shape a kept comment for the eye"**, covering the *form* of a
+  comment that survived the keep/cut decision (the neighbouring "No narrating comments" rule owns
+  *whether* to keep it). One clause per line, broken at the comma or semicolon rather than filled
+  to the column limit; markdown throughout — `*emphasis*` on the pivot word, `**strong**` on the
+  load-bearing claim, backticked identifiers, `-` bullets for a reasoning chain. Explicitly
+  instructs using markdown **even though PHPDoc / Javadoc / JSDoc render none of it** and pass
+  `*text*` through as literal asterisks: the reader is a human scanning source, not a rendered popup
+
 ## essentials v0.6.0 - 2026-08-05
 
 ### New Features
