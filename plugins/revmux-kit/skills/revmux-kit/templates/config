@@ -1,0 +1,13 @@
+# revmux runtime knobs — project layer (precedence: CLI > ./.revmux/config > ~/.config/revmux/config > built-in).
+# Rosters, models and effort live in prompts/profiles/*.md, not here.
+
+# the xhigh codex panel plus one claude adversarial lane is the default round
+profile = sol-panel
+
+# xhigh finders reading a real diff need more than the 20m default per attempt
+hard-timeout = 35m
+
+# a finder that says nothing for this long is killed and retried once
+idle-timeout = 4m
+
+max-parallel = 4

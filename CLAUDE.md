@@ -28,6 +28,8 @@ Millon15 personal Claude Code plugin marketplace — skills, agents, (future) ho
 - `plugins/codex-delegation/` — Codex CLI second-tier delegation (3 skills + 1 agent)
 - `plugins/essentials/` — general-purpose personal skills and commands (code-style, /e15)
 - `plugins/phpstorm/` — PhpStorm MCP + Xdebug agent surface (2 skills)
+- `plugins/ralphex-revmux/` — revmux as ralphex's external reviewer (1 skill + 1 command + 2 agents + scripts)
+- `plugins/revmux-kit/` — revmux project layer bootstrap (1 skill + templates)
 
 ## Local Plugin Development
 

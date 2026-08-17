@@ -1,0 +1,16 @@
+# ralphex-revmux — prompt file handed to the custom external review script
+# (.ralphex/scripts/ralphex-revmux-review.sh). The script parses the RALPHEX_*
+# header lines; the rest is context it copies into the revmux round.
+# Precedence: .ralphex/prompts/custom_review.txt > ~/.config/ralphex/prompts/ > embedded default.
+# Variables: {{DIFF_INSTRUCTION}} {{GOAL}} {{PLAN_FILE}} {{PROGRESS_FILE}}
+#            {{DEFAULT_BRANCH}} {{PREVIOUS_REVIEW_CONTEXT}}
+
+RALPHEX_GOAL: {{GOAL}}
+RALPHEX_PLAN: {{PLAN_FILE}}
+RALPHEX_PROGRESS: {{PROGRESS_FILE}}
+RALPHEX_DEFAULT_BRANCH: {{DEFAULT_BRANCH}}
+RALPHEX_DIFF: {{DIFF_INSTRUCTION}}
+
+RALPHEX_PREVIOUS_CONTEXT_BEGIN
+{{PREVIOUS_REVIEW_CONTEXT}}
+RALPHEX_PREVIOUS_CONTEXT_END

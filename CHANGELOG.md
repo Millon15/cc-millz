@@ -1,5 +1,30 @@
 # Changelog
 
+## ralphex-revmux v0.1.0 - 2026-08-17
+
+### New Features
+
+- New plugin — revmux as ralphex's external reviewer. `scripts/bootstrap.sh` installs the
+  `custom_review_script` glue (`ralphex-revmux-review.sh`: one revmux round per ralphex
+  external-review iteration, `full` round on the panel profile then `fixes` rounds on the final
+  profile, findings converted to `file:line - [severity, conf, sources] …` lines), the live
+  `review-preflight.sh` (a real `codex exec` turn + revmux + profile resolution; stale auth is a
+  stop, codex absent falls to the `fable-*` twins), the `custom_review` / `custom_eval` prompts and
+  the `.ralphex/config` snippet.
+- `/ralphex-revmux:run <plan>` — preflight → `ralphex --tasks-only` → `ralphex --external-only`
+  (ralphex's own multi-lane review loops skipped) → converged check → reporter + optimizer.
+- Agents `ralphex-result-reporter` (post-run forensics: phase timings, rounds, fixes by P1–P4,
+  hiccups, hygiene) and `ralphex-optimizer` (numbered proposals with the number behind each).
+
+## revmux-kit v0.1.0 - 2026-08-17
+
+### New Features
+
+- New plugin — revmux project layer for any repo: `scripts/bootstrap.sh` writes `.revmux/config`
+  (`profile = sol-panel`, `hard-timeout = 35m`, `idle-timeout = 4m`), a `profile.md` template, and
+  four rosters — `sol-panel` (3× codex gpt-5.6-sol xhigh + claude fable adversarial), `sol-final`
+  (major floor), `fable-panel` / `fable-final` (no codex).
+
 ## essentials v0.6.1 - 2026-08-13
 
 ### Changes

@@ -1,0 +1,8 @@
+{
+  "name": "revmux-kit",
+  "description": "Bootstrap revmux in any repo — a project config with sane timeouts, a profile.md template, and gpt-5.6-sol xhigh / claude fable rosters (sol-panel, sol-final, fable-panel, fable-final). REQUIRES the revmux CLI (brew install umputun/apps/revmux) and its Claude Code plugin for the review flow itself.",
+  "version": "0.1.0",
+  "author": {
+    "name": "Millon15"
+  }
+}

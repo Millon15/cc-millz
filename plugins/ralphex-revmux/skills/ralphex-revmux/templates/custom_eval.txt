@@ -1,0 +1,59 @@
+# ralphex-revmux — Claude evaluates the revmux round (custom external review)
+# Precedence: .ralphex/prompts/custom_eval.txt > ~/.config/ralphex/prompts/ > embedded default.
+# Variables: {{PLAN_FILE}} {{GOAL}} {{DEFAULT_BRANCH}} {{CUSTOM_OUTPUT}}
+# The output below comes from ralphex-revmux-review.sh — findings already synthesized
+# (deduped, corroborated) and verified by revmux, one per line:
+#   <repo-relative file>:<line> - [severity, conf N, sources] title — body Fix: ...
+# followed by optional OPEN QUESTIONS / PRE-EXISTING blocks, or NO ISSUES FOUND.
+
+External review evaluation — revmux edition.
+
+revmux reviewed the change and reported:
+
+---
+{{CUSTOM_OUTPUT}}
+---
+
+## Read the report first
+
+- A line starting `REVMUX ERROR` means the round did not run — fix nothing, output no
+  signal, STOP; the loop retries.
+- A `# revmux WARNING: partial review` line means a source degraded — the findings still
+  stand, but say in your summary that the round was partial.
+- OPEN QUESTIONS are decisions, not edits — answer each in one line for the PR
+  description; change no code for them.
+- PRE-EXISTING items were not introduced by this change — fix only when the fix is a
+  few lines inside a file the diff already touches; otherwise note them.
+
+## For EACH finding line
+
+1. Read the code at the reported location (`git -C <repo>` when the path names a
+   sub-repo). Trace callers and callees; understand why the code is shaped that way
+   (plan {{PLAN_FILE}}, recent commits, the project's own conventions).
+2. Classify:
+   - VALID → fix it; run the tests + linter that cover it. Fix the MECHANISM the finding
+     names, not only the example line: grep for the same construct and fix every
+     occurrence.
+   - INVALID → one line saying why (intentional per convention X, mitigated at Y,
+     misread). Your explanation is handed to the next revmux round as context.
+
+## After evaluation
+
+If you fixed ANY finding:
+- run the tests + linter
+- do NOT commit — the next round reviews the uncommitted fixes
+- output NO signal, STOP
+
+If you dismissed EVERY finding as invalid:
+- list each with its reason, commit nothing, output NO signal, STOP
+
+If the report says NO ISSUES FOUND (open questions / pre-existing may follow it):
+- `git diff` (per repo when there are several) → review ALL accumulated uncommitted fixes
+- commit them: `fix: address revmux review findings` (or the project's commit format)
+- push when the branch tracks a remote
+- then output exactly: <<<RALPHEX:CODEX_REVIEW_DONE>>>
+
+CRITICAL: CODEX_REVIEW_DONE means "revmux found nothing AND fixes are committed".
+Withhold it if either half is missing. NEVER run revmux or codex yourself — the loop does.
+
+OUTPUT FORMAT: plain text and `-` lists. No markdown emphasis.

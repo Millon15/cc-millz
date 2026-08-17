@@ -1,0 +1,15 @@
+
+# ------------------------------------------------------------------------------
+# ralphex-revmux: revmux is the external reviewer (custom_review_script hook).
+# Run `ralphex --tasks-only <plan>` then `ralphex --external-only <plan>` so
+# ralphex's own multi-lane first review + crit/major loop are skipped and this
+# loop is the review. Installed by the ralphex-revmux plugin bootstrap.
+# ------------------------------------------------------------------------------
+external_review_tool = custom
+custom_review_script = .ralphex/scripts/ralphex-revmux-review.sh
+max_external_iterations = 4
+review_patience = 3
+
+# codex settings for the stock ralphex codex phase (unused while the hook above is on)
+codex_model = gpt-5.6-sol
+codex_reasoning_effort = xhigh
