@@ -25,8 +25,16 @@
 #   Every exit path is a silent exit 0 (Stop stdout lands in the transcript), so a failure is
 #   indistinguishable from a no-op without the breadcrumb log.
 #
+#   The claim is keyed on the PANE, not on Claude's session id: a headless `claude -p` child
+#   (ralphex, revmux) inherits the pane's AGTERM_* and mints a fresh session id per run, so a
+#   session-keyed claim was free on every run and each one typed `/rename` into the pane the
+#   interactive Claude owns. Those children are also refused outright (lib.sh headless_claude).
+#
+#   A `/rename <name>` the user typed wins: the transcript is checked for one before typing, and a
+#   found one is adopted as-is — a bare `/rename` would regenerate the title over theirs.
+#
 # Undo:   agtermctl session rename "<x>" ; agtermctl session background clear
-# Re-run: delete ~/.claude/agterm-lanes/lane-<session_id>
+# Re-run: delete ~/.claude/agterm-lanes/lane-<AGTERM_SESSION_ID>
 set -u
 
 LANE_TYPE_RENAME=${LANE_TYPE_RENAME:-1} # 0 = adopt Claude's auto-title, never inject keystrokes
@@ -48,7 +56,27 @@ claim_once() {
 	[ -e "$sentinel" ] && return 1
 	mkdir -p "$LANE_STATE_DIR" 2>/dev/null
 	: >"$sentinel"
+	lane_already_named && return 1
 	return 0
+}
+
+# A sentinel can be lost (state dir wiped, key scheme changed) — the role emoji the lane already
+# wears is the durable witness that it was named.
+lane_already_named() {
+	case "$(current_name)" in
+	🐛* | 🚀* | 🔍* | 🧪* | 🧹* | 🔧* | 📊* | 📝* | 💬*) return 0 ;;
+	esac
+	return 1
+}
+
+pane_field() {
+	ctl tree --json 2>/dev/null |
+		jq -r --arg s "$AGTERM_SESSION_ID" --arg f "$1" \
+			'.result.tree.workspaces[].sessions[] | select(.id==$s) | .[$f] // ""' 2>/dev/null
+}
+
+current_name() {
+	pane_field name
 }
 
 # The claim is taken before the slow work so a rename cannot fire twice. That makes any bail
@@ -59,10 +87,7 @@ release_claim() {
 
 # Claude prefixes its title with a live status glyph (✳ ⠐ ⠂ …) that changes as it works.
 current_title() {
-	ctl tree --json 2>/dev/null |
-		jq -r --arg s "$AGTERM_SESSION_ID" \
-			'.result.tree.workspaces[].sessions[] | select(.id==$s) | .title // ""' 2>/dev/null |
-		sed 's/^[^[:alnum:]]*//'
+	pane_field title | sed 's/^[^[:alnum:]]*//'
 }
 
 window_idle_ms() {
@@ -175,16 +200,31 @@ apply_lane() {
 	log "$emoji $1 [$tint $shape] rename=$rc_name bg=$rc_bg"
 }
 
+# A slash command lands in the transcript as `<command-name>/rename</command-name> …
+# <command-args>NAME</command-args>`; a bare `/rename` (ours included) carries empty args.
+user_renamed_manually() {
+	[ -n "$transcript" ] && [ -r "$transcript" ] || return 1
+	grep -qE 'command-name>/rename</command-name>.{0,120}<command-args>[^<]' "$transcript" 2>/dev/null
+}
+
+should_type_rename() {
+	[ "$LANE_TYPE_RENAME" = "1" ] || return 1
+	user_renamed_manually || return 0
+	log "manual /rename found, adopting the title as-is"
+	return 1
+}
+
 main() {
 	inside_agterm || exit 0
-	sid=$(session_id_from_stdin) || exit 0
-	claim_once "$sid" || exit 0
+	headless_claude && exit 0
+	transcript=$(transcript_path_from_stdin)
+	claim_once "$AGTERM_SESSION_ID" || exit 0
 
 	# Claude auto-titles a session even without /rename, so the live title is already a usable name;
 	# only waiting on a title we asked for is worth blocking on.
 	before=$(current_title)
 	title=$before
-	if [ "$LANE_TYPE_RENAME" = "1" ]; then
+	if should_type_rename; then
 		type_rename_when_safe || exit 0
 		title=$(await_title_change "$before") || title=$before
 	fi

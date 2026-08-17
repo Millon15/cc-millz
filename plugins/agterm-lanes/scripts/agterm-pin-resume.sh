@@ -23,9 +23,9 @@ set -u
 . "$(dirname "$0")/lib.sh"
 
 inside_agterm || exit 0
-# Cheap guard for any nested `claude` a hook may spawn: the child inherits this pane's
-# AGTERM_SESSION_ID and would otherwise re-pin the pane to its own throwaway session id.
-[ -z "${AGTERM_LANE_HOOK:-}" ] || exit 0
+# A headless `claude -p` child (ralphex, revmux) inherits this pane's AGTERM_SESSION_ID and would
+# otherwise re-pin the pane to its own throwaway session id.
+headless_claude && exit 0
 
 sid=$(session_id_from_stdin) || exit 0
 

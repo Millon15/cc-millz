@@ -37,3 +37,41 @@ session_id_from_stdin() {
 	*) return 1 ;;
 	esac
 }
+
+transcript_path_from_stdin() {
+	jq -r '.transcript_path // empty' 2>/dev/null
+}
+
+# A headless `claude -p` child (ralphex, revmux, any `--print` run started from a Bash tool)
+# inherits the pane's AGTERM_* and mints a fresh session id per run, so its hooks would rename,
+# re-pin and re-tint the pane the interactive Claude owns. The child's env carries no marker
+# (CLAUDECODE is scrubbed so it can start at all), so the nearest `claude` ancestor's argv is the
+# only witness. No claude ancestor within reach = fail-open, treated as interactive.
+headless_claude() {
+	pid=$PPID
+	depth=0
+	while [ "$depth" -lt 8 ] && [ -n "$pid" ] && [ "$pid" -gt 1 ]; do
+		argv=$(ps -o command= -p "$pid" 2>/dev/null)
+		is_claude_argv "$argv" && {
+			is_headless_argv "$argv"
+			return
+		}
+		pid=$(ps -o ppid= -p "$pid" 2>/dev/null | tr -d ' ')
+		depth=$((depth + 1))
+	done
+	return 1
+}
+
+is_claude_argv() {
+	case "$1" in
+	claude | claude\ * | */claude | */claude\ *) return 0 ;;
+	esac
+	return 1
+}
+
+is_headless_argv() {
+	case " $1 " in
+	*" -p "* | *" --print "* | *" --output-format "* | *" --output-format="*) return 0 ;;
+	esac
+	return 1
+}

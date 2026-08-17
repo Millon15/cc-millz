@@ -13,6 +13,7 @@ Run more than two Claude Code sessions at once and the sidebar becomes a wall of
 - **Never types into a dialog.** On the question path a prompt is on screen and a Return would answer it, so that path only adopts the auto-title.
 - **Hue is state, silhouette is role.** The sidebar glyph's shape encodes what the lane is *for*; its colour stays free for the agent's turn state (active / blocked / completed).
 - **A reboot reattaches, not restarts** — each session re-pins its pane's restore command to its own live id, so agterm brings the conversation back instead of a bare shell.
+- **One name per pane, and yours wins.** The claim is keyed on the agterm pane, not on Claude's session id, and a `/rename <name>` you typed is adopted as-is instead of regenerated. Headless `claude -p` children (ralphex, revmux, anything `--print` started from a Bash tool) inherit the pane's `AGTERM_*` — every hook refuses them, so they can no longer rename, re-tint or re-pin the pane the interactive Claude owns.
 
 ## Components
 
@@ -32,7 +33,7 @@ Environment variables: `LANE_TYPE_RENAME` (`0` disables keystroke injection enti
 
 > **If you already ran agterm's own agent-status hook installer**, remove its four entries from `~/.claude/settings.json` when installing this plugin — otherwise every status fires twice.
 
-To re-name a lane that has already claimed its name, delete `~/.claude/agterm-lanes/lane-<session_id>`.
+To re-name a lane that has already claimed its name, delete `~/.claude/agterm-lanes/lane-<AGTERM_SESSION_ID>` (the pane id, `agtermctl tree --json`) — and drop the role emoji from its name, since a lane already wearing one counts as named.
 
 ---
 

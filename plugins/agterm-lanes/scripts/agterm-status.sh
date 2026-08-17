@@ -25,6 +25,7 @@ set -u
 . "$(dirname "$0")/lib.sh"
 
 inside_agterm || exit 0
+headless_claude && exit 0
 
 state=$1
 shift
