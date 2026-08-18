@@ -18,14 +18,16 @@
 # Env (all optional):
 #   RALPHEX_REPOS                 space-separated repo paths to review (default: `.` — the repo ralphex runs in;
 #                                 a polyrepo lists its sub-repos here, each reviewed with `git -C <repo>`)
-#   RALPHEX_BASELINE_SHA          root-repo baseline commit; root scope = baseline..HEAD (default: origin/<default>)
-#   RALPHEX_NO_CODEX=1            use the no-codex profiles
 #   RALPHEX_REVMUX_PROFILE        first-round profile (default sol-panel)
 #   RALPHEX_REVMUX_FINAL_PROFILE  re-round profile (default sol-final)
 #   RALPHEX_RUBRIC_CMD            optional command printing a repo's review rubric; run per repo as
 #                                 `$RALPHEX_RUBRIC_CMD <repo>` → context/standards-<repo>.md
-#   RALPHEX_RUN_DIR               where round logs + rounds.jsonl land (default tmp/ralphex-run/<plan-slug>)
-#   RALPHEX_MIN_CONFIDENCE        revmux --min-confidence (default 50)
+#   RALPHEX_BASELINE_SHA   root-repo baseline commit; root scope = baseline...ROOT_HEAD (default: origin/<default>)
+#   RALPHEX_ROOT_HEAD      root-repo head pinned at launch — a long-lived root branch collects OTHER sessions'
+#                          commits mid-run; pinning keeps them out of the review (default: HEAD)
+#   RALPHEX_NO_CODEX=1     use the no-codex profiles
+#   RALPHEX_RUN_DIR        where round logs + rounds.jsonl land (default tmp/ralphex-run/<plan-slug>)
+#   RALPHEX_MIN_CONFIDENCE revmux --min-confidence (default 50)
 #
 # Exit: 0 always when a round ran (findings or none); 1 = revmux exit 2 / round could not be opened
 # (ralphex treats a non-zero script as an executor error — the run stops instead of shipping unreviewed).
@@ -85,10 +87,15 @@ repo_base() { # $1=repo
     echo "origin/${DEFAULT_BRANCH:-master}"
 }
 
+repo_head() { # $1=repo
+    [[ "$1" == "." && -n "${RALPHEX_ROOT_HEAD:-}" ]] && { echo "$RALPHEX_ROOT_HEAD"; return; }
+    echo HEAD
+}
+
 diff_command() { # $1=repo $2=kind
     local base
     base="$(repo_base "$1")"
-    [[ "$2" == "full" ]] && echo "git -C $1 diff $base...HEAD" || echo "git -C $1 diff"
+    [[ "$2" == "full" ]] && echo "git -C $1 diff $base...$(repo_head "$1")" || echo "git -C $1 diff"
 }
 
 shortstat_line() { # $1=repo $2=kind
@@ -120,12 +127,24 @@ write_scope() { # $1=path $2=kind $3..=repos
     } >"$path"
 }
 
+already_raised() { # every finding of the earlier rounds of this task, one line each
+    local f
+    for f in "$LOG_DIR"/*.json; do
+        [[ -s "$f" ]] || continue
+        jq -r '.findings[]? | "  - \(.file):\(.line // 0) — \(.title)"' "$f" 2>/dev/null
+    done | sort -u
+}
+
 write_goal() { # $1=path $2=kind
     {
         echo "# Goal"
         echo "- $GOAL"
         echo "- Plan: \`$PLAN\` (context/plan.md carries a copy) — the tasks it lists are the intended change; report only what should not ship."
-        [[ "$2" == "fixes" ]] && echo "- This round reviews the FIXES applied after the previous round. Judge whether each fix addresses its finding at the right place without regressing the neighbours."
+        if [[ "$2" == "fixes" ]]; then
+            echo "- This round reviews the FIXES applied after the previous round. Judge whether each fix addresses its finding at the right place without regressing the neighbours."
+            echo "- Already raised in this task (fixed or rebutted in earlier rounds — do NOT re-raise the same symbol below critical; a nuance of an earlier finding is a follow-up note, not a new major):"
+            already_raised
+        fi
         echo "- Correct only if: every introduced guard is exercised by a test; no behaviour the plan did not ask for; nothing that would fail on a second run."
         echo "- Finding nothing is a valid answer — this is a merge gate, not a quota."
     } >"$1"
@@ -192,7 +211,7 @@ degrade_note() { # $1=json path
 
 journal_round() { # $1=round $2=profile $3=exit $4=json
     local counts
-    counts="$(jq -c '{critical: ([.findings[]?|select(.severity=="critical")]|length), major: ([.findings[]?|select(.severity=="major")]|length), minor: ([.findings[]?|select(.severity=="minor")]|length), open_questions: ((.open_questions//[])|length), pre_existing: ((.pre_existing//[])|length), immaterial: ((.immaterial//[])|length), degraded: (.sources.degraded//[]), duration_ms: (.stats.duration_ms//null)}' "$4" 2>/dev/null || echo '{}')"
+    counts="$(jq -c '{critical: ([.findings[]?|select(.severity=="critical")]|length), major: ([.findings[]?|select(.severity=="major")]|length), minor: ([.findings[]?|select(.severity=="minor")]|length), open_questions: ((.open_questions//[])|length), pre_existing: ((.pre_existing//[])|length), immaterial: ((.immaterial//[])|length), degraded: (.sources.degraded//[]), reported: (.sources.reported//null), expected: (.sources.expected//null), duration_ms: (.stats.duration_ms//null)}' "$4" 2>/dev/null || echo '{}')"
     printf '{"round":"%s","profile":"%s","exit":%s,"counts":%s,"json":"%s"}\n' "$1" "$2" "$3" "$counts" "$4" >>"$LOG_DIR/rounds.jsonl"
 }
 

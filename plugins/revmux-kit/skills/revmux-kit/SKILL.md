@@ -28,7 +28,7 @@ Then fill `./.revmux/profile.md` — every `<placeholder>` is a fact about THIS 
 
 ## Config
 
-`hard-timeout = 35m` (xhigh finders on a real diff overrun the 20m default), `idle-timeout = 4m`, `max-parallel = 4`, `profile = sol-panel`. Precedence: CLI > `./.revmux/config` > `~/.config/revmux/config` > built-in; keys merge, so a project file setting one knob leaves the rest alone.
+`hard-timeout = 20m` (the longest legitimate xhigh round measured ~13m; a longer ceiling only lengthens a stalled agent — a 35m ceiling produced a 35m07s stall), `idle-timeout = 4m`, `max-parallel = 4`, `profile = sol-panel`. Precedence: CLI > `./.revmux/config` > `~/.config/revmux/config` > built-in; keys merge, so a project file setting one knob leaves the rest alone.
 
 ## Guardrails
 

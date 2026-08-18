@@ -4,8 +4,8 @@
 # the xhigh codex panel plus one claude adversarial lane is the default round
 profile = sol-panel
 
-# xhigh finders reading a real diff need more than the 20m default per attempt
-hard-timeout = 35m
+# per attempt — the longest legitimate xhigh round measured ~13m; a longer ceiling only lengthens a stalled agent
+hard-timeout = 20m
 
 # a finder that says nothing for this long is killed and retried once
 idle-timeout = 4m

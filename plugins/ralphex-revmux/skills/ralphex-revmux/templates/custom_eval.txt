@@ -22,8 +22,9 @@ revmux reviewed the change and reported:
   stand, but say in your summary that the round was partial.
 - OPEN QUESTIONS are decisions, not edits — answer each in one line for the PR
   description; change no code for them.
-- PRE-EXISTING items were not introduced by this change — fix only when the fix is a
-  few lines inside a file the diff already touches; otherwise note them.
+- PRE-EXISTING items were not introduced by this change — NEVER fix them in this loop
+  (a fix here costs another whole round). List them in one line each for the PR
+  description; they ride as follow-ups.
 
 ## For EACH finding line
 
@@ -47,7 +48,8 @@ If you fixed ANY finding:
 If you dismissed EVERY finding as invalid:
 - list each with its reason, commit nothing, output NO signal, STOP
 
-If the report says NO ISSUES FOUND (open questions / pre-existing may follow it):
+If the report says NO ISSUES FOUND (open questions / pre-existing may follow it — they do
+NOT change this branch; a clean round is a clean round):
 - `git diff` (per repo when there are several) → review ALL accumulated uncommitted fixes
 - commit them: `fix: address revmux review findings` (or the project's commit format)
 - push when the branch tracks a remote

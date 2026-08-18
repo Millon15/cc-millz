@@ -1,7 +1,7 @@
 {
   "name": "ralphex-revmux",
-  "description": "Make revmux the external reviewer of a ralphex run — live review preflight (codex auth round-trip, revmux + profile resolution), the custom_review_script glue that opens one revmux round per ralphex external-review iteration, a two-stage runner (--tasks-only then --external-only) that skips ralphex's own multi-lane review loops, and two post-run agents: a forensic run reporter and a proposal-only optimizer. REQUIRES the ralphex and revmux CLIs; PAIRS with revmux-kit for the sol-*/fable-* profiles.",
-  "version": "0.1.0",
+  "description": "Make revmux the external reviewer of a ralphex run \u2014 live review preflight (codex auth round-trip, revmux + profile resolution), the custom_review_script glue that opens one revmux round per ralphex external-review iteration, a two-stage runner (--tasks-only then --external-only) that skips ralphex's own multi-lane review loops, and two post-run agents: a forensic run reporter and a proposal-only optimizer. REQUIRES the ralphex and revmux CLIs; PAIRS with revmux-kit for the sol-*/fable-* profiles.",
+  "version": "0.1.1",
   "author": {
     "name": "Millon15"
   }

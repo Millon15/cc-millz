@@ -1,5 +1,24 @@
 # Changelog
 
+## ralphex-revmux v0.1.1 - 2026-08-18
+
+### Changes
+
+- Glue: `RALPHEX_ROOT_HEAD` pins the root repo's round-1 scope (other sessions' commits landing
+  mid-run stay out); `goal.md` of a fixes round lists every finding already raised in the task
+  (no re-cutting the same symbol as a new major); `rounds.jsonl` carries `reported`/`expected`.
+- Eval prompt: pre-existing findings are never fixed inside the loop (a fix costs a whole round) —
+  they ride into the PR description; a clean round commits + signals done regardless.
+- Skill + command: `--skip-finalize` on stage ② (finalize opens PRs itself), archived-plan path
+  after stage ①, progress-file snapshot before relaunch, converged-but-capped wording.
+
+## revmux-kit v0.1.1 - 2026-08-18
+
+### Changes
+
+- `config` template: `hard-timeout = 20m` (a 35m ceiling only lengthened a stalled xhigh agent —
+  measured 35m07s stall vs ~13m longest legitimate round).
+
 ## agterm-lanes v0.2.0 - 2026-08-17
 
 ### Bug Fixes
