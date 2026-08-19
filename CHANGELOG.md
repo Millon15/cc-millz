@@ -1,5 +1,19 @@
 # Changelog
 
+## unslop-kit v0.3.0 - 2026-08-19
+
+### Fixed
+
+- The inner doll was getting skipped: a session loaded `unslop-kit:unslop-formatting` and wrote
+  against the abridged fallback while `pstack@cc-millz` was installed, because the hook named
+  only the wrapper and the skill's "load pstack:unslop" line read as optional. Now the hook checks
+  `installed_plugins.json` for `pstack@cc-millz` and demands both Skill calls in one batch
+  (`unslop-kit:unslop-formatting` + `pstack:unslop`) when it is there, or says once that the
+  fallback is in force when it is not; pass 1 opens with a gate ("no visible
+  `Skill(skill="pstack:unslop")` call in this context window = call it now, the fallback while
+  pstack is installed is a violation"); the send-check starts with that same check.
+
+
 ## unslop-kit v0.2.0 - 2026-08-19
 
 ### Changed

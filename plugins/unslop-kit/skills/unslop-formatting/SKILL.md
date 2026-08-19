@@ -15,9 +15,11 @@ Two passes, fixed order. Wording first, layout second: layout adds the emoji gly
 
 ## Pass 1: wording, `pstack:unslop`
 
-Load `pstack:unslop` (Skill tool) once per session and again after compaction. Run its 31 patterns and its self-audit ("what makes this obviously AI generated?") over the draft.
+Gate, before anything else in this skill: if `pstack:unslop` is in your skill list and this context window holds no `Skill(skill="pstack:unslop")` call of yours, make that call now. Reading this file is not loading pstack. The unslop-kit hook names both calls for a reason: a session that loads only the wrapper writes its replies against the fallback below and calls that pass 1. It is not. Repeat the call after compaction, since compaction drops loaded skills.
 
-Fallback when `pstack:unslop` is not in the skill list (pstack@cc-millz not installed): apply these checks and say so once.
+Then run pstack's 31 patterns and its self-audit ("what makes this obviously AI generated?") over the draft.
+
+Fallback, ONLY when `pstack:unslop` is absent from the skill list (pstack@cc-millz not installed): apply these checks and say so once. Using the fallback while pstack is installed is a violation, not a shortcut.
 
 - No em dashes. Period or comma.
 - No AI vocabulary: additionally, crucial, delve, leverage, robust, seamless, landscape, tapestry, testament, underscore, showcase, foster.
@@ -71,6 +73,7 @@ Chat replies get both passes. Commit messages, PR bodies, code comments, docs, S
 
 ## Send-check
 
+- `Skill(skill="pstack:unslop")` is visible in this context window, or pstack is genuinely not installed and you said so once.
 - English block first and untouched.
 - TL;DR before details.
 - Zero em dashes, zero chatbot closers.
