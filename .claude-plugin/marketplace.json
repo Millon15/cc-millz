@@ -7,37 +7,47 @@
     {
       "name": "agterm-lanes",
       "source": "./plugins/agterm-lanes",
-      "description": "Self-labelling agterm lanes for Claude Code \u2014 each pane names itself from Claude's own session title, takes a role emoji, tint and sidebar glyph, and re-pins itself so a reboot reattaches the conversation. Requires the agterm terminal (macOS)."
+      "description": "Self-labelling agterm lanes for Claude Code — each pane names itself from Claude's own session title, takes a role emoji, tint and sidebar glyph, and re-pins itself so a reboot reattaches the conversation. Requires the agterm terminal (macOS)."
     },
     {
       "name": "codex-delegation",
       "source": "./plugins/codex-delegation",
-      "description": "Delegate second-tier work to Codex CLI (gpt-5.6 top tier, gpt-5.5 bulk) \u2014 model-routing rubric, Workflow/Agent fan-out wrappers, computer-use verification. Requires the openai-codex plugin."
+      "description": "Delegate second-tier work to Codex CLI (gpt-5.6 top tier, gpt-5.5 bulk) — model-routing rubric, Workflow/Agent fan-out wrappers, computer-use verification. Requires the openai-codex plugin."
     },
     {
       "name": "essentials",
       "source": "./plugins/essentials",
-      "description": "General-purpose personal skills \u2014 code-style (personal code taste) and concise-writing (the compression procedure for comments, commits, PR descriptions and team sends). Install at user scope only."
+      "description": "General-purpose personal skills — code-style (personal code taste) and concise-writing (the compression procedure for comments, commits, PR descriptions and team sends). Install at user scope only."
     },
     {
       "name": "phpstorm",
       "source": "./plugins/phpstorm",
-      "description": "PhpStorm MCP as an agent surface \u2014 code navigation and call hierarchy, inspections, plus a live Xdebug loop (breakpoints, frames, expression evaluation, state mutation) against local or Dockerised PHP. Requires PhpStorm 2026.2+ with its MCP server enabled."
+      "description": "PhpStorm MCP as an agent surface — code navigation and call hierarchy, inspections, plus a live Xdebug loop (breakpoints, frames, expression evaluation, state mutation) against local or Dockerised PHP. Requires PhpStorm 2026.2+ with its MCP server enabled."
     },
     {
       "name": "ralphex-revmux",
       "source": "./plugins/ralphex-revmux",
-      "description": "revmux as ralphex's external reviewer \u2014 live review preflight (codex auth, revmux, profile), the custom_review_script glue (one revmux round per iteration), a two-stage runner that skips ralphex's own review loops, and post-run reporter + optimizer agents. Requires the ralphex and revmux CLIs."
+      "description": "revmux as ralphex's external reviewer — live review preflight (codex auth, revmux, profile), the custom_review_script glue (one revmux round per iteration), a two-stage runner that skips ralphex's own review loops, and post-run reporter + optimizer agents. Requires the ralphex and revmux CLIs."
     },
     {
       "name": "revmux-kit",
       "source": "./plugins/revmux-kit",
-      "description": "revmux project layer for any repo \u2014 config with xhigh-safe timeouts, a profile.md template, and gpt-5.6-sol xhigh / claude fable rosters (sol-panel, sol-final, fable-panel, fable-final). Requires the revmux CLI."
+      "description": "revmux project layer for any repo — config with xhigh-safe timeouts, a profile.md template, and gpt-5.6-sol xhigh / claude fable rosters (sol-panel, sol-final, fable-panel, fable-final). Requires the revmux CLI."
     },
     {
       "name": "statusline",
       "source": "./plugins/statusline",
-      "description": "Two-line status line \u2014 git scopes for the current repo and nested monorepo repos (branch, dirt, conflicts, ahead/behind, in-progress rebase/merge), context window, skills and MCP schemas actually loaded this session, plus real quota and spend from the Anthropic usage API. Self-installs into settings.json."
+      "description": "Two-line status line — git scopes for the current repo and nested monorepo repos (branch, dirt, conflicts, ahead/behind, in-progress rebase/merge), context window, skills and MCP schemas actually loaded this session, plus real quota and spend from the Anthropic usage API. Self-installs into settings.json."
+    },
+    {
+      "name": "pstack",
+      "source": {
+        "source": "git-subdir",
+        "url": "https://github.com/cursor/plugins.git",
+        "path": "pstack"
+      },
+      "strict": false,
+      "description": "poteto (Lauren Tan)'s pstack, mirrored from cursor/plugins — /poteto-mode playbooks, /how, /why, /interrogate, /arena, /swarm, /unslop, /tdd, principle-* leaf skills. Cursor-authored: model panels (gpt/grok slugs), ~/.cursor/rules override and cursor-team-kit refs do not apply in Claude Code."
     }
   ]
 }
