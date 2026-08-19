@@ -30,6 +30,7 @@ Millon15 personal Claude Code plugin marketplace — skills, agents, (future) ho
 - `plugins/phpstorm/` — PhpStorm MCP + Xdebug agent surface (2 skills)
 - `plugins/ralphex-revmux/` — revmux as ralphex's external reviewer (1 skill + 1 command + 2 agents + scripts)
 - `plugins/revmux-kit/` — revmux project layer bootstrap (1 skill + templates)
+- `plugins/unslop-kit/` — reply contract over pstack:unslop (1 skill + 1 SessionStart hook)
 
 ## Local Plugin Development
 

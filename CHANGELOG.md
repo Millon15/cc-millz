@@ -1,5 +1,20 @@
 # Changelog
 
+## unslop-kit v0.1.0 - 2026-08-19
+
+### Added
+
+- `unslop-kit:unslop-millz`: two-pass reply contract. Pass 1 loads `pstack:unslop` (abridged
+  fallback without it) with five explicit overrides (rules 13/15/16/17/18); pass 2 is the reply
+  skeleton (English Check first, TL;DR, nested bullets with one emoji glyph per top-level item,
+  tables for comparisons, fenced code, `[ASSUMPTION]`, send-check). Replaces the `Format:` line
+  in the personal root CLAUDE.md.
+- SessionStart hook `scripts/session-start-unslop.sh`: injects the load-now directive on every
+  source (startup, resume, clear, compact); `UNSLOP_HOOK=0` opts a session out. Uses
+  `read -r -d ''` because bash 3.2 mis-parses apostrophes in a heredoc nested in `$( )`.
+- Marketplace: `pstack` mirrored from `cursor/plugins` via `git-subdir` (`strict: false`, no
+  `.claude-plugin/plugin.json` upstream).
+
 ## ralphex-revmux v0.1.1 - 2026-08-18
 
 ### Changes

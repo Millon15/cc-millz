@@ -48,6 +48,11 @@
       },
       "strict": false,
       "description": "poteto (Lauren Tan)'s pstack, mirrored from cursor/plugins — /poteto-mode playbooks, /how, /why, /interrogate, /arena, /swarm, /unslop, /tdd, principle-* leaf skills. Cursor-authored: model panels (gpt/grok slugs), ~/.cursor/rules override and cursor-team-kit refs do not apply in Claude Code."
+    },
+    {
+      "name": "unslop-kit",
+      "source": "./plugins/unslop-kit",
+      "description": "Millon15's reply contract as a Russian doll over pstack's unslop — pass 1 pstack:unslop cuts the AI tells, pass 2 unslop-millz lays the reply out (English Check first, TL;DR, nested bullets with one emoji glyph per top-level item, tables, fenced code); a SessionStart hook loads it every session. Requires pstack@cc-millz. Personal taste — user scope."
     }
   ]
 }
