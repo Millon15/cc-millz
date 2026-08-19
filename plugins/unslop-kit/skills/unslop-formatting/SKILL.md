@@ -19,6 +19,8 @@ Gate, before anything else in this skill: if `pstack:unslop` is in your skill li
 
 Then run pstack's 31 patterns and its self-audit ("what makes this obviously AI generated?") over the draft.
 
+pstack's "Adding soul" step (vary rhythm, let some mess in, first person) belongs to chat replies and prose. On pass-1-only surfaces (commit messages, PR bodies, code comments, docs, Slack/Jira/Linear bodies) run the 31 patterns and the self-audit, keep "be specific" and "have an opinion", skip the rest of that step; brevity wins there.
+
 Fallback, ONLY when `pstack:unslop` is absent from the skill list (pstack@cc-millz not installed): apply these checks and say so once. Using the fallback while pstack is installed is a violation, not a shortcut.
 
 - No em dashes. Period or comma.
@@ -26,18 +28,6 @@ Fallback, ONLY when `pstack:unslop` is absent from the skill list (pstack@cc-mil
 - No "not just X but Y", no rule-of-three padding, no filler ("in order to", "it is important to note").
 - No chatbot closers ("Let me know if…", "Hope this helps") and no sycophancy ("Great question").
 - Active voice with a named actor. Plain word over the fancy synonym. The mechanism or the number instead of the feeling.
-
-### Overrides
-
-This layer wins over these unslop rules. Everything else in unslop stands as written.
-
-| unslop rule | Here |
-| --- | --- |
-| 13 em dashes | Stays. Zero em dashes, no parentheses-as-dashes either. |
-| 15 boldface | A bold lead-in that ends in a period on a bullet is fine. Bold on every noun is still a tell. |
-| 16 inline-header lists | `**Label.** new detail` is fine. `**Label:** restating the line` is still banned. |
-| 17 title case | Stays. Sentence case headings. |
-| 18 decorative emojis | One emoji glyph per top-level bullet or heading is the convention. None inside sentences, none on nested bullets. |
 
 ## Pass 2: layout, the reply skeleton
 
@@ -50,6 +40,18 @@ This layer wins over these unslop rules. Everything else in unslop stands as wri
 7. A closing recap only when the reply runs past roughly forty lines and the reader has lost the TL;DR.
 
 Concise, no filler: what `essentials:concise-writing` says.
+
+### Overrides, applied with pass 2
+
+Pass 2 wins over these unslop rules, on chat replies only. Everything else in unslop stands as written, and a pass-1-only surface keeps all of unslop (a project's outbound skill, such as the project's `outbound-comms`, owns the layout of a send and may set its own precedence).
+
+| unslop rule | Here |
+| --- | --- |
+| 13 em dashes | Stays. Zero em dashes, no parentheses-as-dashes either. |
+| 15 boldface | A bold lead-in that ends in a period on a bullet is fine. Bold on every noun is still a tell. |
+| 16 inline-header lists | `**Label.** new detail` is fine. `**Label:** restating the line` is still banned. |
+| 17 title case | Stays. Sentence case headings. |
+| 18 decorative emojis | One emoji glyph per top-level bullet or heading is the convention. None inside sentences, none on nested bullets. |
 
 ### CLI rendering, the hard rules
 
@@ -69,7 +71,7 @@ So a table or a code block is never a child of a bullet. Introduce it with a bul
 
 ## Scope
 
-Chat replies get both passes. Commit messages, PR bodies, code comments, docs, Slack and Jira bodies get pass 1 only; `essentials:concise-writing` and the project's outbound rules own their layout.
+Chat replies get both passes. Commit messages, PR bodies, code comments, docs, Slack, Jira and Linear bodies get pass 1 only, without the overrides above; `essentials:concise-writing` and the project's outbound skill own their layout. the project's `outbound-comms` is such an orchestrator: it calls `pstack:unslop`, `review:writing-style` and `essentials:concise-writing` itself and ranks writing-style above unslop on conflict; this skill is not in that chain.
 
 ## Send-check
 

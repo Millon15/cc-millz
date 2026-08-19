@@ -9,7 +9,7 @@ My reply contract as a Russian doll over [poteto's unslop](https://github.com/cu
 
 | Component | Trigger | Description |
 |-----------|---------|-------------|
-| skill | `unslop-kit:unslop-formatting` | 🪆 Pass 1 `pstack:unslop` (31 patterns + self-audit, abridged fallback when pstack is missing) with five explicit overrides, then pass 2 the reply skeleton — English Check first, TL;DR, nested bullets with one emoji glyph per top-level item, tables for comparisons, fenced code, `[ASSUMPTION]` markers, the CLI rendering rules (tables and code blocks at top level only, verified in the TUI), a send-check |
+| skill | `unslop-kit:unslop-formatting` | 🪆 Pass 1 `pstack:unslop` (31 patterns + self-audit, abridged fallback when pstack is missing; the "add soul" step scoped to chat and prose), then pass 2 the reply skeleton with five explicit unslop overrides — English Check first, TL;DR, nested bullets with one emoji glyph per top-level item, tables for comparisons, fenced code, `[ASSUMPTION]` markers, the CLI rendering rules (tables and code blocks at top level only, verified in the TUI), a send-check |
 | hook | `SessionStart` | 🔔 `scripts/session-start-unslop.sh` injects the directive on startup, resume, clear and compact: both Skill calls in one batch when `pstack@cc-millz` is in `installed_plugins.json`, a one-time "fallback in force" note when it is not; `UNSLOP_HOOK=0` opts a session out |
 
 ## How the doll nests
