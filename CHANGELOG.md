@@ -1,10 +1,20 @@
 # Changelog
 
+## unslop-kit v0.2.0 - 2026-08-19
+
+### Changed
+
+- Skill renamed `unslop-millz` → `unslop-formatting` (hook directive, README, marketplace entry follow).
+- Pass 2 gains "CLI rendering, the hard rules", verified by reproducing each element in the Claude
+  Code TUI: a table or fenced code block renders only at top level with a blank line on each side;
+  indented under a bullet or glued to one it falls back to raw pipes / loses its fence; headings
+  inside lists flatten; `---` prints literally. Send-check carries the column-zero rule.
+
 ## unslop-kit v0.1.0 - 2026-08-19
 
 ### Added
 
-- `unslop-kit:unslop-millz`: two-pass reply contract. Pass 1 loads `pstack:unslop` (abridged
+- `unslop-kit:unslop-formatting`: two-pass reply contract. Pass 1 loads `pstack:unslop` (abridged
   fallback without it) with five explicit overrides (rules 13/15/16/17/18); pass 2 is the reply
   skeleton (English Check first, TL;DR, nested bullets with one emoji glyph per top-level item,
   tables for comparisons, fenced code, `[ASSUMPTION]`, send-check). Replaces the `Format:` line

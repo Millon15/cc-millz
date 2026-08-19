@@ -1,7 +1,7 @@
 {
   "name": "unslop-kit",
-  "description": "Millon15's reply contract as a Russian doll over pstack's unslop — pass 1 pstack:unslop cuts the AI tells from the wording, pass 2 unslop-millz lays the reply out (English Check first, TL;DR, nested bullets with one emoji glyph per top-level item, tables, fenced code). A SessionStart hook loads the skill in every session. Requires pstack@cc-millz for pass 1 (falls back to an abridged checklist without it). Personal taste — install at user scope.",
-  "version": "0.1.0",
+  "description": "Millon15's reply contract as a Russian doll over pstack's unslop — pass 1 pstack:unslop cuts the AI tells from the wording, pass 2 unslop-formatting lays the reply out (English Check first, TL;DR, nested bullets with one emoji glyph per top-level item, tables, fenced code). A SessionStart hook loads the skill in every session. Requires pstack@cc-millz for pass 1 (falls back to an abridged checklist without it). Personal taste — install at user scope.",
+  "version": "0.2.0",
   "author": {
     "name": "Millon15"
   }

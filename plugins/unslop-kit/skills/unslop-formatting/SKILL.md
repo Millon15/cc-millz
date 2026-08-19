@@ -1,5 +1,5 @@
 ---
-name: unslop-millz
+name: unslop-formatting
 description: >
   Millon15's reply contract, a Russian doll over pstack's unslop: pass 1 `pstack:unslop`
   cuts the AI tells from the wording, pass 2 lays the reply out (English Check first,
@@ -9,7 +9,7 @@ description: >
   "unslop and format", "make it read like me".
 ---
 
-# unslop-millz
+# unslop-formatting
 
 Two passes, fixed order. Wording first, layout second: layout adds the emoji glyphs and bold lead-ins that unslop would strip if it ran last.
 
@@ -49,6 +49,22 @@ This layer wins over these unslop rules. Everything else in unslop stands as wri
 
 Concise, no filler: what `essentials:concise-writing` says.
 
+### CLI rendering, the hard rules
+
+Claude Code's terminal renderer parses markdown at the top level only. Verified 2026-08-19 by reproducing each case in the TUI.
+
+| Element | Renders | Breaks |
+| --- | --- | --- |
+| Table | Top level, blank line before and after: a box with wrapped cells, six columns and long cells included | Indented under a bullet (2 or 4 spaces) or glued to a bullet line: raw pipes padded to the longest cell |
+| Fenced code | Top level, blank line before and after | Inside a bullet: the fence vanishes and the next bullet is glued to the code |
+| Heading | Top level | Inside a list item: flattened to plain text |
+| Nested bullets | Three levels deep; a numbered list nested in a bullet becomes a., b. | |
+| Blockquote | `▎` bar, inline code inside it intact | |
+| Horizontal rule `---` | | Printed as the literal `---`. Use a blank line or a heading instead |
+| Links | `text (url)` | |
+
+So a table or a code block is never a child of a bullet. Introduce it with a bullet or sentence that ends in a colon, leave the list with a blank line, place the block at column zero, leave another blank line, then resume the list if there is more. A comparison that belongs inside a nested bullet is written as nested bullets, not as an indented table.
+
 ## Scope
 
 Chat replies get both passes. Commit messages, PR bodies, code comments, docs, Slack and Jira bodies get pass 1 only; `essentials:concise-writing` and the project's outbound rules own their layout.
@@ -59,4 +75,4 @@ Chat replies get both passes. Commit messages, PR bodies, code comments, docs, S
 - TL;DR before details.
 - Zero em dashes, zero chatbot closers.
 - Emoji count is at most the number of top-level bullets plus headings.
-- Every comparison is a table, every literal is fenced.
+- Every comparison is a table, every literal is fenced, and every table or code block sits at column zero with a blank line on each side.

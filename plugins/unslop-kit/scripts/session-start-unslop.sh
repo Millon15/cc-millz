@@ -3,7 +3,7 @@
 # session-start-unslop.sh - unslop-kit SessionStart hook
 #
 # Injects the unslop-kit directive into the first system-reminder block so
-# Claude loads `unslop-kit:unslop-millz` before its first reply. Fires on every
+# Claude loads `unslop-kit:unslop-formatting` before its first reply. Fires on every
 # SessionStart source (startup, resume, clear, compact): compaction drops the
 # loaded skill, so the directive has to come back with it.
 #
@@ -25,10 +25,10 @@ cat >/dev/null || true
 
 IFS= read -r -d '' directive <<'EOF' || true
 <EXTREMELY-IMPORTANT>
-unslop-kit is ON for this session. Invoke Skill(skill="unslop-kit:unslop-millz")
+unslop-kit is ON for this session. Invoke Skill(skill="unslop-kit:unslop-formatting")
 NOW, before your first reply, and again after any compaction (a loaded skill
 does not survive it). It is a Russian doll: pass 1 `pstack:unslop` cuts the AI
-tells from the wording, pass 2 `unslop-millz` lays the reply out (English Check
+tells from the wording, pass 2 `unslop-formatting` lays the reply out (English Check
 block first and untouched, TL;DR, nested bullets with one emoji glyph per
 top-level item, tables for comparisons, fenced code with language tags).
 
