@@ -11,7 +11,7 @@ My reply contract as a Russian doll over [poteto's unslop](https://github.com/cu
 | Component | Trigger | Description |
 |-----------|---------|-------------|
 | skill | `unslop-kit:unslop-formatting` | 🪆 Pass 1 `pstack:unslop` (31 patterns + self-audit, abridged fallback when pstack is missing; the "add soul" step scoped to chat and prose), pass 2 `review:writing-style` (exact path:line/PR/commit references, identities for findings, verdict over feeling, first-person corrections, named uncertainty; its User Override Check voided, checklist fallback when the review plugin is missing), then pass 3 the reply skeleton with five explicit unslop overrides — English Check first, TL;DR, body as prose paragraphs with one emoji glyph and a bold verdict lead-in each (NO nested lists), tables for comparisons, fenced code, `[ASSUMPTION]` markers, the CLI rendering rules (tables and code blocks at top level only, verified in the TUI), a send-check |
-| hook | `SessionStart` | 🔔 `scripts/session-start-unslop.sh` injects the directive on startup, resume, clear and compact: all three Skill calls in one batch, each inner call gated on its plugin being in `installed_plugins.json`, a one-time "fallback in force" note when one is not. Strictly OPT-IN: silent unless `UNSLOP_HOOK=1` (interactive sessions only — headless/SDK runs, `CLAUDE_CODE_ENTRYPOINT=sdk-*` like `claude -p` and ralphex/revmux workers, stay silent; the contract formats human-facing text only) or `UNSLOP_HOOK=force` (everywhere, for A/B runs). Installing the plugin alone never changes a session |
+| hook | `SessionStart` | 🔔 `scripts/session-start-unslop.sh` injects the directive on startup, resume, clear and compact: all three Skill calls in one batch, each inner call gated on its plugin being in `installed_plugins.json`, a one-time "fallback in force" note when one is not. Strictly OPT-IN: silent unless `~/.claude/unslop-kit.mode` holds `1` or `UNSLOP_HOOK=1` is exported (interactive sessions only — headless/SDK runs, `CLAUDE_CODE_ENTRYPOINT=sdk-*` like `claude -p` and ralphex/revmux workers, stay silent; the contract formats human-facing text only) or `UNSLOP_HOOK=force` (everywhere, for A/B runs). Installing the plugin alone never changes a session |
 
 ## How the doll nests
 
@@ -28,11 +28,11 @@ My reply contract as a Russian doll over [poteto's unslop](https://github.com/cu
 
 ## Opt in
 
-Installing the plugin does nothing by itself. Turn it on per user in `.claude/settings.local.json` (or `~/.claude/settings.json` for every project on the machine):
+Installing the plugin does nothing by itself. Turn it on per user with the marker file:
 
-    { "env": { "UNSLOP_HOOK": "1" } }
+    echo 1 > ~/.claude/unslop-kit.mode
 
-`1` covers interactive sessions only; headless/SDK runs are always skipped. Remove the entry (or set `0`) to opt out.
+`1` covers interactive sessions only; headless/SDK runs are always skipped. Delete the file (or write `0`) to opt out. A `UNSLOP_HOOK` shell export overrides the marker per run. Do NOT use a settings.json `env` block for this: it never reaches hook processes, and declaring `UNSLOP_HOOK` there even strips a shell export from the hook's env (observed 2026-08-20 on CLI 2.1.235).
 
 ## Test locally
 

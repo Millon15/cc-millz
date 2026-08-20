@@ -16,15 +16,18 @@
 # stdin:  SessionStart payload (JSON), drained and ignored.
 # stdout: { "hookSpecificOutput": { "hookEventName": "SessionStart",
 #                                   "additionalContext": "<directive>" } }
-# env:    OPT-IN. UNSLOP_HOOK unset or 0 = the hook stays silent (the default:
-#         installing the plugin must never pollute a session uninvited).
-#         UNSLOP_HOOK=1 = fire in interactive sessions only — headless/SDK runs
-#         (CLAUDE_CODE_ENTRYPOINT sdk-*, verified 2026-08-20 against `claude -p`)
-#         stay silent, the contract formats human-facing text, not agent
-#         plumbing. UNSLOP_HOOK=force = fire everywhere (the README's A/B test).
-#         Opt in via `.claude/settings.local.json` → {"env":{"UNSLOP_HOOK":"1"}}
-#         or a shell export. CLAUDE_CONFIG_DIR overrides ~/.claude for the
-#         install checks.
+# env:    OPT-IN. Mode = $UNSLOP_HOOK if set, else the first line of
+#         ~/.claude/unslop-kit.mode (CLAUDE_CONFIG_DIR-aware), else 0.
+#         0/absent = silent (the default: installing the plugin must never
+#         pollute a session uninvited). 1 = fire in interactive sessions only —
+#         headless/SDK runs (CLAUDE_CODE_ENTRYPOINT sdk-*, verified 2026-08-20
+#         against `claude -p`) stay silent, the contract formats human-facing
+#         text, not agent plumbing. force = fire everywhere (the README's A/B
+#         test). The marker file is the durable per-user opt-in: a settings.json
+#         {"env":{...}} block does NOT reach hook processes, and declaring
+#         UNSLOP_HOOK there even strips an inherited shell export from the hook
+#         env (observed 2026-08-20 on 2.1.235). CLAUDE_CONFIG_DIR overrides
+#         ~/.claude for the install checks and the marker.
 # exit:   0 always. A hook must never block session start.
 # deps:   jq
 #
@@ -35,7 +38,12 @@ set -euo pipefail
 
 cat >/dev/null || true
 
-case "${UNSLOP_HOOK:-0}" in
+mode="${UNSLOP_HOOK:-}"
+mode_file="${CLAUDE_CONFIG_DIR:-$HOME/.claude}/unslop-kit.mode"
+if [ -z "$mode" ] && [ -r "$mode_file" ]; then
+	IFS= read -r mode <"$mode_file" || true
+fi
+case "$mode" in
 force) ;;
 1) case "${CLAUDE_CODE_ENTRYPOINT:-}" in sdk*) exit 0 ;; esac ;;
 *) exit 0 ;;
