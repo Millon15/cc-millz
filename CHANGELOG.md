@@ -1,5 +1,14 @@
 # Changelog
 
+## phpstorm v0.1.1 - 2026-08-20
+
+### Added
+
+- `tests/harness-discovery.bats` and `tests/harness-discovery.test.ts` — harness self-tests, not
+  tests of the plugin. They prove the root runner and CI discover both suite kinds under
+  `plugins/<name>/tests/`, and each carries an env-gated case (`HARNESS_SELF_FAIL=1`) so the claim
+  that a red suite fails the run can be demonstrated without shipping a red test.
+
 ## unslop-kit v0.6.2 - 2026-08-20
 
 ### Changed

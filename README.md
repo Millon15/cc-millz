@@ -60,3 +60,38 @@ Add the marketplace, then install the plugins you want:
 - `/plugin` → **Marketplaces** → **Update marketplace** — the reliable path; pulls the latest catalog from the repository immediately.
 - `/plugin` → **Installed** → **Update now** — uses a local cache that can be stale; treat it as a fallback after updating the marketplace.
 - **Enable auto-update**: `/plugin` → Marketplaces → Enable auto-update refreshes the marketplace catalog on each session start.
+
+## 🧭 Conventions
+
+### The `--explain` contract
+
+Every plugin that ships an entry script under `scripts/` resolves its project configuration the same way, and prints that resolution on demand. One shape, so the fifth plugin matches the first four without archaeology.
+
+- **Invocation** — `scripts/<plugin>.sh --explain`. Read-only: it resolves, prints and exits, and touches nothing.
+- **Profile** — a committed `.<plugin>.json` at the consuming project's root. Team-shared repo facts belong in version control, so nothing is prompted per user.
+- **Exit codes** — `0` when the resolution succeeded, `2` when a profile exists but cannot be read or parsed. A malformed profile is never a silent fall-through to auto-detection.
+
+Output is a single JSON object on stdout:
+
+```json
+{
+  "plugin": "merge-kit",
+  "profile_file": ".merge-kit.json",
+  "values":  { "test_cmd": "npm test", "forge": "gh" },
+  "sources": { "test_cmd": "profile",  "forge": "detected:origin-url" }
+}
+```
+
+- `profile_file` is the resolved path, or `null` when no profile was found.
+- Every key in `values` has the same key in `sources`. A value with no source is a bug.
+- A source is one of three words: `profile` when the committed file supplied it, `detected:<signal>` when the tool worked it out and from what, `default` when neither applied and the tool fell back.
+- When a tool can detect nothing and has no honest default, it exits with a usage message naming the markers it looked for. An unmarked directory is a usage error, not a default.
+
+Tests assert both halves through the shared helper, `assert_explain_source <json> <key> <expected-source>`, so a value that is right for the wrong reason still fails.
+
+## 🧪 Tests
+
+- Each plugin's suites live in `plugins/<name>/tests/` — `*.bats` for shell and command surfaces, `*.test.ts` for TypeScript.
+- Shared bats helpers live in `tests/helpers.bash`: temp-directory setup and teardown, stub executables on `PATH`, and `assert_explain_source`.
+- `make test` discovers and runs every suite of both kinds. `make test-bats` and `make test-ts` run one kind.
+- CI runs the same two discovery sets on every push and pull request.

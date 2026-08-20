@@ -1,0 +1,29 @@
+name: tests
+
+on:
+    push:
+        branches: [master]
+    pull_request:
+
+jobs:
+    test:
+        runs-on: ubuntu-latest
+        steps:
+            - uses: actions/checkout@v4
+
+            - name: Install bats-core
+              run: |
+                  sudo apt-get update
+                  sudo apt-get install -y bats jq
+
+            - uses: oven-sh/setup-bun@v2
+              with:
+                  bun-version: latest
+
+            # Both discovery sets run as separate steps so the log says which kind
+            # went red, and either one failing fails the job.
+            - name: bats suites
+              run: make test-bats
+
+            - name: TypeScript suites
+              run: make test-ts
