@@ -6,6 +6,8 @@ Things that make [Claude Code](https://claude.ai/code) even better — my person
 
 This is an unapologetically opinionated set: every plugin here is something I actually use. Even if you don't need my particular toolbox, it may give you ideas for building your own.
 
+Provenance: several of these plugins were generalized out of a private codebase before landing here. Extracted from a private monorepo.
+
 ---
 
 > ## 🌟 [Other people's plugins I actually use →](RECOMMENDED.md)
@@ -42,7 +44,7 @@ Add the marketplace, then install the plugins you want:
     /plugin install codex-delegation@cc-millz
 
 - **Test locally**: run `claude --plugin-dir plugins/codex-delegation`, and use `/reload-plugins` in-session to pick up file changes.
-- **Or pin the plugins in a repo's versioned `.claude/settings.json`** — Claude Code installs everything listed there automatically on the first session in that repository:
+- **Or advertise them in a repo's versioned `.claude/settings.json`.** Pinning a plugin there does NOT install it: on the next session Claude Code reports it as not installed and prints the `claude plugin install` line for you to run. The one automatic install path is a plugin's own `dependencies` field, which installs the plugins it names alongside it:
 
 ```json
 {

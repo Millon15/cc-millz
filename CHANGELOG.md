@@ -1,5 +1,13 @@
 # Changelog
 
+## unslop-kit v0.6.2 - 2026-08-20
+
+### Changed
+
+- `unslop-formatting` names no specific project any more. The three sentences that pointed at one
+  company's outbound skill now say that a project's outbound skill owns the layout of a send and
+  may set its own precedence; layout > writing-style > unslop stays the ranking used here.
+
 ## unslop-kit v0.6.1 - 2026-08-20
 
 ### Fixed
@@ -13,6 +21,78 @@
   marketplace descriptions follow.
 - Converter route tested and rejected: `mermaid-ascii` 1.0.0 (npm) keeps the `A[...]` label syntax
   and repeats each node per edge; `beautiful-mermaid` 1.1.3 ships no CLI.
+
+## unslop-kit v0.6.0 - 2026-08-20
+
+### Changed
+
+- Pass 3 body becomes figure-paragraphs: one emoji bold claim line, at most two prose sentences,
+  at most one small numeric table, at least one italic caption above an ASCII (map/sequence/bar)
+  or mermaid (state/flow/sequence) visual, a 2-7 line blockquote receipt ledger, `---` between
+  paragraphs, nested lists banned outright. The CLI-rendering table gains a mermaid row and `---`
+  is rehabilitated as the paragraph separator (the mermaid claim is reverted in 0.6.1). Hook
+  directive, plugin description and README follow the same grammar.
+
+## unslop-kit v0.5.2 - 2026-08-20
+
+### Changed
+
+- Tables must stay small and numeric: cells hold numbers, counts, identifiers, a few words at
+  most. A wide table with sentence-length cells is worse than the prose it replaced, so shrink it
+  or fall back to labeled paragraphs. Send-check updated to match.
+
+## unslop-kit v0.5.1 - 2026-08-20
+
+### Fixed
+
+- Opt-in moves to a marker file, `~/.claude/unslop-kit.mode` (first line `0`/`1`/`force`); a
+  shell export still wins per run. A `settings.json` `{"env":{...}}` block does not reach hook
+  processes, and declaring `UNSLOP_HOOK` there even strips an inherited shell export from the hook
+  env (observed 2026-08-20 on CLI 2.1.235), so the 0.5.0 opt-in path silently disabled the hook
+  everywhere.
+
+## unslop-kit v0.5.0 - 2026-08-20
+
+### Changed
+
+- Strictly opt-in: the hook defaults to OFF everywhere, so a project that advertises the plugin in
+  its tracked `.claude/settings.json` never pollutes a teammate's session. `UNSLOP_HOOK=1`
+  (settings.local.json env block or shell export) opts a user in, interactive sessions only;
+  headless/SDK runs stay silent even then. `UNSLOP_HOOK=force` fires everywhere, which is what the
+  README A/B test now uses.
+
+## unslop-kit v0.4.1 - 2026-08-20
+
+### Fixed
+
+- The SessionStart hook exits silently when `CLAUDE_CODE_ENTRYPOINT` is `sdk-*` (`claude -p`, SDK
+  runs, ralphex/revmux workers; verified against `claude -p` on 2026-08-20: interactive is `cli`,
+  headless is `sdk-cli`). The contract formats human-facing text. `UNSLOP_HOOK=1` forces the hook
+  on, headless included, which keeps the README A/B test alive; `UNSLOP_HOOK=0` still forces it
+  off.
+
+## unslop-kit v0.4.0 - 2026-08-20
+
+### Changed
+
+- `review:writing-style` becomes a mandatory inner doll, pass 2 (exact path:line/PR refs,
+  identities for findings, verdict over feeling, first-person corrections, named uncertainty),
+  gated like pstack with its own install check and fallback; its User Override Check is voided by
+  the wrapper. Layout is pass 3 and drops nested lists entirely: the body is prose paragraphs, one
+  emoji glyph plus bold verdict lead-in each. Precedence layout > writing-style > unslop. The hook
+  names three Skill calls and checks both inner installs.
+
+## unslop-kit v0.3.1 - 2026-08-19
+
+### Changed
+
+- The five unslop overrides (emoji per bullet, bold lead-ins, ...) sit under pass 2 and apply to
+  chat replies only; pass-1-only surfaces keep unslop as written.
+- pstack's "Adding soul" step is scoped to chat replies and prose; sends, commits, PR bodies and
+  comments run the 31 patterns plus the self-audit only.
+- Scope names the project's outbound skill as the orchestrator for Slack/Jira/Linear bodies (it
+  loads pstack:unslop, review:writing-style and essentials:concise-writing itself, writing-style
+  above unslop on conflict).
 
 ## unslop-kit v0.3.0 - 2026-08-19
 

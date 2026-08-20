@@ -14,7 +14,7 @@ description: >
 
 # unslop-formatting
 
-Three passes, fixed order. Wording first, precision second, layout last: layout adds the emoji glyphs and bold lead-ins that unslop would strip if it ran last. On conflict: layout > writing-style > unslop, the same ranking the project's `outbound-comms` uses.
+Three passes, fixed order. Wording first, precision second, layout last: layout adds the emoji glyphs and bold lead-ins that unslop would strip if it ran last. On conflict: layout > writing-style > unslop; a project's outbound skill owns the layout of a send and may set its own precedence.
 
 ## Pass 1: wording, `pstack:unslop`
 
@@ -102,7 +102,7 @@ L0 third party   ralphex · revmux · revdiff
 
 ### Overrides, applied with pass 3
 
-Pass 3 wins over these unslop rules, on chat replies only. Everything else in unslop stands as written, and a layout-free surface keeps all of unslop (a project's outbound skill, such as the project's `outbound-comms`, owns the layout of a send and may set its own precedence).
+Pass 3 wins over these unslop rules, on chat replies only. Everything else in unslop stands as written, and a layout-free surface keeps all of unslop (a project's outbound skill owns the layout of a send and may set its own precedence).
 
 | unslop rule | Here |
 | --- | --- |
@@ -130,7 +130,7 @@ Every table, fence and visual sits at column zero with a blank line on each side
 
 ## Scope
 
-Chat replies get all three passes. Commit messages, PR bodies, code comments, docs, Slack, Jira and Linear bodies get passes 1 and 2 only, without the pass-3 overrides; `essentials:concise-writing` and the project's outbound skill own their layout. the project's `outbound-comms` is such an orchestrator: it calls `pstack:unslop`, `review:writing-style` and `essentials:concise-writing` itself and ranks writing-style above unslop on conflict, the same ranking as here; this skill is not in that chain.
+Chat replies get all three passes. Commit messages, PR bodies, code comments, docs, Slack, Jira and Linear bodies get passes 1 and 2 only, without the pass-3 overrides; `essentials:concise-writing` and the project's outbound skill own their layout. A project's outbound skill is such an orchestrator when it calls `pstack:unslop`, `review:writing-style` and `essentials:concise-writing` itself and ranks writing-style above unslop on conflict, the same ranking as here; this skill is not in that chain.
 
 ## Send-check
 
