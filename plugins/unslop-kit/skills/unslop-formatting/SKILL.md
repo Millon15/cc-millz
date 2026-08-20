@@ -7,7 +7,8 @@ description: >
   pass 3 lays the reply out as figure-paragraphs (English Check first, TL;DR, then
   per paragraph: emoji claim line, two sentences of prose, a captioned
   hand-drawn ASCII visual, a small numeric table when numbers cluster, a
-  blockquote receipt ledger, `---` between paragraphs). Load before every chat reply; the
+  blockquote receipt ledger, `---` between paragraphs, every line hard-wrapped
+  at 120 columns). Load before every chat reply; the
   unslop-kit SessionStart hook loads it for you. Also on "format this", "my
   format", "unslop and format", "make it read like me".
 ---
@@ -62,7 +63,8 @@ Fallback, ONLY when `review:writing-style` is absent from the skill list (review
 6. Fenced code with a language tag for anything runnable or literal: commands, paths in bulk, JSON, config, diffs.
 7. `[ASSUMPTION]` on any claim you did not verify.
 8. NO nested lists, ever. A flat list only for genuinely enumerable short items, and even then a table or a quote ledger usually wins.
-9. A closing recap only when the reply runs past roughly forty lines and the reader has lost the TL;DR.
+9. Hard wrap at 120 columns. No line of the reply runs past 120 characters: prose, claim line, caption, ledger line, table row, fence content, ASCII visual. Break prose at a word boundary and continue on the next line, mid-sentence is fine; a wrapped ledger line continues on its own `>` line; a table row that would pass 120 loses columns or moves into the ledger; a visual that needs more width is redrawn narrower or stacked. The terminal wraps a long line at the window edge, mid-word, wherever the window happens to end; you wrap it first.
+10. A closing recap only when the reply runs past roughly forty lines and the reader has lost the TL;DR.
 
 Concise, no filler: what `essentials:concise-writing` says.
 
@@ -125,6 +127,7 @@ Claude Code's terminal renderer parses markdown at the top level only. Verified 
 | Blockquote | `▎` bar, inline code intact — the receipt ledger | |
 | Horizontal rule `---` | The paragraph separator (a rule, or a literal `---` line on older builds — both divide) | |
 | Links | `text (url)` | |
+| Line width | Hard-wrapped by you at 120 columns; a newline inside a paragraph or a `>` ledger stays a line break | Any line past 120: the terminal breaks it at the window edge, mid-word |
 
 Every table, fence and visual sits at column zero with a blank line on each side; the figure-paragraph body makes that automatic.
 
@@ -141,6 +144,7 @@ Chat replies get all three passes. Commit messages, PR bodies, code comments, do
 - Zero em dashes, zero chatbot closers.
 - Every body paragraph is a figure-paragraph: emoji claim line, ≤2 sentences of prose, ≤1 small numeric table, ≥1 caption-above-visual pair, a 2-7 line `▎` ledger, `---` after it.
 - No nested lists anywhere; emoji count ≤ claim lines + headings.
+- No line longer than 120 characters anywhere in the reply; a wrapped ledger line continues on its own `>` line.
 - Every claim about code, a run or a PR carries a `path:line`, `#n` or link, or wears `[ASSUMPTION]`.
 - Every table is small and numeric; every visual, table and fence sits at column zero with blank lines around it.
 - Every visual is hand-drawn ASCII in a plain fence, shape from "Drawing the visual"; the reply holds zero ```mermaid fences.

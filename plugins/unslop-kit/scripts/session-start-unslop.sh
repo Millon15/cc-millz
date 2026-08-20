@@ -111,7 +111,8 @@ prose sentences, at most one small numeric table, at least one italic caption
 ABOVE a hand-drawn ASCII visual (branch rail, state rail, sequence rail, box
 map, bar or edge list; never mermaid source, the TUI shows it as text), a 2-7
 line blockquote receipt ledger, and a --- separator; NO nested lists,
-everything block-level at column zero).
+everything block-level at column zero, EVERY line hard-wrapped at 120 columns,
+prose broken mid-sentence onto the next line when it must be).
 
 Every prose surface you produce takes passes 1 and 2 BEFORE it leaves you: chat
 replies, commit messages, PR titles and descriptions, code comments and
