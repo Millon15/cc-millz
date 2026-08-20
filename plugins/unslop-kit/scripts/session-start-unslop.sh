@@ -16,7 +16,11 @@
 # stdin:  SessionStart payload (JSON), drained and ignored.
 # stdout: { "hookSpecificOutput": { "hookEventName": "SessionStart",
 #                                   "additionalContext": "<directive>" } }
-# env:    UNSLOP_HOOK=0 opts one session out (A/B runs, headless jobs).
+# env:    UNSLOP_HOOK=0 forces the hook off; UNSLOP_HOOK=1 forces it on,
+#         headless included (the README's A/B test relies on that). Unset:
+#         interactive sessions only — headless/SDK runs (CLAUDE_CODE_ENTRYPOINT
+#         sdk-cli etc., verified 2026-08-20 against `claude -p`) are skipped,
+#         because the contract formats human-facing text, not agent plumbing.
 #         CLAUDE_CONFIG_DIR overrides ~/.claude for the install checks.
 # exit:   0 always. A hook must never block session start.
 # deps:   jq
@@ -28,7 +32,10 @@ set -euo pipefail
 
 cat >/dev/null || true
 
-[ "${UNSLOP_HOOK:-1}" != "0" ] || exit 0
+[ "${UNSLOP_HOOK:-}" != "0" ] || exit 0
+case "${CLAUDE_CODE_ENTRYPOINT:-}" in
+sdk*) [ "${UNSLOP_HOOK:-}" = "1" ] || exit 0 ;;
+esac
 
 installed_json="${CLAUDE_CONFIG_DIR:-$HOME/.claude}/plugins/installed_plugins.json"
 
