@@ -34,9 +34,10 @@ Millon15 personal Claude Code plugin marketplace — skills, agents, (future) ho
 
 ### Tests
 
-- Per-plugin suites in `plugins/<name>/tests/` — `*.bats` for shell and command surfaces, `*.test.ts` run under `bun test`.
-- Shared bats helpers in `tests/helpers.bash`; harness self-tests in `tests/*.bats`.
-- `make test` runs both discovery sets; CI runs the same two on push and pull request.
+- The test surface is FLAT, at the repo root, NEVER `plugins/<name>/tests/` — a plugin install copies that plugin's directory, so tests and fixtures parked there ship to every user of the plugin.
+- `tests/test-<plugin>-<suite>.bats` · `tests/test-<plugin>-<suite>.test.ts` · `tests/fixtures/<plugin>/` · `tests/helpers/`.
+- Shared bats helpers in `tests/helpers/common.bash`.
+- `make test` runs both discovery sets (`tests/test-*.bats` and `tests/*.test.ts`); CI runs the same two on push and pull request.
 - A markdown command has no CLI boundary, so its contract is asserted by grepping the shipped body.
 
 ## Structure

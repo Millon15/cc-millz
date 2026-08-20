@@ -1,10 +1,20 @@
-# tests/helpers.bash — shared bats helpers for every plugin suite.
+# tests/helpers/common.bash — shared bats helpers for every suite.
+#
+# The whole test surface lives at the repo root, never under plugins/<name>/:
+# a plugin install copies that plugin's directory out of the marketplace clone,
+# so tests and fixtures parked there would be downloaded by every user of the
+# plugin. At the root they stay in the repo and out of the install.
+#
+#     tests/test-<plugin>-<suite>.bats     suites
+#     tests/test-<plugin>-<suite>.test.ts  TypeScript suites
+#     tests/fixtures/<plugin>/             fixtures
+#     tests/helpers/                       this file and its siblings
 #
 # Source it from a suite's setup():
 #
 #     setup() {
-#         REPO_ROOT="$(cd "${BATS_TEST_DIRNAME}/../../.." && pwd)"
-#         source "${REPO_ROOT}/tests/helpers.bash"
+#         REPO_ROOT="$(cd "${BATS_TEST_DIRNAME}/.." && pwd)"
+#         source "${REPO_ROOT}/tests/helpers/common.bash"
 #         setup_tmp
 #     }
 #     teardown() { teardown_tmp; }

@@ -91,7 +91,13 @@ Tests assert both halves through the shared helper, `assert_explain_source <json
 
 ## 🧪 Tests
 
-- Each plugin's suites live in `plugins/<name>/tests/` — `*.bats` for shell and command surfaces, `*.test.ts` for TypeScript.
-- Shared bats helpers live in `tests/helpers.bash`: temp-directory setup and teardown, stub executables on `PATH`, and `assert_explain_source`.
+The whole test surface is flat, at the repo root. A plugin install copies that plugin's directory out of the marketplace clone, so tests and fixtures parked under `plugins/<name>/` would be downloaded by every user of the plugin. At the root they stay in the repo and out of the install.
+
+    tests/test-<plugin>-<suite>.bats     shell and command surfaces
+    tests/test-<plugin>-<suite>.test.ts  TypeScript, run under bun test
+    tests/fixtures/<plugin>/             fixtures, one directory per plugin
+    tests/helpers/                       shared bats helpers
+
+- `tests/helpers/common.bash` carries temp-directory setup and teardown, stub executables on `PATH`, git fixtures, and `assert_explain_source`.
 - `make test` discovers and runs every suite of both kinds. `make test-bats` and `make test-ts` run one kind.
 - CI runs the same two discovery sets on every push and pull request.

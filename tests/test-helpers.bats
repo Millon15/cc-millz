@@ -1,6 +1,6 @@
 #!/usr/bin/env bats
 #
-# tests/helpers.bats — tests for the shared helper every plugin suite uses.
+# tests/test-helpers.bats — tests for the shared helper every suite uses.
 #
 # assert_explain_source is the single line each plugin's --explain coverage
 # leans on, so its own failure modes are asserted here rather than assumed.
@@ -8,7 +8,7 @@
 setup() {
     REPO_ROOT="$(cd "${BATS_TEST_DIRNAME}/.." && pwd)"
     # shellcheck source=/dev/null
-    source "${REPO_ROOT}/tests/helpers.bash"
+    source "${REPO_ROOT}/tests/helpers/common.bash"
     setup_tmp
     GOOD='{"plugin":"merge-kit","profile_file":".merge-kit.json","values":{"test_cmd":"npm test","forge":"gh"},"sources":{"test_cmd":"profile","forge":"detected:origin-url"}}'
 }
