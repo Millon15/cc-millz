@@ -28,6 +28,7 @@ Provenance: several of these plugins were generalized out of a private codebase 
 | [🐘 phpstorm](plugins/phpstorm/README.md) | PhpStorm MCP as an agent surface — code navigation, inspections, live Xdebug loop |
 | [🔁 ralphex-revmux](plugins/ralphex-revmux/README.md) | revmux as ralphex's external reviewer — preflight, one-round-per-iteration glue, two-stage runner, post-run reporter + optimizer |
 | [🧰 revmux-kit](plugins/revmux-kit/README.md) | revmux project layer — xhigh-safe config, profile.md template, `sol-*` / `fable-*` rosters |
+| [🛡 security-audit](plugins/security-audit/README.md) | Pre-adoption audit of a repo, package, MCP server or raw script — nine adaptive phases, verdict banner, every tool optional |
 | [📟 statusline](plugins/statusline/README.md) | Two-line status line — git scopes, context window, loaded skills and MCP, quota and spend |
 | [🪆 unslop-kit](plugins/unslop-kit/README.md) | My reply contract as a Russian doll over pstack's unslop — wording pass, then layout pass, loaded by a SessionStart hook |
 | [🥔 pstack](https://github.com/cursor/plugins/tree/main/pstack) (mirror) | poteto's pstack, mirrored via `git-subdir` from `cursor/plugins` because upstream ships no Claude Code marketplace — 44 skills + 2 agents, Cursor-authored (model panels and `~/.cursor/rules` do not apply); required by unslop-kit |

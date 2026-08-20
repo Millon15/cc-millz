@@ -1,5 +1,24 @@
 # Changelog
 
+## security-audit v0.1.0 - 2026-08-21
+
+### Added
+
+- New plugin. `/security-audit:audit <target>` runs a pre-adoption audit of a repository, package,
+  MCP server or raw script: 21 target types, nine phases applied per type, a terminal verdict under
+  40 lines, a full report file with `file:line` evidence, and a final install/no-install banner.
+  Extracted from a private monorepo.
+- Every external tool is optional and every fallback is named in the body. Semgrep runs when
+  `command -v semgrep` succeeds, otherwise an `rg` pattern pass covers the same sink list; an IDE
+  search surface is used when the editor's MCP tools are in the session, ripgrep otherwise. A
+  missing tool downgrades the evidence and is recorded in the report header — it never skips a phase.
+- The report directory is configurable through `SECURITY_AUDIT_REPORT_DIR` and defaults to
+  `${TMPDIR:-/tmp}/security-audits`, so nothing is written into an audited repo by default.
+- `tests/test-security-audit-command.bats` asserts the shipped body statically — both fallbacks
+  named, the cross-language sink vocabulary intact (PHP's `curl_exec` and Guzzle beside `axios`,
+  `pickle`, `InsecureSkipVerify` and `reqwest`), the report directory configurable, and the command
+  basename unique across every plugin.
+
 ## unslop-kit v0.6.2 - 2026-08-20
 
 ### Changed

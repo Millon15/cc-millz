@@ -35,6 +35,11 @@
       "description": "revmux project layer for any repo — config with xhigh-safe timeouts, a profile.md template, and gpt-5.6-sol xhigh / claude fable rosters (sol-panel, sol-final, fable-panel, fable-final). Requires the revmux CLI."
     },
     {
+      "name": "security-audit",
+      "source": "./plugins/security-audit",
+      "description": "Pre-adoption security audit of a repository, package, MCP server or raw script — nine adaptive phases across 21 target types, a terminal verdict plus a full report file with file:line evidence, and a final install/no-install banner. Every external tool is optional: Semgrep when it is on PATH, an IDE search surface when one is up, ripgrep otherwise. Extracted from a private monorepo."
+    },
+    {
       "name": "statusline",
       "source": "./plugins/statusline",
       "description": "Two-line status line — git scopes for the current repo and nested monorepo repos (branch, dirt, conflicts, ahead/behind, in-progress rebase/merge), context window, skills and MCP schemas actually loaded this session, plus real quota and spend from the Anthropic usage API. Self-installs into settings.json."

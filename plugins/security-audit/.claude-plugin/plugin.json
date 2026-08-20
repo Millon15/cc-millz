@@ -1,0 +1,9 @@
+{
+  "name": "security-audit",
+  "description": "Pre-adoption security audit of an open-source repository, MCP server, package or standalone script — nine adaptive phases (recon, exfiltration, secrets, code execution, MCP/AI risks, supply chain, controls, hidden behaviour), dual output as a terminal verdict plus a full report file. Every external tool is optional: Semgrep when it is on PATH, an IDE search surface when one is up, ripgrep otherwise.",
+  "version": "0.1.0",
+  "author": {
+    "name": "Millon15"
+  },
+  "dependencies": []
+}
