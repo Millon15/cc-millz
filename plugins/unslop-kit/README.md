@@ -11,7 +11,7 @@ My reply contract as a Russian doll over [poteto's unslop](https://github.com/cu
 | Component | Trigger | Description |
 |-----------|---------|-------------|
 | skill | `unslop-kit:unslop-formatting` | 🪆 Pass 1 `pstack:unslop` (31 patterns + self-audit, abridged fallback when pstack is missing; the "add soul" step scoped to chat and prose), pass 2 `review:writing-style` (exact path:line/PR/commit references, identities for findings, verdict over feeling, first-person corrections, named uncertainty; its User Override Check voided, checklist fallback when the review plugin is missing), then pass 3 the reply skeleton with five explicit unslop overrides — English Check first, TL;DR, body as prose paragraphs with one emoji glyph and a bold verdict lead-in each (NO nested lists), tables for comparisons, fenced code, `[ASSUMPTION]` markers, the CLI rendering rules (tables and code blocks at top level only, verified in the TUI), a send-check |
-| hook | `SessionStart` | 🔔 `scripts/session-start-unslop.sh` injects the directive on startup, resume, clear and compact: all three Skill calls in one batch, each inner call gated on its plugin being in `installed_plugins.json`, a one-time "fallback in force" note when one is not. Interactive sessions only: headless/SDK runs (`CLAUDE_CODE_ENTRYPOINT=sdk-*`, e.g. `claude -p`, ralphex/revmux workers) are skipped, the contract formats human-facing text only. `UNSLOP_HOOK=1` forces the hook on (headless included), `UNSLOP_HOOK=0` forces it off |
+| hook | `SessionStart` | 🔔 `scripts/session-start-unslop.sh` injects the directive on startup, resume, clear and compact: all three Skill calls in one batch, each inner call gated on its plugin being in `installed_plugins.json`, a one-time "fallback in force" note when one is not. Strictly OPT-IN: silent unless `UNSLOP_HOOK=1` (interactive sessions only — headless/SDK runs, `CLAUDE_CODE_ENTRYPOINT=sdk-*` like `claude -p` and ralphex/revmux workers, stay silent; the contract formats human-facing text only) or `UNSLOP_HOOK=force` (everywhere, for A/B runs). Installing the plugin alone never changes a session |
 
 ## How the doll nests
 
@@ -26,11 +26,19 @@ My reply contract as a Russian doll over [poteto's unslop](https://github.com/cu
 - `review@umputun-cc-thingz` for pass 2. Without it the skill runs its precision checklist and says so once.
 - `jq` on PATH for the hook.
 
+## Opt in
+
+Installing the plugin does nothing by itself. Turn it on per user in `.claude/settings.local.json` (or `~/.claude/settings.json` for every project on the machine):
+
+    { "env": { "UNSLOP_HOOK": "1" } }
+
+`1` covers interactive sessions only; headless/SDK runs are always skipped. Remove the entry (or set `0`) to opt out.
+
 ## Test locally
 
-    UNSLOP_HOOK=1 claude --plugin-dir plugins/unslop-kit -p "describe this repo in one paragraph"
+    UNSLOP_HOOK=force claude --plugin-dir plugins/unslop-kit -p "describe this repo in one paragraph"
 
-Compare with `UNSLOP_HOOK=0` on the same prompt.
+Compare with `UNSLOP_HOOK` unset on the same prompt.
 
 ---
 
