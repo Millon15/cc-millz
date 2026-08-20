@@ -1,0 +1,20 @@
+# tests/fixtures/merge-kit/origin-urls.txt
+#
+# The forge is never a committed field: merge-kit reads it from each repo's own
+# `origin` remote, so a repo that moves between forges is picked up on the next
+# run instead of going stale. This list is the truth table for that mapping —
+# one origin URL per line, then the CLI it must resolve to, `-` for none.
+#
+#     <origin-url> <expected-cli>
+#
+# Consumed by tests/test-merge-kit-profile.bats and by setup.sh, which stamps
+# these URLs onto the fixture repos.
+
+git@github.com:acme/node-repo.git gh
+https://github.com/acme/https-clone.git gh
+ssh://git@github.com/acme/ssh-scheme.git gh
+git@bitbucket.org:acme/ssh-clone.git bbkt
+https://bitbucket.org/acme/go-repo.git bbkt
+git@gitlab.com:acme/make-repo.git glab
+https://gitlab.example.invalid/acme/self-hosted.git glab
+ssh://git@codeberg.invalid/acme/unknown-host.git -

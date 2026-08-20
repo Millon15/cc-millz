@@ -1,0 +1,17 @@
+{
+  "repos": {
+    "node": "node-repo",
+    "go": "go-repo",
+    "make": "make-repo"
+  },
+  "test_commands": {
+    "node": "npm run test:ci",
+    "go": "go test ./... -race"
+  },
+  "work_dir": "tmp/merge-kit-work",
+  "forge": {
+    "node": "IGNORED-forge-key",
+    "go": "IGNORED-forge-key",
+    "make": "IGNORED-forge-key"
+  }
+}

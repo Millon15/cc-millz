@@ -1,0 +1,9 @@
+{
+  "name": "merge-kit",
+  "description": "Merge-conflict resolution and merge forensics for any repository or multi-repo workspace. Two entry scripts: merge-kit.sh resolves a project profile (repo map, forge CLI per repo's own origin remote, test command per build files) and prints it as JSON; merge-forensics.sh answers whether a merge, rebase or squash silently reverted work that landed on the target after the fork point. Neither script assumes a language, a forge or a directory layout.",
+  "version": "0.1.0",
+  "author": {
+    "name": "Millon15"
+  },
+  "dependencies": []
+}
