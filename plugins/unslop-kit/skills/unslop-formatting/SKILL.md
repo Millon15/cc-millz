@@ -4,11 +4,12 @@ description: >
   Millon15's reply contract, a Russian doll over pstack's unslop and umputun's
   writing-style: pass 1 `pstack:unslop` cuts the AI tells from the wording, pass 2
   `review:writing-style` pins every claim to an exact reference and a flat verdict,
-  pass 3 lays the reply out (English Check first, TL;DR, body as prose paragraphs
-  with one emoji glyph and a bold verdict lead-in each, tables for comparisons,
-  fenced code with language tags). Load before every chat reply; the unslop-kit
-  SessionStart hook loads it for you. Also on "format this", "my format",
-  "unslop and format", "make it read like me".
+  pass 3 lays the reply out as figure-paragraphs (English Check first, TL;DR, then
+  per paragraph: emoji claim line, two sentences of prose, a captioned visual —
+  ASCII or mermaid — a small numeric table when numbers cluster, a blockquote
+  receipt ledger, `---` between paragraphs). Load before every chat reply; the
+  unslop-kit SessionStart hook loads it for you. Also on "format this", "my
+  format", "unslop and format", "make it read like me".
 ---
 
 # unslop-formatting
@@ -46,15 +47,22 @@ Its User Override Check does not fire here: this skill IS the user's writing rul
 
 Fallback, ONLY when `review:writing-style` is absent from the skill list (review@umputun-cc-thingz not installed): apply the list above and say so once.
 
-## Pass 3: layout, the reply skeleton
+## Pass 3: layout, the figure-paragraph skeleton
 
 1. English Check block first, verbatim, when an English Coach rule is active. unslop never rewrites it.
 2. TL;DR: one bold lead-in and one to three sentences, conclusion first. Details after, never before.
-3. Body as prose paragraphs, not lists. Each paragraph opens with one emoji glyph and a bold lead-in that ends in a period and states the paragraph's claim or verdict; the evidence follows in full sentences with varied rhythm. NO nested lists, ever. A flat list is allowed only for genuinely enumerable short items (filenames, option names), and a table usually beats it.
-4. Tables: small and numeric. A table whenever two or more things are compared on two or more attributes, but a cell holds a number, a count, an identifier, a few words at most. A wide table with sentence-length cells is harder to read than the prose it replaced: shrink it (fewer columns, shorter cells) or fall back to labeled paragraphs. Numbers compared in prose are still a tell.
-5. Fenced code with a language tag for anything runnable or literal: commands, paths in bulk, JSON, config, diffs.
-6. `[ASSUMPTION]` on any claim you did not verify.
-7. A closing recap only when the reply runs past roughly forty lines and the reader has lost the TL;DR.
+3. Body as figure-paragraphs separated by `---`. Each paragraph, in this order:
+   - Claim line: one emoji glyph, bold, ends in a period. States the paragraph's claim or verdict.
+   - Prose: at most two sentences.
+   - At most one table, small and numeric (rule 5).
+   - At least one caption + visual pair: an italic one-line caption ABOVE the visual (`*Fig n — what it shows (refs)*`), then the visual itself.
+   - A `▎` blockquote ledger of 2 to 7 receipt lines: evidence, mechanisms, refs — one fact per line.
+4. Visuals are the point: as many as the content honestly supports, ideally one per paragraph (a paragraph is roughly five sentences of underlying content). Pick the style that fits: ASCII map (systems, money flows), ASCII sequence rail (actor flows), ASCII bar (magnitudes), mermaid state/flowchart/sequence (lifecycles, decision trees). Mermaid renders as a real diagram in this TUI (user-verified 2026-08-20) and in Artifacts. A large report opens with one annotated map whose ①-④ markers key the paragraphs that follow.
+5. Tables: small and numeric. A table whenever numbers cluster or two or more things are compared on two or more attributes, but a cell holds a number, a count, an identifier, a few words at most, and a paragraph carries at most one. A wide table with sentence-length cells is worse than the prose it replaced: shrink it or move the material into the quote ledger. Numbers compared in prose are still a tell.
+6. Fenced code with a language tag for anything runnable or literal: commands, paths in bulk, JSON, config, diffs.
+7. `[ASSUMPTION]` on any claim you did not verify.
+8. NO nested lists, ever. A flat list only for genuinely enumerable short items, and even then a table or a quote ledger usually wins.
+9. A closing recap only when the reply runs past roughly forty lines and the reader has lost the TL;DR.
 
 Concise, no filler: what `essentials:concise-writing` says.
 
@@ -65,25 +73,26 @@ Pass 3 wins over these unslop rules, on chat replies only. Everything else in un
 | unslop rule | Here |
 | --- | --- |
 | 13 em dashes | Stays. Zero em dashes, no parentheses-as-dashes either. |
-| 15 boldface | A bold lead-in that ends in a period opening a paragraph is the convention. Bold on every noun is still a tell. |
-| 16 inline-header lists | `**Label.** new detail` opening a paragraph is fine. `**Label:** restating the line` is still banned. |
-| 17 title case | Stays. Sentence case headings. |
-| 18 decorative emojis | One emoji glyph per body paragraph or heading is the convention. None inside sentences. |
+| 15 boldface | The bold claim line opening a paragraph is the convention. Bold on every noun is still a tell. |
+| 16 inline-header lists | `**Claim.** new detail` opening a paragraph is fine. `**Label:** restating the line` is still banned. |
+| 17 title case | Stays. Sentence case headings and captions. |
+| 18 decorative emojis | One emoji glyph per claim line or heading is the convention. None inside sentences, none in captions or ledgers. |
 
 ### CLI rendering, the hard rules
 
-Claude Code's terminal renderer parses markdown at the top level only. Verified 2026-08-19 by reproducing each case in the TUI.
+Claude Code's terminal renderer parses markdown at the top level only. Verified 2026-08-19 by reproducing each case in the TUI; mermaid re-verified 2026-08-20.
 
 | Element | Renders | Breaks |
 | --- | --- | --- |
-| Table | Top level, blank line before and after: a box with wrapped cells, six columns and long cells included | Indented under a bullet (2 or 4 spaces) or glued to a bullet line: raw pipes padded to the longest cell |
-| Fenced code | Top level, blank line before and after | Inside a bullet: the fence vanishes and the next bullet is glued to the code |
-| Heading | Top level | Inside a list item: flattened to plain text |
-| Blockquote | `▎` bar, inline code inside it intact | |
-| Horizontal rule `---` | | Printed as the literal `---`. Use a blank line or a heading instead |
+| Table | Top level, blank line before and after | Indented under a bullet or glued to one: raw pipes |
+| Fenced code / ASCII visual | Top level, blank line before and after | Inside a bullet: the fence vanishes |
+| Mermaid fence | A real diagram in this TUI and in Artifacts | older builds show raw source, still line-scannable |
+| Heading | Top level | Inside a list item: flattened |
+| Blockquote | `▎` bar, inline code intact — the receipt ledger | |
+| Horizontal rule `---` | The paragraph separator (a rule, or a literal `---` line on older builds — both divide) | |
 | Links | `text (url)` | |
 
-A paragraph body makes these rules easy: end the paragraph, blank line, table or fenced block at column zero, blank line, next paragraph. If a rare flat list appears, a table or code block is never its child; leave the list first.
+Every table, fence and visual sits at column zero with a blank line on each side; the figure-paragraph body makes that automatic.
 
 ## Scope
 
@@ -96,7 +105,7 @@ Chat replies get all three passes. Commit messages, PR bodies, code comments, do
 - English block first and untouched.
 - TL;DR before details.
 - Zero em dashes, zero chatbot closers.
-- Body carries no nested lists; each body paragraph opens with one emoji glyph and a bold verdict lead-in ending in a period.
-- Emoji count is at most the number of body paragraphs plus headings.
+- Every body paragraph is a figure-paragraph: emoji claim line, ≤2 sentences of prose, ≤1 small numeric table, ≥1 caption-above-visual pair, a 2-7 line `▎` ledger, `---` after it.
+- No nested lists anywhere; emoji count ≤ claim lines + headings.
 - Every claim about code, a run or a PR carries a `path:line`, `#n` or link, or wears `[ASSUMPTION]`.
-- Every comparison is a table with short numeric cells (no sentence-length cells), every literal is fenced, and every table or code block sits at column zero with a blank line on each side.
+- Every table is small and numeric; every visual, table and fence sits at column zero with blank lines around it.

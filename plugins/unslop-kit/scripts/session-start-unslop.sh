@@ -105,10 +105,12 @@ $pass2
 It is a Russian doll: pass 1 \`pstack:unslop\` cuts the AI tells from the wording,
 pass 2 \`review:writing-style\` pins every claim to an exact reference
 (path:line, PR #n, commit, link) and a flat verdict, pass 3 \`unslop-formatting\`
-lays the reply out (English Check block first and untouched, TL;DR, body as
-prose paragraphs with one emoji glyph and a bold verdict lead-in each, NO nested
-lists, tables for comparisons, fenced code with language tags, tables and code
-blocks only at column zero).
+lays the reply out as figure-paragraphs (English Check block first and
+untouched, TL;DR, then per paragraph: one emoji bold claim line, at most two
+prose sentences, at most one small numeric table, at least one italic caption
+ABOVE a visual — ASCII map/sequence/bar or mermaid — a 2-7 line blockquote
+receipt ledger, and a --- separator; NO nested lists, everything block-level at
+column zero).
 
 Every prose surface you produce takes passes 1 and 2 BEFORE it leaves you: chat
 replies, commit messages, PR titles and descriptions, code comments and
