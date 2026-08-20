@@ -51,7 +51,7 @@ Fallback, ONLY when `review:writing-style` is absent from the skill list (review
 1. English Check block first, verbatim, when an English Coach rule is active. unslop never rewrites it.
 2. TL;DR: one bold lead-in and one to three sentences, conclusion first. Details after, never before.
 3. Body as prose paragraphs, not lists. Each paragraph opens with one emoji glyph and a bold lead-in that ends in a period and states the paragraph's claim or verdict; the evidence follows in full sentences with varied rhythm. NO nested lists, ever. A flat list is allowed only for genuinely enumerable short items (filenames, option names), and a table usually beats it.
-4. A table whenever two or more things are compared on two or more attributes. Prose comparisons are a tell.
+4. Tables: small and numeric. A table whenever two or more things are compared on two or more attributes, but a cell holds a number, a count, an identifier, a few words at most. A wide table with sentence-length cells is harder to read than the prose it replaced: shrink it (fewer columns, shorter cells) or fall back to labeled paragraphs. Numbers compared in prose are still a tell.
 5. Fenced code with a language tag for anything runnable or literal: commands, paths in bulk, JSON, config, diffs.
 6. `[ASSUMPTION]` on any claim you did not verify.
 7. A closing recap only when the reply runs past roughly forty lines and the reader has lost the TL;DR.
@@ -99,4 +99,4 @@ Chat replies get all three passes. Commit messages, PR bodies, code comments, do
 - Body carries no nested lists; each body paragraph opens with one emoji glyph and a bold verdict lead-in ending in a period.
 - Emoji count is at most the number of body paragraphs plus headings.
 - Every claim about code, a run or a PR carries a `path:line`, `#n` or link, or wears `[ASSUMPTION]`.
-- Every comparison is a table, every literal is fenced, and every table or code block sits at column zero with a blank line on each side.
+- Every comparison is a table with short numeric cells (no sentence-length cells), every literal is fenced, and every table or code block sits at column zero with a blank line on each side.
