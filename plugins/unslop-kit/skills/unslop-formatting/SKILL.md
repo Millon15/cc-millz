@@ -5,9 +5,9 @@ description: >
   writing-style: pass 1 `pstack:unslop` cuts the AI tells from the wording, pass 2
   `review:writing-style` pins every claim to an exact reference and a flat verdict,
   pass 3 lays the reply out as figure-paragraphs (English Check first, TL;DR, then
-  per paragraph: emoji claim line, two sentences of prose, a captioned visual —
-  ASCII or mermaid — a small numeric table when numbers cluster, a blockquote
-  receipt ledger, `---` between paragraphs). Load before every chat reply; the
+  per paragraph: emoji claim line, two sentences of prose, a captioned
+  hand-drawn ASCII visual, a small numeric table when numbers cluster, a
+  blockquote receipt ledger, `---` between paragraphs). Load before every chat reply; the
   unslop-kit SessionStart hook loads it for you. Also on "format this", "my
   format", "unslop and format", "make it read like me".
 ---
@@ -57,7 +57,7 @@ Fallback, ONLY when `review:writing-style` is absent from the skill list (review
    - At most one table, small and numeric (rule 5).
    - At least one caption + visual pair: an italic one-line caption ABOVE the visual (`*Fig n — what it shows (refs)*`), then the visual itself.
    - A `▎` blockquote ledger of 2 to 7 receipt lines: evidence, mechanisms, refs — one fact per line.
-4. Visuals are the point: as many as the content honestly supports, ideally one per paragraph (a paragraph is roughly five sentences of underlying content). Pick the style that fits: ASCII map (systems, money flows), ASCII sequence rail (actor flows), ASCII bar (magnitudes), mermaid state/flowchart/sequence (lifecycles, decision trees). Mermaid renders as a real diagram in this TUI (user-verified 2026-08-20) and in Artifacts. A large report opens with one annotated map whose ①-④ markers key the paragraphs that follow.
+4. Visuals are the point: as many as the content honestly supports, ideally one per paragraph (a paragraph is roughly five sentences of underlying content). Every visual is ASCII art you draw by hand inside a plain fence, shape picked from "Drawing the visual" below. A mermaid fence reaches the reader as source text: the TUI draws nothing from it (I wrote the opposite here on 2026-08-20; the user read bare mermaid code all day and corrected me). Mermaid source belongs to Artifacts and HTML pages, where a browser draws it. A large report opens with one annotated map whose ①-④ markers key the paragraphs that follow.
 5. Tables: small and numeric. A table whenever numbers cluster or two or more things are compared on two or more attributes, but a cell holds a number, a count, an identifier, a few words at most, and a paragraph carries at most one. A wide table with sentence-length cells is worse than the prose it replaced: shrink it or move the material into the quote ledger. Numbers compared in prose are still a tell.
 6. Fenced code with a language tag for anything runnable or literal: commands, paths in bulk, JSON, config, diffs.
 7. `[ASSUMPTION]` on any claim you did not verify.
@@ -65,6 +65,40 @@ Fallback, ONLY when `review:writing-style` is absent from the skill list (review
 9. A closing recap only when the reply runs past roughly forty lines and the reader has lost the TL;DR.
 
 Concise, no filler: what `essentials:concise-writing` says.
+
+### Drawing the visual
+
+One shape per content kind. The reader scans the picture, so every edge carries its label, the whole figure stays under 100 columns, and no edge crosses another; a graph that would need crossing lines becomes an edge list.
+
+| Content | Shape |
+| --- | --- |
+| Decision tree, resolution order | branch rail: `├─ label ─▶ outcome`, `└─ label`, `▼` into the next level |
+| Lifecycle, state machine | state rail: `[a] ──event──▶ [b] ──event──▶ [c]`, one line per path |
+| Actor flow, request and response | sequence rail: one column per actor, `│` lifelines, `──msg──▶` arrows |
+| Systems, money flows, topology | box map: `┌─┐ │ └─┘` boxes, labelled arrows, ①-④ markers keyed to paragraphs |
+| Magnitudes, shares, timings | bar: `████▌ 12.4s  label`, one row per item, one scale |
+| Dependency graph with fan-in | edge list by layer: `layer  node ──▶ dep · dep`, or a small adjacency table |
+
+A branch rail and an edge list, drawn:
+
+```text
+.plugin.json at repo root
+   ├─ key present ───────────────▶ use it
+   └─ absent
+        ▼
+      detect   Makefile · package.json · go.mod
+        ├─ hit ────────────────────▶ use it
+        └─ miss
+             ▼
+           degrade   skip the phase, one-line reason
+```
+
+```text
+L2 products      plan-kit        ──▶ revmux-kit · html-onepager · ralphex
+                 ralphex-revmux  ──▶ revmux-kit · ralphex
+L1 libraries     revmux-kit      ──▶ revmux
+L0 third party   ralphex · revmux · revdiff
+```
 
 ### Overrides, applied with pass 3
 
@@ -80,13 +114,13 @@ Pass 3 wins over these unslop rules, on chat replies only. Everything else in un
 
 ### CLI rendering, the hard rules
 
-Claude Code's terminal renderer parses markdown at the top level only. Verified 2026-08-19 by reproducing each case in the TUI; mermaid re-verified 2026-08-20.
+Claude Code's terminal renderer parses markdown at the top level only. Verified 2026-08-19 by reproducing each case in the TUI; the mermaid row corrected 2026-08-20, after the user read source text where I had claimed a diagram.
 
 | Element | Renders | Breaks |
 | --- | --- | --- |
 | Table | Top level, blank line before and after | Indented under a bullet or glued to one: raw pipes |
 | Fenced code / ASCII visual | Top level, blank line before and after | Inside a bullet: the fence vanishes |
-| Mermaid fence | A real diagram in this TUI and in Artifacts | older builds show raw source, still line-scannable |
+| Mermaid fence | Artifacts and HTML pages, where a browser draws it | In the TUI: source text, no picture. A chat reply draws ASCII instead |
 | Heading | Top level | Inside a list item: flattened |
 | Blockquote | `▎` bar, inline code intact — the receipt ledger | |
 | Horizontal rule `---` | The paragraph separator (a rule, or a literal `---` line on older builds — both divide) | |
@@ -109,3 +143,4 @@ Chat replies get all three passes. Commit messages, PR bodies, code comments, do
 - No nested lists anywhere; emoji count ≤ claim lines + headings.
 - Every claim about code, a run or a PR carries a `path:line`, `#n` or link, or wears `[ASSUMPTION]`.
 - Every table is small and numeric; every visual, table and fence sits at column zero with blank lines around it.
+- Every visual is hand-drawn ASCII in a plain fence, shape from "Drawing the visual"; the reply holds zero ```mermaid fences.

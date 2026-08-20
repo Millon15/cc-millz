@@ -108,9 +108,10 @@ pass 2 \`review:writing-style\` pins every claim to an exact reference
 lays the reply out as figure-paragraphs (English Check block first and
 untouched, TL;DR, then per paragraph: one emoji bold claim line, at most two
 prose sentences, at most one small numeric table, at least one italic caption
-ABOVE a visual — ASCII map/sequence/bar or mermaid — a 2-7 line blockquote
-receipt ledger, and a --- separator; NO nested lists, everything block-level at
-column zero).
+ABOVE a hand-drawn ASCII visual (branch rail, state rail, sequence rail, box
+map, bar or edge list; never mermaid source, the TUI shows it as text), a 2-7
+line blockquote receipt ledger, and a --- separator; NO nested lists,
+everything block-level at column zero).
 
 Every prose surface you produce takes passes 1 and 2 BEFORE it leaves you: chat
 replies, commit messages, PR titles and descriptions, code comments and

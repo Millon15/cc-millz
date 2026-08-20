@@ -1,5 +1,19 @@
 # Changelog
 
+## unslop-kit v0.6.1 - 2026-08-20
+
+### Fixed
+
+- Rule 4 and the rendering table claimed a mermaid fence renders as a diagram in the Claude Code
+  TUI ("user-verified 2026-08-20"). It does not: the TUI prints the source, and the reader got bare
+  mermaid code under every caption. Chat visuals are now hand-drawn ASCII only. New "Drawing the
+  visual" section maps content to shape (branch rail, state rail, sequence rail, box map, bar,
+  edge list by layer) with two drawn examples; the mermaid row says Artifacts and HTML pages only;
+  the send-check counts mermaid fences, must be 0. Hook directive, README row, plugin and
+  marketplace descriptions follow.
+- Converter route tested and rejected: `mermaid-ascii` 1.0.0 (npm) keeps the `A[...]` label syntax
+  and repeats each node per edge; `beautiful-mermaid` 1.1.3 ships no CLI.
+
 ## unslop-kit v0.3.0 - 2026-08-19
 
 ### Fixed
