@@ -25,6 +25,7 @@ Provenance: several of these plugins were generalized out of a private codebase 
 | [🪧 agterm-lanes](plugins/agterm-lanes/README.md) | Self-labelling agterm panes — name, emoji, tint, glyph and reboot-survivable sessions |
 | [🤖 codex-delegation](plugins/codex-delegation/README.md) | Codex CLI (gpt-5.6/gpt-5.5) as a second-tier workforce under Claude's orchestration |
 | [🧰 essentials](plugins/essentials/README.md) | General-purpose personal skills — code-style, concise-writing, `/e15`, `/tldr`, `/recall` |
+| [🔀 merge-kit](plugins/merge-kit/README.md) | Conflict resolution and merge forensics for any repo — profile-driven, forge read from `origin`, nothing silently reverted. Extracted from a private monorepo. |
 | [🐘 phpstorm](plugins/phpstorm/README.md) | PhpStorm MCP as an agent surface — code navigation, inspections, live Xdebug loop |
 | [🔁 ralphex-revmux](plugins/ralphex-revmux/README.md) | revmux as ralphex's external reviewer — preflight, one-round-per-iteration glue, two-stage runner, post-run reporter + optimizer |
 | [🧰 revmux-kit](plugins/revmux-kit/README.md) | revmux project layer — xhigh-safe config, profile.md template, `sol-*` / `fable-*` rosters |

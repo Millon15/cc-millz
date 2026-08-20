@@ -1,5 +1,35 @@
 # Changelog
 
+## merge-kit v0.1.0 - 2026-08-21
+
+### Added
+
+- New plugin. `/merge-kit:resolve` walks the conflicts of a merge or a rebase — TRIVIAL and OBVIOUS
+  hunks auto-resolved against a stated fact, AMBIGUOUS ones walked one at a time — and
+  `/merge-kit:verify` audits any merge, rebase or squash for work that landed on the target after
+  the fork point and did not survive. Extracted from a private monorepo.
+- `scripts/merge-kit.sh --explain` resolves the repo map (a committed `.merge-kit.json`, else the
+  `origin` remotes of the working directory and one level of subdirectories), the test command
+  (profile override, then a Makefile `test` target, then a package manager script with the runner
+  read off the lockfile, then a language default) and the work directory, each with its own source
+  word. The forge is never a profile field: it is read from each repo's own `origin` URL and always
+  reported as `detected:origin-url`, so a repo that moves between hosts is right on the next run.
+- `scripts/merge-forensics.sh` compares FORK, PRE and POST rather than the merge's own diff, so a
+  change dropped without a conflict is visible. `--in-progress` autodetects a stopped merge from
+  `MERGE_HEAD` and a stopped rebase from its state directory, reading POST from the index and
+  worktree; a one-parent squash without `--fork` or `--source` exits 2 rather than fabricating a
+  fork point. `--repo` is mandatory and every git call goes through it.
+- The commands are profile-driven end to end: the repository comes from `values.repos`, the
+  pull-request fetch branches on `values.forge` (`gh`, `bbkt`, `glab`, or asking when the host has
+  no known CLI), the suite comes from `values.test_command` with its rung reported beside it, and
+  both forensic phases of the resolve flow call `merge-forensics.sh --in-progress` — once before
+  the walk, once before the commit. The worked example and the tier examples name no language.
+- `tests/test-merge-kit-profile.bats` (profile precedence, every detection rung, the honest
+  degrade, the ignored `forge` key, the origin-URL truth table), `tests/test-merge-kit-forensics.bats`
+  (all four modes against generated fixtures) and `tests/test-merge-kit-commands.bats` (the shipped
+  bodies, plus a driven check that the test command per fixture repo and the CLI per origin URL are
+  what those bodies read off the JSON).
+
 ## security-audit v0.1.0 - 2026-08-21
 
 ### Added

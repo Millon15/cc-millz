@@ -20,6 +20,11 @@
       "description": "General-purpose personal skills — code-style (personal code taste) and concise-writing (the compression procedure for comments, commits, PR descriptions and team sends). Install at user scope only."
     },
     {
+      "name": "merge-kit",
+      "source": "./plugins/merge-kit",
+      "description": "Merge-conflict resolution and merge forensics for any repository or multi-repo workspace. /merge-kit:resolve auto-resolves the hunks a stated fact settles and walks the ambiguous ones one at a time; /merge-kit:verify answers whether a merge, rebase or squash silently reverted work that landed on the target after the fork point. The repo map and test command come from a committed .merge-kit.json or are detected from build files; the forge CLI is read from each repo's own origin remote, never from a committed field. Extracted from a private monorepo."
+    },
+    {
       "name": "phpstorm",
       "source": "./plugins/phpstorm",
       "description": "PhpStorm MCP as an agent surface — code navigation and call hierarchy, inspections, plus a live Xdebug loop (breakpoints, frames, expression evaluation, state mutation) against local or Dockerised PHP. Requires PhpStorm 2026.2+ with its MCP server enabled."
