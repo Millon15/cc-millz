@@ -1,0 +1,23 @@
+#!/usr/bin/env bash
+#
+# Stub `docker` for the phpstorm suite. Answers the two calls the doctor makes:
+# the running-container list, and the in-container PHP config probe.
+#
+# Both answers are overridable so a test can drive one check red without a
+# second fixture: STUB_DOCKER_PS is the container list, STUB_DOCKER_EXEC the
+# pipe-delimited probe output (extension|XDEBUG_CONFIG|start_with_request|PHP_IDE_CONFIG).
+
+set -u
+
+case "${1:-}" in
+    ps)
+        printf '%s\n' "${STUB_DOCKER_PS-demo-app-1}"
+        ;;
+    exec)
+        printf '%s' "${STUB_DOCKER_EXEC-1|client_host=host.docker.internal client_port=9003|1|serverName=app.local}"
+        ;;
+    *)
+        printf 'stub docker: unhandled call: %s\n' "$*" >&2
+        exit 1
+        ;;
+esac

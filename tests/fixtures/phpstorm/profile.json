@@ -1,0 +1,13 @@
+{
+  "start_cmd": "make up SERVICE={service}",
+  "services": [
+    {
+      "name": "app",
+      "container": "demo-app-1",
+      "port": 9003,
+      "server_name": "app.local",
+      "host_dir": "app",
+      "remote_root": "/var/www/app"
+    }
+  ]
+}

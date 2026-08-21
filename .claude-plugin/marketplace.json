@@ -27,7 +27,7 @@
     {
       "name": "phpstorm",
       "source": "./plugins/phpstorm",
-      "description": "PhpStorm MCP as an agent surface — code navigation and call hierarchy, inspections, plus a live Xdebug loop (breakpoints, frames, expression evaluation, state mutation) against local or Dockerised PHP. Requires PhpStorm 2026.2+ with its MCP server enabled."
+      "description": "PhpStorm MCP as an agent surface — code navigation and call hierarchy, inspections, plus a live Xdebug loop (breakpoints, frames, expression evaluation, state mutation) against local or Dockerised PHP. /phpstorm:setup-xdebug drives scripts/xdebug-doctor.sh, which tells three identical-looking debug misconfigurations apart and reads the project's services, ports and path mappings from a committed .xdebug-doctor.json. Requires PhpStorm 2026.2+ with its MCP server enabled. Extracted from a private monorepo."
     },
     {
       "name": "ralphex-revmux",

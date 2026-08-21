@@ -1,0 +1,10 @@
+{
+  "services": [
+    {
+      "name": "app",
+      "container": "absent-1",
+      "port": 9003,
+      "server_name": "app.local"
+    }
+  ]
+}

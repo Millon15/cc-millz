@@ -1,0 +1,13 @@
+#!/usr/bin/env bash
+#
+# Stub `pgrep` for the phpstorm suite — the IDE-process probe. STUB_IDE_RUNNING=0
+# makes the IDE look closed.
+
+set -u
+
+if [ "${STUB_IDE_RUNNING:-1}" = "1" ]; then
+    printf '4242\n'
+    exit 0
+fi
+
+exit 1

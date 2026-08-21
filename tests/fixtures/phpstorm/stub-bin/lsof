@@ -1,0 +1,14 @@
+#!/usr/bin/env bash
+#
+# Stub `lsof` for the phpstorm suite — the listening-port probe. One LISTEN row
+# in the real column layout, since the doctor parses it with awk and sed.
+# STUB_IDE_PORT moves the port; an empty value prints nothing at all.
+
+set -u
+
+port="${STUB_IDE_PORT-9003}"
+if [ -z "${port}" ]; then
+    exit 0
+fi
+
+printf 'phpstorm 4242 dev 100u IPv4 0x0000000000000000 0t0 TCP 127.0.0.1:%s (LISTEN)\n' "${port}"

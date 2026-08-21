@@ -1,5 +1,32 @@
 # Changelog
 
+## phpstorm v0.2.0 - 2026-08-21
+
+### Added
+
+- `/phpstorm:setup-xdebug [service]` — get the debugger loop working end-to-end: diagnose every
+  check, walk the fixes that need a human in the IDE, re-verify until green, then prove it with one
+  real pause rather than a passing config. Extracted from a private monorepo.
+- `scripts/xdebug-doctor.sh` owns the checks — IDE process and listening port, both force-break
+  flags, and per service the container, the loaded extension, `client_host`, `client_port`,
+  `PHP_IDE_CONFIG`, the server entry and the path mapping. Three unrelated misconfigurations produce
+  the identical *"Debug session was finished without being paused"*; it prints which one is live,
+  with the exact fix per failure, and its `docker exec` probes run with `XDEBUG_MODE=off` so it never
+  hangs on the fault it is diagnosing.
+- The service rows are read from a committed `.xdebug-doctor.json` at the consuming project's root:
+  container, port, server name and path mapping per service, with nothing hard-coded. There is
+  nothing honest to detect here, so an absent profile exits 2 naming the marker instead of printing
+  a green verdict over zero checks. A service argument that matches no row is rejected the same way.
+- `--explain` follows the repo-wide contract: `services` always `profile`, `start_cmd` and
+  `workspace_file` `profile` or `default`. The command reads `start_cmd` from that same output
+  rather than carrying a start command of its own, so the two can never disagree about how the
+  project starts; `{service}` in it is substituted per service.
+- `tests/test-phpstorm-xdebug-doctor.bats` drives the CLI over `tests/fixtures/phpstorm/` — a
+  declared-`start_cmd` project, a defaults-only one, and a directory with no profile — with stub
+  container and port executables on `PATH`, and greps the shipped command body for the two things a
+  run cannot show: that every script reference carries `${CLAUDE_PLUGIN_ROOT}`, and that no start
+  command is hard-coded anywhere in it.
+
 ## toolsmith v0.1.0 - 2026-08-21
 
 ### Added

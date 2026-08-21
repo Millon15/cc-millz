@@ -1,8 +1,9 @@
 {
   "name": "phpstorm",
-  "description": "Drive PhpStorm's MCP server as a first-class agent surface — code navigation, call hierarchy, inspections, and a live Xdebug debugger loop (breakpoints, frames, expression evaluation, state mutation) against local or Dockerised PHP.",
-  "version": "0.1.0",
+  "description": "Drive PhpStorm's MCP server as a first-class agent surface — code navigation, call hierarchy, inspections, and a live Xdebug debugger loop (breakpoints, frames, expression evaluation, state mutation) against local or Dockerised PHP. /phpstorm:setup-xdebug and scripts/xdebug-doctor.sh diagnose the wiring behind that loop, reading the project's services from a committed .xdebug-doctor.json.",
+  "version": "0.2.0",
   "author": {
     "name": "Millon15"
-  }
+  },
+  "dependencies": []
 }
