@@ -1,5 +1,45 @@
 # Changelog
 
+## toolsmith v0.1.0 - 2026-08-21
+
+### Added
+
+- New plugin. Four commands for the lifecycle of an agent dev tool: `/toolsmith:create` authors a
+  skill, command, subagent, rule, script or hook; `/toolsmith:check` reviews one read-only;
+  `/toolsmith:retire` removes it from the single place that owns it; `/toolsmith:man` prints
+  tldr-style help for anything installed, or answers a project question.
+  Extracted from a private monorepo.
+- `scripts/toolsmith.sh --explain` is the layout adapter every command and script calls first. Three
+  layouts, each chosen by a POSITIVE marker — a rulesync config file, a plugin manifest, or any
+  agent-config marker — and no fallback: an unmarked directory exits 2 naming every marker it looked
+  for. Layout, root, the four layer directories, `generated_dirs`, `vendor_registry` and
+  `staged_registry` are always detected, so a `layout` or path key placed in `.toolsmith.json` is
+  deliberately ignored; the profile carries only `sync_cmd`, `docs_cmd`, `knowledge_skill` and
+  `task_runner`, each reported as `profile`, `detected:<signal>` or `default`.
+- `scripts/find-skill.sh` ranks five tiers — this project, the user's own skills, installed plugins,
+  marketplace clones and the public ecosystem — and its `--exact` mode compares invocations rather
+  than strings, so an owned `/name` or `<plugin>:<name>` reads as taken. The remote tier runs before
+  the exact verdict, and an unreachable one is a note, never a silent "free".
+- `scripts/validate-dev-tool.sh` lints a layer without ever blocking (always exit 0, findings in
+  `additionalContext`), with `--audit` and `--retire` modes behind the other two commands.
+  `scripts/vendor-skill.sh` copies a public skill into the layout's own skills directory, records
+  provenance in the layout's own record file, and refuses a name an enabled plugin stages.
+- Both moved skills, `toolsmith:skill-discovery` and `toolsmith:dev-tool-authoring`, were rewritten
+  against the adapter: a three-row layout table replaces the origin project's directories, the sync
+  step is read from `values.sync_cmd` and reported as "none" when the project declares none, and the
+  authoring scaffolds are split into one `.tmpl` set per layout.
+- Companion skills are soft. The Phase 3 design dialogue uses a grilling skill when the session has
+  one and asks the same five questions inline when it does not; the Phase 4 authoring standard uses a
+  companion authoring skill when present and applies an eight-line checklist otherwise. The plugin's
+  `dependencies` field is empty on purpose.
+- Eight suites cover it: `tests/test-toolsmith-layout.bats`, `-exact`, `-skills`, plus
+  `-create` (the shipped body, the soft-dependency fallbacks item by item, and each fixture layout
+  driven to the template set it selects), `-find-skill` (the tiers, the offline default, and the
+  ranking asserted against a committed truth table), `-man`, `-validate` (including the inversion
+  where one path is a generated mirror in one layout and the authoring source in another),
+  `-vendor` (offline, against a local fixture repo) and the `bun test` unit suite
+  `tests/test-toolsmith-find-skill.test.ts`.
+
 ## merge-kit v0.1.0 - 2026-08-21
 
 ### Added

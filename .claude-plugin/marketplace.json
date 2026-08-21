@@ -50,6 +50,11 @@
       "description": "Two-line status line — git scopes for the current repo and nested monorepo repos (branch, dirt, conflicts, ahead/behind, in-progress rebase/merge), context window, skills and MCP schemas actually loaded this session, plus real quota and spend from the Anthropic usage API. Self-installs into settings.json."
     },
     {
+      "name": "toolsmith",
+      "source": "./plugins/toolsmith",
+      "description": "The lifecycle of an agent dev tool. /toolsmith:create authors a skill, command, subagent, rule, script or hook; /toolsmith:check reviews one read-only; /toolsmith:retire removes it from the single place that owns it; /toolsmith:man prints tldr help for anything installed. No command names a directory: scripts/toolsmith.sh --explain detects the project's agent-config layout from a positive marker (a rulesync config, a plugin manifest, or AGENTS.md and its siblings) and every phase reads its paths off that JSON. The reuse search runs over five tiers before anything is authored, and both companion skills are soft — each phase carries its own inline fallback. Extracted from a private monorepo."
+    },
+    {
       "name": "pstack",
       "source": {
         "source": "git-subdir",
