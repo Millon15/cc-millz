@@ -47,11 +47,13 @@
 
 SVR_FIXTURES="$(cd "$(dirname "${BASH_SOURCE[0]}")/../fixtures/short-video-reader" && pwd)"
 
-# The profile file the reader walks up looking for, and the magic marker that
-# proves a run directory belongs to it. Named once, here, so a suite asserting
-# either never spells it out a second time.
+# The profile file the reader walks up looking for, and the ownership marker —
+# its name and the magic string inside it — that proves a run directory belongs
+# to the reader. Named once, here, so a suite asserting any of them never spells
+# it out a second time.
 SVR_PROFILE_NAME=".short-video-reader.json"
 SVR_RUN_MARKER=".short-video-reader-run"
+SVR_RUN_MAGIC="short-video-reader/run/v1"
 
 # The POSIX utilities the reader legitimately shells out to. `bash` is on the
 # list because the stubs carry a `#!/usr/bin/env bash` shebang and env resolves

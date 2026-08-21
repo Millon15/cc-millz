@@ -9,7 +9,7 @@
 #   short-video-read.sh --probe                  # capability report, no work
 #   short-video-read.sh --explain                # resolved config as JSON, no work
 #   short-video-read.sh --zoom <run-dir> <sec> [crop]  # one close-up frame
-#   short-video-read.sh --remove-tmp <workdir>        # delete one run dir
+#   short-video-read.sh --remove-tmp <run-dir>        # delete ONE marked run dir
 #
 # Flags: --slug NAME · --max-duration SEC (600) · --max-size MB (250)
 #        --max-height PX (720) · --interval SEC (auto 2-5) · --scene N (0.30)
@@ -22,6 +22,15 @@ set -uo pipefail
 
 PLUGIN="short-video-reader"
 PROFILE_NAME=".short-video-reader.json"
+
+# The ownership token. RUN_MARKER is written into a run directory at the moment
+# this script creates it — before any acquisition, so a run killed halfway is
+# still recognisably ours — and RUN_MAGIC is what makes the name mean something.
+# Nothing else is ownership: report.json is a name several test reporters write,
+# and "sits under the resolved base" is a claim the CALLER supplies, since the
+# base is whatever SHORT_VIDEO_DIR or a profile said it was.
+RUN_MARKER=".short-video-reader-run"
+RUN_MAGIC="short-video-reader/run/v1"
 
 # Set by resolve_config(), which is the ONLY definition of any of them.
 BASE_DIR=""
@@ -99,12 +108,17 @@ find_profile() {
 # point: a profile's workdir anchors to the profile's own directory, so one
 # profile answers with one path from every cwd, while an environment override
 # anchors to $PWD, because it is set per invocation and has no file to anchor to.
+# The trailing slash is trimmed for one spelling of one path, and `/` is the
+# path where that trim eats the whole value: left alone it would hand the sanity
+# check an empty string, which reads as a broken resolver rather than as the
+# filesystem root somebody actually asked for.
 abs_against() {
-	local anchor="$1" value="$2"
+	local anchor="$1" value="$2" out
 	case "$value" in
-	/*) printf '%s\n' "${value%/}" ;;
-	*) printf '%s\n' "${anchor%/}/${value%/}" ;;
+	/*) out="${value%/}" ;;
+	*) out="${anchor%/}/${value%/}" ;;
 	esac
+	printf '%s\n' "${out:-/}"
 }
 
 # profile_value <key> — a non-empty value from the discovered profile, or a
@@ -149,7 +163,40 @@ resolve_config() {
 		BASE_SOURCE="default"
 	fi
 
+	check_base_sanity
 	resolve_caps
+}
+
+# check_base_sanity — the base is a directory this tool creates run directories
+# in and, through --remove-tmp, deletes them from. Three shapes are never that,
+# whichever rung produced them, and each is refused BEFORE any of them is read
+# or written: a filesystem root, the home directory itself, and a directory that
+# carries a .git entry — that last one being somebody's checkout, where a stray
+# slug would drop a run tree beside the source and a delete would take it away.
+#
+# The refusal names the RUNG rather than only the path, because the path is the
+# symptom: an operator who sees `/` here has to know whether the environment,
+# a committed profile or the OS temp default is the thing to correct.
+check_base_sanity() {
+	local phys home_p
+	[[ -n "$BASE_DIR" ]] ||
+		die "the $BASE_SOURCE rung resolved an empty scratch base — set SHORT_VIDEO_DIR, or a workdir in $PROFILE_NAME, to a directory this tool may create and delete run directories in" 2
+
+	phys="$(cd "$BASE_DIR" 2>/dev/null && pwd -P)" || phys="$BASE_DIR"
+
+	[[ "$phys" == "$(dirname "$phys")" ]] &&
+		die "the $BASE_SOURCE rung resolved the filesystem root ($BASE_DIR) as the scratch base — point it at a directory this tool may create and delete run directories in" 2
+
+	if [[ -n "${HOME:-}" ]]; then
+		home_p="$(cd "$HOME" 2>/dev/null && pwd -P)" || home_p="${HOME%/}"
+		[[ "$phys" == "$home_p" ]] &&
+			die "the $BASE_SOURCE rung resolved the home directory ($BASE_DIR) as the scratch base — point it at a sub-directory of it instead" 2
+	fi
+
+	[[ -e "$phys/.git" ]] &&
+		die "the $BASE_SOURCE rung resolved a repository checkout ($BASE_DIR) as the scratch base — a scratch tree does not belong beside tracked source; point it at a directory outside the checkout" 2
+
+	return 0
 }
 
 # resolve_caps — the caps a profile may set, each carrying the rung it came from.
@@ -395,16 +442,72 @@ explain_report() {
         }'
 }
 
+# --------------------------------------------------------- the run directory
+
+# is_run_dir <dir> — the ownership proof: the marker file exists AND carries the
+# magic string. Read with the shell rather than grep so the proof needs nothing
+# on PATH, and matched as a substring so a later marker may grow fields without
+# invalidating the runs already on disk.
+is_run_dir() {
+	local marker="$1/$RUN_MARKER" body
+	[[ -f "$marker" ]] || return 1
+	body="$(<"$marker")" || return 1
+	case "$body" in
+	*"$RUN_MAGIC"*) return 0 ;;
+	esac
+	return 1
+}
+
+# claim_run_dir <dir> — creation is CONDITIONAL, never `mkdir -p` over whatever
+# is standing there. `mkdir -p` returns 0 on an existing directory, so the old
+# form silently adopted a stranger's directory and, one --remove-tmp later,
+# deleted it. Three outcomes:
+#
+#   the path is free            create it and write the marker immediately
+#   it exists and is ours       reuse it — this is a re-run of the same slug
+#   it exists and is not ours   refuse, exit 2, and plant NOTHING
+#
+# The marker goes in before any acquisition on purpose: a run killed between
+# mkdir and report.json is still ours, and still deletable.
+claim_run_dir() {
+	local dir="$1"
+	if [[ -e "$dir" ]]; then
+		[[ -d "$dir" ]] ||
+			die "$dir already exists and is not a directory — the slug '$SLUG' collides with a file under the $BASE_SOURCE base $BASE_DIR; re-run with --slug NAME" 2
+		is_run_dir "$dir" ||
+			die "$dir already exists and carries no $RUN_MARKER holding $RUN_MAGIC, so this tool did not create it — the slug '$SLUG' collides with something already standing under the $BASE_SOURCE base $BASE_DIR; re-run with --slug NAME" 2
+	else
+		mkdir -p "$dir" ||
+			die "could not create the run directory $dir under the $BASE_SOURCE base $BASE_DIR" 1
+		printf '%s\n' "$RUN_MAGIC" >"$dir/$RUN_MARKER" ||
+			die "could not write $RUN_MARKER into $dir — without it the run is not deletable by --remove-tmp" 1
+	fi
+	mkdir -p "$dir"/{media,frames,sheets,subs,logs} ||
+		die "could not create the artifact directories under $dir" 1
+}
+
 # ---------------------------------------------------------------- teardown
 
+# remove_tmp — TWO independent conditions, both of which must hold before any
+# rm: the directory proves it is ours, and it lies under the base this run
+# resolved. Neither implies the other. Ownership alone would delete a run
+# directory left behind under a base the caller has since moved away from;
+# containment alone is the test this replaces, and it deletes ANY descendant of
+# whatever path the caller put in SHORT_VIDEO_DIR — a jest output directory
+# holding a report.json included.
 remove_tmp() {
 	local abs base
 	abs="$(cd "$1" 2>/dev/null && pwd -P)" || die "not a directory: $1" 2
 	base="$(cd "$BASE_DIR" 2>/dev/null && pwd -P)" || base="$BASE_DIR"
+
+	is_run_dir "$abs" ||
+		die "--remove-tmp refuses $abs — it carries no $RUN_MARKER holding $RUN_MAGIC, so this tool did not create it (a report.json is not proof of ownership); the resolved base is $BASE_DIR, from the $BASE_SOURCE rung" 2
+
 	case "$abs" in
 	"$base"/?*) ;;
-	*) die "--remove-tmp only deletes directories under the resolved base $BASE_DIR (got $abs)" 2 ;;
+	*) die "--remove-tmp refuses $abs — it lies outside the resolved base $BASE_DIR, from the $BASE_SOURCE rung" 2 ;;
 	esac
+
 	rm -rf -- "$abs"
 	echo "removed $abs"
 }
@@ -546,7 +649,7 @@ if [[ -z "$SLUG" ]]; then
 fi
 
 RUN_DIR="$BASE_DIR/$SLUG"
-mkdir -p "$RUN_DIR"/{media,frames,sheets,subs,logs}
+claim_run_dir "$RUN_DIR"
 REPORT="$RUN_DIR/report.json"
 
 # ---------------------------------------------------------------- acquire
