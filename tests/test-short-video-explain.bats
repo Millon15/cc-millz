@@ -14,6 +14,7 @@ setup() {
 	source "${REPO_ROOT}/tests/helpers/common.bash"
 	source "${REPO_ROOT}/tests/helpers/short-video-fixtures.bash"
 	SVR="${REPO_ROOT}/plugins/short-video-reader/scripts/short-video-read.sh"
+	SVR_SKILL="${REPO_ROOT}/plugins/short-video-reader/skills/short-video-reader/SKILL.md"
 
 	setup_tmp
 	svr_home
@@ -192,4 +193,163 @@ teardown() {
 		fi
 	done
 	[ "$(jq -r '.source.run_dir' "${report}")" = "${base}/reported" ]
+}
+
+# -------------------------------------------------------------- the shipped body
+
+@test "the shipped body carries no monorepo path literal and no absolute home path" {
+	# The body was ported out of a private monorepo. Anything still naming that
+	# checkout's layout ships a recipe that cannot run for anyone who installs
+	# the plugin, and an absolute home path leaks the author's disk besides.
+	local body hit
+	body="$(cat "${SVR_SKILL}")"
+	# Company naming is the neutrality lint's job, not this suite's — naming one
+	# here would put the word in the repository the lint exists to keep clean.
+	for hit in 'bin/claude/' '.rulesync/' 'tmp/short-video/' '/Users/' '/home/'; do
+		assert_not_contains "${body}" "${hit}"
+	done
+	# And the placeholder that replaced the monorepo path is actually present,
+	# so "no literal" cannot be satisfied by simply deleting the recipes.
+	assert_contains "${body}" '{workdir}/<slug>'
+	assert_contains "${body}" 'values.workdir'
+}
+
+@test "every reference to the reader in the body carries CLAUDE_PLUGIN_ROOT" {
+	# A bare scripts/<name>.sh reference does not survive the staging rewrite,
+	# which keys on ${CLAUDE_PLUGIN_ROOT}: it would ship pointing at nothing.
+	local line
+	while IFS= read -r line; do
+		case "${line}" in
+		*'${CLAUDE_PLUGIN_ROOT}/scripts/short-video-read.sh'*) ;;
+		*)
+			printf 'unprefixed script reference: %s\n' "${line}" >&2
+			return 1
+			;;
+		esac
+	done < <(grep -n 'scripts/short-video-read.sh' "${SVR_SKILL}")
+}
+
+@test "the body names the four recipes and both inspection flags" {
+	local body
+	body="$(cat "${SVR_SKILL}")"
+	assert_contains "${body}" '${CLAUDE_PLUGIN_ROOT}/scripts/short-video-read.sh" <url|file>'
+	assert_contains "${body}" '${CLAUDE_PLUGIN_ROOT}/scripts/short-video-read.sh" --probe'
+	assert_contains "${body}" '${CLAUDE_PLUGIN_ROOT}/scripts/short-video-read.sh" --explain'
+	assert_contains "${body}" '${CLAUDE_PLUGIN_ROOT}/scripts/short-video-read.sh" --zoom {workdir}/<slug>'
+	assert_contains "${body}" '${CLAUDE_PLUGIN_ROOT}/scripts/short-video-read.sh" --remove-tmp {workdir}/<slug>'
+}
+
+@test "the body documents the three rungs with the source word each one reports" {
+	# A reader must be able to predict where a run will land BEFORE making one,
+	# and the three source words are the only vocabulary that says so.
+	local body
+	body="$(cat "${SVR_SKILL}")"
+	assert_contains "${body}" 'SHORT_VIDEO_DIR'
+	assert_contains "${body}" 'detected:env'
+	assert_contains "${body}" '.short-video-reader.json'
+	assert_contains "${body}" '`profile`'
+	assert_contains "${body}" '${TMPDIR:-/tmp}/short-video-reader'
+	assert_contains "${body}" '`default`'
+	assert_not_contains "${body}" 'detected:project-marker'
+}
+
+@test "the body documents the delete guard's marker, its magic and the report.json refusal" {
+	local body
+	body="$(cat "${SVR_SKILL}")"
+	assert_contains "${body}" "${SVR_RUN_MARKER}"
+	assert_contains "${body}" "${SVR_RUN_MAGIC}"
+	assert_contains "${body}" 'A directory holding only a `report.json` is refused'
+}
+
+@test "the body keeps the rung-3 audio sentence verbatim" {
+	assert_contains "$(cat "${SVR_SKILL}")" \
+		'Audio was not analyzed because no free local transcription method was available.'
+}
+
+@test "the body keeps the untrusted-by-construction section and the access-restriction constraint" {
+	local body
+	body="$(cat "${SVR_SKILL}")"
+	assert_contains "${body}" '## Untrusted by construction'
+	assert_contains "${body}" 'NEVER bypass authentication, private-account controls, DRM, paywalls, geo-blocks'
+	assert_contains "${body}" 'MUST keep every byte local'
+}
+
+# ------------------------------------------------------------ the declared toolchain
+
+@test "the body names ffmpeg, ffprobe and jq as always-required and yt-dlp as URL-only" {
+	# The published list IS the prerequisite contract: a tool the script exits 3
+	# on but the body never names ships an undocumented dependency.
+	local body
+	body="$(cat "${SVR_SKILL}")"
+	assert_contains "${body}" '| `ffmpeg` | **every run** |'
+	assert_contains "${body}" '| `ffprobe` | **every run** |'
+	assert_contains "${body}" '| `jq` | **every run** |'
+	assert_contains "${body}" '| `yt-dlp` | **URL input only** |'
+	assert_contains "${body}" 'brew install ffmpeg'
+	assert_contains "${body}" 'brew install jq'
+	assert_contains "${body}" 'brew install yt-dlp'
+	# No fallback is promised for the three hard tools, and the URL-only tool is
+	# stated as such rather than left to be inferred from the table.
+	assert_contains "${body}" 'There is no fallback for the three hard tools'
+	assert_contains "${body}" 'a local-file run needs three tools, not four'
+}
+
+# Each case below removes exactly ONE tool from the stub directory and runs with
+# PATH replaced by that directory alone, so the tool is absent from the machine
+# the script sees. The three hard checks are reachable from a LOCAL FILE; the
+# yt-dlp check lives inside the URL branch and a local file never reaches it.
+
+@test "a local-file run without ffmpeg exits 3 and names its install line" {
+	root="$(make_bare_fixture)"
+	video="${root}/clip.mp4"
+	printf 'short-video-reader fixture artifact — not a real media file\n' >"${video}"
+	cd "${root}"
+
+	unstub ffmpeg
+	svr_run "${SVR}" "${video}"
+	assert_status 3
+	assert_contains "${output}" 'ffmpeg not found — install it, then re-run (brew install ffmpeg)'
+}
+
+@test "a local-file run without ffprobe exits 3 and names its install line" {
+	root="$(make_bare_fixture)"
+	video="${root}/clip.mp4"
+	printf 'short-video-reader fixture artifact — not a real media file\n' >"${video}"
+	cd "${root}"
+
+	unstub ffprobe
+	svr_run "${SVR}" "${video}"
+	assert_status 3
+	assert_contains "${output}" 'ffprobe not found — install it, then re-run (brew install ffmpeg)'
+}
+
+@test "a local-file run without jq exits 3 and names its install line" {
+	root="$(make_bare_fixture)"
+	video="${root}/clip.mp4"
+	printf 'short-video-reader fixture artifact — not a real media file\n' >"${video}"
+	cd "${root}"
+
+	unstub jq
+	svr_run "${SVR}" "${video}"
+	assert_status 3
+	assert_contains "${output}" 'jq not found — install it, then re-run (brew install jq)'
+}
+
+@test "a URL run without yt-dlp exits 3 — the check a local file never reaches" {
+	root="$(make_bare_fixture)"
+	video="${root}/clip.mp4"
+	printf 'short-video-reader fixture artifact — not a real media file\n' >"${video}"
+	cd "${root}"
+
+	unstub yt-dlp
+
+	# The local file gets all the way through: yt-dlp is not its dependency.
+	svr_run "${SVR}" "${video}" --slug local-input
+	assert_status 0
+	assert_not_contains "${output}" 'yt-dlp not found'
+
+	# The same machine, a URL input, and the URL branch fires the check.
+	svr_run "${SVR}" https://example.invalid/clip.mp4 --slug url-input
+	assert_status 3
+	assert_contains "${output}" 'yt-dlp not found — required for URL input (brew install yt-dlp)'
 }
