@@ -48,7 +48,7 @@ One set per layout, because the frontmatter shape differs; `script.sh.tmpl` is s
 
 ## Usage
 
-0. **Search first**: load `toolsmith:skill-discovery` and run `scripts/find-skill.sh "<what it does>" --remote`. An existing plugin, marketplace or public skill beats a new one — this is `/toolsmith:create` Phase 0 in full.
+0. **Search first**: load `toolsmith:skill-discovery` and run `bash "${CLAUDE_PLUGIN_ROOT}/scripts/find-skill.sh" "<what it does>" --remote`. An existing plugin, marketplace or public skill beats a new one — this is `/toolsmith:create` Phase 0 in full.
 1. Copy the scaffold for the layer, from the set matching `values.layout`, to the path the adapter reports.
 2. Replace every `{PLACEHOLDER}` token.
 3. Lint it: `bash "${CLAUDE_PLUGIN_ROOT}/scripts/validate-dev-tool.sh" <file>` — fix each warning before the next layer.

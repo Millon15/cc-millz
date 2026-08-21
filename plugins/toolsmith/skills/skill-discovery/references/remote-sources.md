@@ -53,7 +53,7 @@ npx skills add <owner/repo@skill> --copy -y
 
 - `--copy` writes real files instead of a symlink into `~/.claude/plugins` — required if the skill is going to be committed.
 - `DISABLE_TELEMETRY=1` or `DO_NOT_TRACK=1` opts out of its anonymous usage ping.
-- Installs land in `.claude/skills/` (project) or `~/.claude/skills/` (global). Under a layout whose sources live elsewhere, NEITHER is the source of truth — vendor the skill instead, with `scripts/vendor-skill.sh`, which writes to `values.skills_dir` and records provenance.
+- Installs land in `.claude/skills/` (project) or `~/.claude/skills/` (global). Under a layout whose sources live elsewhere, NEITHER is the source of truth — vendor the skill instead, with `${CLAUDE_PLUGIN_ROOT}/scripts/vendor-skill.sh`, which writes to `values.skills_dir` and records provenance.
 
 ## Context7 (MCP)
 
