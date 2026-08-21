@@ -155,6 +155,21 @@ teardown() { teardown_tmp; }
 	done
 }
 
+@test "toolsmith: a plain marker BELOW a rulesync root does not win the walk" {
+	# A generated-config project holds files named CLAUDE.md and AGENTS.md as
+	# ordinary content — a root rule is one — so a subdirectory holding one is
+	# still that project, never a plain checkout of its own. Returning the first
+	# plain hit here silently reclassified the layout and every path with it.
+	mkdir -p "${RULESYNC}/rules-with-marker"
+	printf 'x\n' >"${RULESYNC}/rules-with-marker/CLAUDE.md"
+	run bash "${TS}" --explain --root "${RULESYNC}/rules-with-marker"
+	assert_status 0
+	assert_explain_source "${output}" layout detected:rulesync-config
+	[ "$(printf '%s' "${output}" | jq -r '.values.layout')" = "rulesync" ]
+	[ "$(printf '%s' "${output}" | jq -r '.values.root')" = "$(cd "${RULESYNC}" && pwd -P)" ]
+	rm -rf "${RULESYNC}/rules-with-marker"
+}
+
 # ------------------------------------------------------------ the error path --
 
 @test "toolsmith: an unmarked directory exits 2 and names every marker it looked for" {

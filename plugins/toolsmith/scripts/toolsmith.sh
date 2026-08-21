@@ -108,18 +108,30 @@ marker_signal() {
 # Prints "<layout>\t<root>" for the nearest marked directory at or above <dir>.
 # A command may be invoked from anywhere inside the project, so the search walks
 # up — but it never invents a layout for a directory that has none.
+#
+# `plain` is the fallback layout WITHIN a directory and along the walk alike: a
+# plain match is remembered, not returned, while a rulesync or plugin marker
+# above it still wins. Its markers are satisfied by a file merely NAMED
+# AGENTS.md or CLAUDE.md, and a generated-config project holds those as ordinary
+# content — a root rule is one — so returning the first plain hit would classify
+# a subdirectory of such a project as a plain checkout of its own.
 find_layout() {
-	local dir="$1" layout
+	local dir="$1" layout plain_root=""
 	while :; do
 		if layout="$(layout_of "${dir}")"; then
-			printf '%s\t%s\n' "${layout}" "${dir}"
-			return 0
+			if [ "${layout}" != plain ]; then
+				printf '%s\t%s\n' "${layout}" "${dir}"
+				return 0
+			fi
+			[ -n "${plain_root}" ] || plain_root="${dir}"
 		fi
 		if [ "${dir}" = "/" ]; then
-			return 1
+			break
 		fi
 		dir="$(dirname "${dir}")"
 	done
+	[ -n "${plain_root}" ] || return 1
+	printf 'plain\t%s\n' "${plain_root}"
 }
 
 no_layout() {
