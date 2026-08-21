@@ -20,6 +20,11 @@
       "description": "General-purpose personal skills — code-style (personal code taste) and concise-writing (the compression procedure for comments, commits, PR descriptions and team sends). Install at user scope only."
     },
     {
+      "name": "gws-workspace",
+      "source": "./plugins/gws-workspace",
+      "description": "Drive Google Workspace from an agent through the gws CLI instead of a Workspace MCP server. One skill and six references carry the `<service> <resource> <method>` call shape, the shared flag set, and per-service tables for Docs, Sheets, Slides, Tasks and Drive, plus the `+read` / `+write` / `+append` / `+upload` helpers and the schema-discovery commands that answer a method's required params. It also carries the Google Docs comment finding: `gws drive comments create` posts an unanchored card whatever anchor you supply, because Drive renders any supplied anchor as deleted content, so a highlighted inline comment is a browser-UI path only. Ships no command and no script; writes are confirmed first, destructive calls rehearsed with `--dry-run`, secrets never printed, and scratch files land in the OS temp dir. Requires the `gws` CLI from the @googleworkspace/cli npm package. Extracted from a private monorepo."
+    },
+    {
       "name": "merge-kit",
       "source": "./plugins/merge-kit",
       "description": "Merge-conflict resolution and merge forensics for any repository or multi-repo workspace. /merge-kit:resolve auto-resolves the hunks a stated fact settles and walks the ambiguous ones one at a time; /merge-kit:verify answers whether a merge, rebase or squash silently reverted work that landed on the target after the fork point. The repo map and test command come from a committed .merge-kit.json or are detected from build files; the forge CLI is read from each repo's own origin remote, never from a committed field. Extracted from a private monorepo."

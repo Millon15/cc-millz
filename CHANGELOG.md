@@ -1,5 +1,43 @@
 # Changelog
 
+## gws-workspace v0.1.0 - 2026-08-21
+
+### Added
+
+- New plugin. One skill and six references drive Google Workspace through the `gws` CLI instead of
+  a Workspace MCP server: the `<service> <resource> <method>` call shape, the shared flag set, and
+  per-service tables for Docs, Sheets, Slides, Tasks and Drive, plus the `+read` / `+write` /
+  `+append` / `+upload` helpers and the `gws schema` discovery commands that answer a method's
+  required params without a web search. Extracted from a private monorepo.
+- The Google Docs comment finding travels intact, because it is the part that costs an afternoon to
+  rediscover: `gws drive comments create` posts an **unanchored** card whatever anchor you supply.
+  Drive echoes the anchor back and Docs then renders the comment as "Original content deleted" —
+  for a Docs-API `createNamedRange` id and for the documented JSON region alike — so a highlighted
+  inline comment is a browser-UI path only, and `anchor != null` on a listed comment proves nothing
+  about how it was created. The reference carries the working recipe for both paths, the focus traps
+  that put your text into the document body instead of the comment box, and the export-and-`diff`
+  check that proves the body came out untouched.
+- Authentication is a three-command ladder rather than a link. The private version pointed at an
+  internal auth guide that is not coming along, so the skill now names `gws auth setup` — the CLI's
+  own help describes it as configuring the GCP project and OAuth client, and it shells out to
+  `gcloud` — beside the `gws auth login` and `gws auth status` it already carried. A fresh machine
+  is covered end to end by the shipped body.
+- Nothing is written beside tracked source. The five scratch paths that were repo-relative — a
+  downloaded `.pptx`, the long-comment helper, the stray zero-byte `download.html` that
+  `comments delete` drops into the current directory, and the before/after export the verify step
+  diffs — now resolve through `${TMPDIR:-/tmp}`, so an export lands somewhere every user can write.
+- The safety rules are unchanged and are the reason this is safe to publish: confirm with the user
+  before any write or delete, rehearse destructive operations with `--dry-run`, never print secrets.
+- The plugin ships **no command and no script**, so it claims no `/name` and adds nothing to PATH.
+  The one executable involved is the third-party `gws` binary from the `@googleworkspace/cli` npm
+  package, named in the README as a hard requirement with no fallback and never installed for you.
+- `tests/test-gws-workspace-body.bats` holds the shipped bodies to all of that — the three auth
+  commands, the anchored-comment finding, the safety rules, the six references and the links into
+  them, the empty `dependencies`, the absence of any command or executable, and the absence of any
+  origin-project path literal, absolute home path or repo-relative scratch dir. There is no entry
+  script to drive and the one binary belongs to somebody else, so the suite is a static grep paired
+  with a captured smoke log of the real CLI, exactly as `security-audit` was.
+
 ## short-video-reader v0.1.0 - 2026-08-21
 
 ### Added

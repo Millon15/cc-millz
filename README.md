@@ -25,6 +25,7 @@ Provenance: several of these plugins were generalized out of a private codebase 
 | [🪧 agterm-lanes](plugins/agterm-lanes/README.md) | Self-labelling agterm panes — name, emoji, tint, glyph and reboot-survivable sessions |
 | [🤖 codex-delegation](plugins/codex-delegation/README.md) | Codex CLI (gpt-5.6/gpt-5.5) as a second-tier workforce under Claude's orchestration |
 | [🧰 essentials](plugins/essentials/README.md) | General-purpose personal skills — code-style, concise-writing, `/e15`, `/tldr`, `/recall` |
+| [📄 gws-workspace](plugins/gws-workspace/README.md) | Google Workspace from an agent through the `gws` CLI — Docs, Sheets, Slides, Tasks, Drive, the `+read`/`+write` helpers, and the finding that a highlighted Docs comment is a browser-UI path only. Extracted from a private monorepo. |
 | [🔀 merge-kit](plugins/merge-kit/README.md) | Conflict resolution and merge forensics for any repo — profile-driven, forge read from `origin`, nothing silently reverted. Extracted from a private monorepo. |
 | [🐘 phpstorm](plugins/phpstorm/README.md) | PhpStorm MCP as an agent surface — code navigation, inspections, live Xdebug loop, and a doctor that tells three identical-looking debug misconfigurations apart. Extracted from a private monorepo. |
 | [🔁 ralphex-revmux](plugins/ralphex-revmux/README.md) | revmux as ralphex's external reviewer — preflight, one-round-per-iteration glue, two-stage runner, post-run reporter + optimizer |
