@@ -668,17 +668,24 @@ if [[ $IS_URL -eq 1 ]]; then
 		FMT="bv*[height<=${MAX_HEIGHT}]+ba/b[height<=${MAX_HEIGHT}]/b"
 	fi
 
+	# The id is truncated IN THE TEMPLATE rather than with --trim-filenames,
+	# which trims the whole expanded output PATH to its length — with the base
+	# on the OS-temp rung (a macOS $TMPDIR is ~50 characters before the plugin's
+	# own subdirectory) an 80-character limit ate the run directory itself, and
+	# yt-dlp wrote a real download to a sibling of it. The reader then found an
+	# empty media/ and reported "produced no media file" over a clip that had
+	# just downloaded fine. `%(id).80B` bounds the only unbounded part, the name.
 	yt-dlp \
 		--no-playlist --playlist-items 1 \
 		--no-cookies --no-cookies-from-browser \
-		--no-mtime --restrict-filenames --trim-filenames 80 \
+		--no-mtime --restrict-filenames \
 		--match-filter "duration <? ${MAX_DURATION}" \
 		--max-filesize "${MAX_SIZE_MB}M" \
 		-f "$FMT" \
 		--write-info-json \
 		--write-subs --write-auto-subs --sub-langs 'en.*,en,-live_chat' --convert-subs srt \
 		--newline \
-		-o "$RUN_DIR/media/%(id)s.%(ext)s" \
+		-o "$RUN_DIR/media/%(id).80B.%(ext)s" \
 		"$INPUT" >"$RUN_DIR/logs/yt-dlp.log" 2>&1 ||
 		die "yt-dlp failed — see $RUN_DIR/logs/yt-dlp.log (access restrictions are never bypassed)"
 
