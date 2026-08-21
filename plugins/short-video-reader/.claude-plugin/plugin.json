@@ -1,0 +1,9 @@
+{
+  "name": "short-video-reader",
+  "description": "Read ONE short video end-to-end from local artifacts and report what is visible, never what is guessed. One entry script acquires a clip from a URL or a local file with provenance, takes a stream inventory, extracts scene-cut and interval frames into contact sheets, keeps whatever captions the source already carried, and detects a free offline speech-to-text route rather than installing or calling one. Nothing authenticates, nothing leaves the machine, and where the scratch tree lands is resolved through a three-rung ladder the tool prints on request.",
+  "version": "0.1.0",
+  "author": {
+    "name": "Millon15"
+  },
+  "dependencies": []
+}
