@@ -30,6 +30,7 @@ Provenance: several of these plugins were generalized out of a private codebase 
 | [🔁 ralphex-revmux](plugins/ralphex-revmux/README.md) | revmux as ralphex's external reviewer — preflight, one-round-per-iteration glue, two-stage runner, post-run reporter + optimizer |
 | [🧰 revmux-kit](plugins/revmux-kit/README.md) | revmux project layer — xhigh-safe config, profile.md template, `sol-*` / `fable-*` rosters |
 | [🛡 security-audit](plugins/security-audit/README.md) | Pre-adoption audit of a repo, package, MCP server or raw script — nine adaptive phases, verdict banner, every tool optional |
+| [🎬 short-video-reader](plugins/short-video-reader/README.md) | Read one short clip end-to-end from local artifacts — provenance, frames, contact sheets, captions, offline-only transcription; the scratch tree is a printed three-rung ladder and a delete needs the tool's own marker. Extracted from a private monorepo. |
 | [📟 statusline](plugins/statusline/README.md) | Two-line status line — git scopes, context window, loaded skills and MCP, quota and spend |
 | [🛠 toolsmith](plugins/toolsmith/README.md) | Author, review, retire and explain agent dev tools in any layout — the directories come from a layout adapter, the reuse search runs first, companion skills are soft. Extracted from a private monorepo. |
 | [🪆 unslop-kit](plugins/unslop-kit/README.md) | My reply contract as a Russian doll over pstack's unslop — wording pass, then layout pass, loaded by a SessionStart hook |

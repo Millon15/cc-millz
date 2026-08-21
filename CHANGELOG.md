@@ -1,5 +1,47 @@
 # Changelog
 
+## short-video-reader v0.1.0 - 2026-08-21
+
+### Added
+
+- New plugin. One skill and one script read ONE short video end-to-end from local artifacts and
+  report what is *visible*, never what is guessed: acquisition from a URL or a local file with its
+  provenance, an `ffprobe` stream inventory, scene-cut and interval frames collected into contact
+  sheets, the captions the source already carried, `--zoom` close-ups, and a transcript only when a
+  free offline speech-to-text route already exists on the machine. Nothing authenticates, nothing is
+  installed for you, and nothing leaves the machine. Extracted from a private monorepo.
+- `scripts/short-video-read.sh --explain` resolves the scratch base through three rungs and reports
+  which one answered: the `SHORT_VIDEO_DIR` environment variable (`detected:env`), a `workdir` in a
+  committed `.short-video-reader.json` found by walking up to `$HOME` or `/` (`profile`), then a
+  `short-video-reader` subdirectory of the OS temp dir (`default`) — a directory, never an error,
+  because a user with no project is not a usage mistake. The environment leads so a committed
+  profile stays overridable for one run without editing a committed file, and a relative value
+  anchors to the profile's own directory rather than to the current one, so one profile answers with
+  one path from every directory. `--probe` stays as the human twin, printing from the same detection
+  pass, and the resolved base feeds `BASE_DIR`, the delete guard, `--zoom`'s path printing, the model
+  cache and `report.json` alike.
+- The `--remove-tmp` guard is an ownership proof, not a path prefix. A directory is deleted only when
+  it carries `.short-video-reader-run` holding `short-video-reader/run/v1` — written the moment this
+  tool created it, so a run killed halfway is still recognisably its own — *and* lies under the base
+  the run resolved. A `report.json` proves nothing (several test reporters write one), a pre-existing
+  directory without the marker is refused rather than adopted, and a base resolving to `/`, to
+  `$HOME` or to a directory carrying a `.git` entry is rejected with the offending rung named.
+- `ffmpeg`, `ffprobe` and `jq` are hard requirements, `yt-dlp` is hard for URL input only, and each
+  missing one exits 3 with the line that installs it. whisper stays soft: with no local route the
+  audio is reported `not_analyzed` with the reason and the read continues on frames and captions.
+- Three suites cover it: `tests/test-short-video-workdir.bats` drives every rung and asserts the
+  resolved absolute path, not only the source word; `tests/test-short-video-guard.bats` covers the
+  marker, the refusals and the base sanity check; `tests/test-short-video-explain.bats` holds the
+  shipped skill body to the toolchain it declares and drives the exit-3 paths against a `PATH`
+  carrying the stub directory alone. Fixture trees are BUILT at setup under a redirected `HOME`, so
+  no case depends on a directory git cannot carry.
+- Publication fixed one bug the suites could not see: `--trim-filenames 80` trims the whole expanded
+  output path rather than the file name, so on the OS-temp rung — a macOS `$TMPDIR` is around fifty
+  characters before the plugin's own subdirectory — yt-dlp wrote a real download to a sibling of the
+  run directory and the reader reported "produced no media file" over a clip that had just
+  downloaded fine. The bound now lives in the output template, `%(id).80B`, where it applies to the
+  only unbounded part.
+
 ## phpstorm v0.2.0 - 2026-08-21
 
 ### Added

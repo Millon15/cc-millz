@@ -45,6 +45,11 @@
       "description": "Pre-adoption security audit of a repository, package, MCP server or raw script — nine adaptive phases across 21 target types, a terminal verdict plus a full report file with file:line evidence, and a final install/no-install banner. Every external tool is optional: Semgrep when it is on PATH, an IDE search surface when one is up, ripgrep otherwise. Extracted from a private monorepo."
     },
     {
+      "name": "short-video-reader",
+      "source": "./plugins/short-video-reader",
+      "description": "Read ONE short video end-to-end from local artifacts and report what is visible, never what is guessed. scripts/short-video-read.sh acquires a clip from a URL or a local file with provenance, takes a stream inventory, extracts scene-cut and interval frames into contact sheets, keeps the captions the source already carried, and detects a free offline speech-to-text route rather than installing or calling one. Nothing authenticates and nothing leaves the machine. Where the scratch tree lands is a three-rung ladder the tool prints on request — SHORT_VIDEO_DIR, a committed .short-video-reader.json, then the OS temp dir — and a run directory is deleted only when it carries this tool's own marker file. Requires ffmpeg, ffprobe and jq; yt-dlp for URL input. Extracted from a private monorepo."
+    },
+    {
       "name": "statusline",
       "source": "./plugins/statusline",
       "description": "Two-line status line — git scopes for the current repo and nested monorepo repos (branch, dirt, conflicts, ahead/behind, in-progress rebase/merge), context window, skills and MCP schemas actually loaded this session, plus real quota and spend from the Anthropic usage API. Self-installs into settings.json."
