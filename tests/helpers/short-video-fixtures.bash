@@ -88,6 +88,57 @@ svr_home() {
 	export HOME
 }
 
+# ------------------------------------------------------------ the invocation --
+
+# svr_run <script> <args...> — run the reader with PATH set to the stub
+# directory ALONE, never prepended.
+#
+# The replacement is applied to the INVOCATION rather than to the suite's own
+# shell, and that is not a softening of it: the code under test is what has to be
+# hermetic, and a tool seed_base_utils did not link is absent from this command
+# whatever the suite's shell can still see. Replacing the suite's PATH instead
+# breaks bats itself — its per-test cleanup runs after teardown, outside any
+# restore a suite can make, and by then teardown_tmp has deleted the very
+# directory that PATH points at, so `rm` no longer resolves and a green suite
+# exits 1.
+svr_run() {
+	[ -n "${STUB_BIN:-}" ] || {
+		printf 'svr_run: $STUB_BIN is unset — call setup_tmp first\n' >&2
+		return 1
+	}
+	run env PATH="${STUB_BIN}" "$@"
+}
+
+# ------------------------------------------------------------- assertions --
+
+# svr_phys <dir> — the PHYSICAL path of a directory. Every fixture root here is
+# handed out as a path under $TMP, and on macOS mktemp -d hands back a symlinked
+# one (/var/... for /private/var/...). The reader resolves its anchors with
+# `pwd -P`, so an expectation built from the fixture path alone compares two
+# spellings of the same directory and fails on a difference that is not one.
+svr_phys() {
+	(cd "$1" && pwd -P)
+}
+
+# svr_assert_workdir <json> <expected-absolute> — the half of a rung assertion
+# that assert_explain_source cannot make.
+#
+# The source word alone is not acceptance for any rung: a relative profile
+# workdir resolved against $PWD instead of against the profile's own directory
+# reports `profile` while writing into whatever directory the caller happened to
+# be standing in — the right word over the wrong path.
+svr_assert_workdir() {
+	local json="$1" expected="$2" actual
+	actual="$(printf '%s' "${json}" | jq -r '.values.workdir')" || {
+		printf 'svr_assert_workdir: not valid JSON:\n%s\n' "${json}" >&2
+		return 1
+	}
+	if [ "${actual}" != "${expected}" ]; then
+		printf 'svr_assert_workdir: workdir is %s, expected %s\n' "${actual}" "${expected}" >&2
+		return 1
+	fi
+}
+
 # svr_require_home — the precondition every builder asserts. It is louder than
 # it looks: a suite that forgot svr_home builds a perfectly correct tree whose
 # ancestors are the executor's real home directory, and the rung under test is
