@@ -1,0 +1,13 @@
+# tests/fixtures/toolsmith/ranking/expected-ranking.txt
+#
+# The truth table for the skill finder's ranking, asserted against the
+# ranking-layout fixture. Run the finder with --tier project so the developer's
+# own user, installed and marketplace tiers cannot change the answer.
+#
+#   <query>	<expected names, ranked, comma separated>
+#
+# A name absent from the expected list must score zero and be filtered out.
+
+extract pdf text	pdf-extractor,pdf-splitter
+split pdf pages	pdf-splitter,pdf-extractor
+import csv rows	csv-importer

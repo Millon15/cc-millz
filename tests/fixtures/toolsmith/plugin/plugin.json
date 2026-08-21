@@ -1,0 +1,5 @@
+{
+  "name": "fixture-plugin",
+  "description": "Fixture plugin manifest — its presence is the plugin-layout marker.",
+  "version": "0.1.0"
+}

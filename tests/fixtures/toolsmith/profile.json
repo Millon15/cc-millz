@@ -1,0 +1,9 @@
+{
+  "_comment": "Fixture .toolsmith.json for the rulesync-style layout. The layout key is deliberately nonsense: the adapter detects the layout from a marker and must IGNORE anything the profile says about it.",
+  "layout": "IGNORED-layout-key",
+  "skills_dir": "IGNORED-path-key",
+  "sync_cmd": "fixture-sync --all",
+  "docs_cmd": "fixture-docs build",
+  "knowledge_skill": "house-knowledge",
+  "task_runner": ["fixture-run", "make"]
+}

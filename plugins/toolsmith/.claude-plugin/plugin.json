@@ -1,0 +1,9 @@
+{
+  "name": "toolsmith",
+  "description": "Author, review and retire agent dev tools — skills, commands, subagents and rules — in any project, whatever its agent-config layout. A layout adapter resolves the target paths from a positive marker (a rulesync config file, a plugin manifest, or an agent-config marker such as AGENTS.md), so the same commands write to the right place in a rulesync-generated repo, a plugin repo, or a plain .claude checkout. Ships a skill finder that ranks what already exists across five tiers before anything new is authored, a non-blocking dev-tool linter, and a vendoring script for public skills that ship no plugin.",
+  "version": "0.1.0",
+  "author": {
+    "name": "Millon15"
+  },
+  "dependencies": []
+}

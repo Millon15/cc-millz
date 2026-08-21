@@ -1,0 +1,4 @@
+// Fixture rulesync config — its mere presence is the rulesync-layout marker.
+{
+  "targets": ["claudecode", "cursor", "agentsmd"]
+}
