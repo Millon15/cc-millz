@@ -1,0 +1,89 @@
+{
+  "_comment": "Repos worth checking first when searching for an existing skill. The ranker in scripts/find-skill.ts boosts hits whose origin starts with one of these; the model checks them before an unknown personal repo. kind: plugin-marketplace = installable via `claude plugin marketplace add`; skills-repo = SKILL.md dirs, install via vendor-skill.sh or `npx skills add`; spec = the standard itself.",
+  "sources": [
+    {
+      "repo": "anthropics/skills",
+      "url": "https://github.com/anthropics/skills",
+      "kind": "skills-repo",
+      "note": "Anthropic's own examples plus skill-creator, the document skills, the template and the spec."
+    },
+    {
+      "repo": "vercel-labs/skills",
+      "url": "https://github.com/vercel-labs/skills",
+      "kind": "skills-repo",
+      "note": "The `npx skills` CLI itself; skills/find-skills is the upstream twin of this skill."
+    },
+    {
+      "repo": "vercel-labs/agent-skills",
+      "url": "https://github.com/vercel-labs/agent-skills",
+      "kind": "skills-repo",
+      "note": "Vercel's published skill set — the highest-install source on skills.sh."
+    },
+    {
+      "repo": "obra/superpowers",
+      "url": "https://github.com/obra/superpowers",
+      "kind": "plugin-marketplace",
+      "note": "Also shipped as superpowers@claude-plugins-official. writing-skills is its authoring reference."
+    },
+    {
+      "repo": "microsoft/skills",
+      "url": "https://github.com/microsoft/skills",
+      "kind": "skills-repo",
+      "note": "Azure and Foundry skills; microsoftdocs/agent-skills is the docs-side sibling."
+    },
+    {
+      "repo": "openai/plugins",
+      "url": "https://github.com/openai/plugins",
+      "kind": "plugin-marketplace",
+      "note": "Codex-side plugin set; mirrors several Claude Code skills verbatim."
+    },
+    {
+      "repo": "cursor/plugins",
+      "url": "https://github.com/cursor/plugins",
+      "kind": "plugin-marketplace",
+      "note": "Upstream of pstack, which cc-millz re-publishes as a git-subdir source."
+    },
+    {
+      "repo": "mattpocock/skills",
+      "url": "https://github.com/mattpocock/skills",
+      "kind": "plugin-marketplace",
+      "note": "TDD, code review, grilling, domain modelling, writing-great-skills."
+    },
+    {
+      "repo": "umputun/cc-thingz",
+      "url": "https://github.com/umputun/cc-thingz",
+      "kind": "plugin-marketplace",
+      "note": "brainstorm, planning, review, thinking-tools, workflow, skill-eval."
+    },
+    {
+      "repo": "Millon15/cc-millz",
+      "url": "https://github.com/Millon15/cc-millz",
+      "kind": "plugin-marketplace",
+      "note": "The marketplace this plugin ships from. A general-purpose tool belongs in a plugin here; a project-specific one belongs in the project's own layer directories."
+    },
+    {
+      "repo": "upstash/context7",
+      "url": "https://github.com/upstash/context7",
+      "kind": "skills-repo",
+      "note": "skills/ holds context7-cli and find-docs. The ctx7 skills subcommands are deprecated — use the MCP server instead."
+    },
+    {
+      "repo": "planetscale/database-skills",
+      "url": "https://github.com/planetscale/database-skills",
+      "kind": "skills-repo",
+      "note": "MySQL and schema skills; the highest-install mysql skill on skills.sh."
+    },
+    {
+      "repo": "supabase/agent-skills",
+      "url": "https://github.com/supabase/agent-skills",
+      "kind": "skills-repo",
+      "note": "Postgres, auth and edge-function skills from the vendor."
+    },
+    {
+      "repo": "agentskills/agentskills",
+      "url": "https://github.com/agentskills/agentskills",
+      "kind": "spec",
+      "note": "The Agent Skills open standard (agentskills.io) that Cursor, Copilot, Codex and Gemini CLI implement. Read it when a vendored skill's frontmatter looks unfamiliar."
+    }
+  ]
+}

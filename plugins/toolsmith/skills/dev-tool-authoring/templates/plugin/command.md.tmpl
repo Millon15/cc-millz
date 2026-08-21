@@ -1,0 +1,31 @@
+---
+description: >
+  {one-line — what the command does and when to reach for it}
+argument-hint: {<args>}
+disable-model-invocation: true
+---
+
+# `/{plugin-name}:{tool-name}`
+
+{one-paragraph intro: what the workflow does}
+
+## Phase 0 — Resolve the project's facts (ALWAYS FIRST)
+
+```bash
+bash "${CLAUDE_PLUGIN_ROOT}/scripts/{plugin-name}.sh" --explain
+```
+
+{which JSON key decides what; exit 2 means STOP and print the script's message}
+
+## Input
+
+Parse `$ARGUMENTS` for {flags / positional args}.
+
+## Phase 1: {Name}
+
+{numbered steps; mark HARD GATES explicitly}
+
+## Guardrails
+
+- MUST {invariant}
+- NEVER {forbidden action} — {the supported path instead}

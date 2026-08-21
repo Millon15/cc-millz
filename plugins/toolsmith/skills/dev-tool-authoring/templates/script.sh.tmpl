@@ -1,0 +1,27 @@
+#!/usr/bin/env bash
+#
+# {tool-name}.sh — {one-line purpose}.
+#
+# Usage:
+#   {tool-name}.sh <arg>
+#   echo '{"tool_input":{"file_path":"..."}}' | {tool-name}.sh   # stdin JSON (hook parity)
+#
+# Exit-code contract: {e.g. "always 0 (non-blocking)" or "0 ok / 1 fail / 2 usage"}.
+#
+# Paths are relative to the project root the caller passes in, never absolute
+# and never a developer's home directory.
+
+set -uo pipefail
+
+HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
+ARG="${1:-}"
+if [ -z "${ARG}" ]; then
+	echo "usage: {tool-name}.sh <arg>"
+	exit 0
+fi
+
+# {tool logic}
+
+echo "{tool-name}: done"
+exit 0

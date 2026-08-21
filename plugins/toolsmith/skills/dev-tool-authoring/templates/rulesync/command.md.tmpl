@@ -1,0 +1,36 @@
+---
+targets:
+  - '*'
+description: {one-line — "Use when ..."}
+claudecode:
+  name: '/{category}:{tool-name}'
+  argument-hint: '{<args>}'
+  category: {category}
+  tags:
+    - {tag1}
+    - {tag2}
+---
+# {Tool Name}
+
+<!-- Flat outputs (other agents' command directories) are keyed by basename, so a
+     nested command needs its path joined into the generated name. Confirm the
+     generator does that before targeting '*'; otherwise target this agent only. -->
+
+{one-paragraph intro: what the workflow does}
+
+## Input
+
+Parse `$ARGUMENTS` for {flags / positional args}.
+
+## Phase 1: {Name}
+
+{numbered steps; mark HARD GATES explicitly}
+
+## Phase 2: {Name}
+
+{steps}
+
+## Guardrails
+
+- MUST {invariant}
+- NEVER {forbidden action} — {the supported path instead}
