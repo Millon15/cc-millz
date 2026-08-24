@@ -57,7 +57,7 @@ Fallback, ONLY when `review:writing-style` is absent from the skill list (review
    - Prose: at most two sentences.
    - At most one table, small and numeric (rule 5).
    - At least one caption + visual pair: an italic one-line caption ABOVE the visual (`*Fig n — what it shows (refs)*`), then the visual itself.
-   - A `▎` blockquote ledger of 2 to 7 receipt lines: evidence, mechanisms, refs — one fact per line.
+   - A blockquote ledger of 2 to 7 receipt lines, evidence, mechanisms and refs, one fact per line. Write it as plain markdown, one `>` and a space opening every line, nothing after the `>` but the fact. The TUI paints the grey bar itself, so NEVER type a bar glyph (`▎`, `▌`, `|`) inside the quote and never nest a second `>`: either one paints a second bar next to the real one.
 4. Visuals are the point: as many as the content honestly supports, ideally one per paragraph (a paragraph is roughly five sentences of underlying content). Every visual is ASCII art you draw by hand inside a plain fence, shape picked from "Drawing the visual" below. A mermaid fence reaches the reader as source text: the TUI draws nothing from it (I wrote the opposite here on 2026-08-20; the user read bare mermaid code all day and corrected me). Mermaid source belongs to Artifacts and HTML pages, where a browser draws it. A large report opens with one annotated map whose ①-④ markers key the paragraphs that follow.
 5. Tables: small and numeric. A table whenever numbers cluster or two or more things are compared on two or more attributes, but a cell holds a number, a count, an identifier, a few words at most, and a paragraph carries at most one. A wide table with sentence-length cells is worse than the prose it replaced: shrink it or move the material into the quote ledger. Numbers compared in prose are still a tell.
 6. Fenced code with a language tag for anything runnable or literal: commands, paths in bulk, JSON, config, diffs.
@@ -124,7 +124,7 @@ Claude Code's terminal renderer parses markdown at the top level only. Verified 
 | Fenced code / ASCII visual | Top level, blank line before and after | Inside a bullet: the fence vanishes |
 | Mermaid fence | Artifacts and HTML pages, where a browser draws it | In the TUI: source text, no picture. A chat reply draws ASCII instead |
 | Heading | Top level | Inside a list item: flattened |
-| Blockquote | `▎` bar, inline code intact — the receipt ledger | |
+| Blockquote | One `>` per line: the TUI paints the bar, inline code intact, the receipt ledger | A typed `▎`/`▌` or a nested `> >`: two bars side by side |
 | Horizontal rule `---` | The paragraph separator (a rule, or a literal `---` line on older builds — both divide) | |
 | Links | `text (url)` | |
 | Line width | Hard-wrapped by you at 120 columns; a newline inside a paragraph or a `>` ledger stays a line break | Any line past 120: the terminal breaks it at the window edge, mid-word |
@@ -142,7 +142,8 @@ Chat replies get all three passes. Commit messages, PR bodies, code comments, do
 - English block first and untouched.
 - TL;DR before details.
 - Zero em dashes, zero chatbot closers.
-- Every body paragraph is a figure-paragraph: emoji claim line, ≤2 sentences of prose, ≤1 small numeric table, ≥1 caption-above-visual pair, a 2-7 line `▎` ledger, `---` after it.
+- Every body paragraph is a figure-paragraph: emoji claim line, ≤2 sentences of prose, ≤1 small numeric table, ≥1 caption-above-visual pair, a 2-7 line `>` ledger, `---` after it.
+- The ledger is plain `>` lines: no bar glyph typed inside a blockquote, no nested `> >`; `▌` stays legal in a bar visual.
 - No nested lists anywhere; emoji count ≤ claim lines + headings.
 - No line longer than 120 characters anywhere in the reply; a wrapped ledger line continues on its own `>` line.
 - Every claim about code, a run or a PR carries a `path:line`, `#n` or link, or wears `[ASSUMPTION]`.

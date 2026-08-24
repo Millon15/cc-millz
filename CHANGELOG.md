@@ -1,5 +1,16 @@
 # Changelog
 
+## unslop-kit v0.7.1 - 2026-08-24
+
+### Fixed
+
+- The receipt ledger printed two grey bars. The skill named the ledger by the glyph the TUI paints
+  for a blockquote, "a `▎` blockquote ledger", in the pass-3 recipe, in the CLI rendering table and
+  in the send-check, so replies typed `> ▎ fact` and the terminal drew its own bar beside the
+  literal one. All three mentions now say what to type: one plain `>` and a space per line, no bar
+  glyph inside the quote, no nested `> >`. A new send-check line catches both shapes and keeps `▌`
+  legal inside a bar visual.
+
 ## gws-workspace v0.1.0 - 2026-08-21
 
 ### Added
