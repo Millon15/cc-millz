@@ -4,7 +4,7 @@ description: >
   map, the forge CLI and the test command from the project profile, auto-resolves
   the hunks a stated fact settles, walks the ambiguous ones one at a time, and
   proves before committing that nothing on the target was silently reverted.
-argument-hint: <repo> <pr-number> | <repo> local <feature> <target> [merge|rebase] [--strict]
+argument-hint: <repo> | <repo> <pr-number> | <repo> local <feature> <target> [merge|rebase] [--strict]
 disable-model-invocation: true
 ---
 
@@ -48,6 +48,7 @@ profile: {profile_file|none} · repo {alias} → {REPO_DIR} · forge {cli} ({sou
 
 | Form | Example | Behaviour |
 | --- | --- | --- |
+| `<repo>` | `api` | ADOPT mode — a merge or a rebase is already stopped in the repo; read SOURCE, TARGET and the strategy off its state |
 | `<repo> <pr-number>` | `api 583` | PR mode — fetch SOURCE and TARGET from the forge |
 | `<repo> local <feature> <target> [merge\|rebase]` | `api local feat-x main merge` | LOCAL mode — no pull request; strategy defaults to `merge` |
 
@@ -69,9 +70,18 @@ profile: {profile_file|none} · repo {alias} → {REPO_DIR} · forge {cli} ({sou
 
 ## Phase 1 — Parse and validate
 
-1. Parse `$ARGUMENTS` into `<repo>`, the mode and the flags.
+1. Parse `$ARGUMENTS` into `<repo>`, the mode and the flags. A bare `<repo>` with no further words is ADOPT mode.
 2. Resolve `<repo>` through Phase 0. Verify `{REPO_DIR}/.git` exists — if not, STOP: "Repo not checked out at `{REPO_DIR}`. Clone it first."
-3. **PR mode** — fetch the pull request's branches with the CLI `values.forge[<alias>]` named:
+3. **ADOPT mode** — no mode word was given because the repository is already mid-operation. Read the state, never ask:
+
+   | Repo state | Strategy | SOURCE | TARGET |
+   | --- | --- | --- | --- |
+   | `.git/MERGE_HEAD` exists | merge | the checked-out branch | `MERGE_HEAD` |
+   | `.git/rebase-merge/` or `.git/rebase-apply/` exists | rebase | `rebase-merge/head-name` | `rebase-merge/onto` |
+   | neither | — | — | STOP: "Nothing in progress at `{REPO_DIR}`. Pass a pull-request number, or use the LOCAL form." |
+
+   Read each file with `cat` in its own call — no command substitution — and echo the four resolved values before Phase 2. These are the same files `merge-forensics.sh --in-progress` reads, so the audit and the walk agree on the references by construction.
+4. **PR mode** — fetch the pull request's branches with the CLI `values.forge[<alias>]` named:
 
    | `values.forge` | Fetch |
    | --- | --- |
@@ -82,9 +92,9 @@ profile: {profile_file|none} · repo {alias} → {REPO_DIR} · forge {cli} ({sou
 
    The owner and name come from the repository's own `origin` URL — read it with `git -C {REPO_DIR} remote get-url origin`, never from a hard-coded table.
 
-4. **LOCAL mode** — SOURCE and TARGET come straight from the arguments; skip the fetch entirely.
-5. Create the work directory: `mkdir -p {WORK_DIR}`.
-6. Write the branch's purpose to `{WORK_DIR}/branch-purpose.md` — one line on what SOURCE is for, which sets the default direction for TRIVIAL hunks. If it is unclear, ASK before Phase 4 starts.
+5. **LOCAL mode** — SOURCE and TARGET come straight from the arguments; skip the fetch entirely.
+6. Create the work directory: `mkdir -p {WORK_DIR}`.
+7. Write the branch's purpose to `{WORK_DIR}/branch-purpose.md` — one line on what SOURCE is for, which sets the default direction for TRIVIAL hunks. If it is unclear, ASK before Phase 4 starts.
 
 ## Phase 2 — Prepare branches
 
@@ -95,6 +105,8 @@ git -C {REPO_DIR} pull origin {SOURCE}
 ```
 
 In LOCAL mode skip the fetch-and-pull churn — the caller already left you on `{SOURCE}` with `{TARGET}` up to date locally. Confirm the current branch is `{SOURCE}` and move on.
+
+Skip this phase ENTIRELY in ADOPT mode, and under the `rebase` strategy once the rebase has stopped. Fetching or pulling into a stopped operation is a way to lose it, and the branch check cannot pass anyway: a stopped rebase leaves HEAD detached, so `git branch --show-current` is empty by design and SOURCE comes from `rebase-merge/head-name` instead.
 
 Report the divergence:
 
@@ -114,7 +126,9 @@ git -C {REPO_DIR} merge origin/{TARGET} --no-commit --no-ff     # PR mode
 git -C {REPO_DIR} merge {TARGET} --no-commit --no-ff            # LOCAL mode
 ```
 
-Under the `rebase` strategy the caller's `git rebase {TARGET}` has already stopped at a conflicting step: resolve that step's files through the Phase 4 walk, then `git -C {REPO_DIR} rebase --continue`, and repeat per stopped step.
+Under the `rebase` strategy — and in ADOPT mode over a stopped rebase — nothing is merged here: `git rebase {TARGET}` has already stopped at a conflicting step. One step is one FULL pass of Phase 3.5, the Phase 4 walk and Phase 5.5, and only then `git -C {REPO_DIR} rebase --continue`. Repeat per stopped step.
+
+Phase 5 is NOT in that loop. The suite runs ONCE, after the last step lands: a branch mid-rebase carries a half-replayed history, so its failures say nothing about the result and its greens prove nothing either.
 
 Clean merge, no conflicts → skip to Phase 5.
 
@@ -252,6 +266,8 @@ Echo the full `auto-resolved.md` list under an **Auto-resolved (review)** headin
 
 ## Phase 5 — Run the suite
 
+Under the `rebase` strategy this phase runs ONCE, after the last step's `rebase --continue` returns and `git -C {REPO_DIR} status` reports no rebase in progress. NEVER between steps.
+
 Run `values.test_command[<alias>]` from Phase 0, from `{REPO_DIR}`, and report the result together with `sources.test_command` so the user knows whether the command was declared or detected:
 
 ```
@@ -276,9 +292,13 @@ Save it to `{WORK_DIR}/audit-pre-commit.json`. This is a different question from
 
 `verdict` is `FINDINGS` → treat each entry as a SILENT-REVERT walk (4c), resolve it, and re-run until the verdict is `CLEAN`. Only a `CLEAN` verdict opens Phase 6.
 
+Under the `rebase` strategy this runs at EVERY stopped step, before that step's `rebase --continue` — and that ordering is load-bearing, not a preference. `--in-progress` reads the rebase state directory, and the final `--continue` deletes it; run the script after the rebase has finished and it exits 2, correctly, because a rebase also leaves no merge commit for the finished form to audit. There is then no automated recovery: the audit becomes a hand read of `git -C {REPO_DIR} diff {TARGET}..HEAD` for deletions of lines the target owns. Do not let the last step continue while the verdict is still `FINDINGS`.
+
 ## Phase 6 — Commit and push
 
 Use `git merge --continue`. NEVER `git commit -m` for a merge commit.
+
+Under the `rebase` strategy steps 1 to 4 do not apply: there is no merge commit and no `MERGE_MSG`, because every step was already committed by its own `rebase --continue` back in Phase 3. The run reaches this phase only to answer the push question, and lands on step 6.
 
 1. Read the prepared message: `cat {REPO_DIR}/.git/MERGE_MSG` (a separate call — no command substitution).
 2. Append the resolution block:
@@ -301,7 +321,7 @@ Use `git merge --continue`. NEVER `git commit -m` for a merge commit.
    Under the rebase strategy: `GIT_EDITOR=true git -C {REPO_DIR} rebase --continue`.
 
 5. PR mode: ask _"Push to origin/{SOURCE}?"_ — the push is an outward action and always gates. On yes: `git -C {REPO_DIR} push origin {SOURCE}`.
-6. LOCAL mode: NEVER push. The caller owns the push policy, and a rebased branch needs a deliberate force-push by the user.
+6. LOCAL and ADOPT modes: NEVER push. The caller owns the push policy, and a rebased branch needs a deliberate force-push by the user.
 
 ## Guardrails
 
@@ -310,6 +330,7 @@ Use `git merge --continue`. NEVER `git commit -m` for a merge commit.
 - AUTO-RESOLVE only TRIVIAL and OBVIOUS hunks, each licensed by a STATED FACT. Walk every AMBIGUOUS one, one at a time. Cannot name the outcome as a fact → it is AMBIGUOUS.
 - Log every OBVIOUS auto-resolution with its fact, and echo the full list in 4d for audit.
 - The net is NON-NEGOTIABLE: Phase 3.5 audit before the walk, Phase 5 full suite, Phase 5.5 forensic verify before the commit. NEVER skip or weaken one, not even for a merge that looks clean.
+- Under the `rebase` strategy the loop is PER STEP — 3.5, the walk, 5.5, `rebase --continue` — and Phase 5 runs once at the end. NEVER open the suite gate with steps left, and NEVER let the last step continue while 5.5 is unresolved: `--in-progress` dies with the state directory.
 - HIGH-BLAST-RADIUS reverts — a whole-file deletion, a large removal of TARGET content — are ALWAYS AMBIGUOUS.
 - NEVER force-push, NEVER delete a branch.
 - MUST use `git -C {REPO_DIR}` — never `cd {REPO_DIR} && git`, because the `cd` persists into later calls.

@@ -1,5 +1,36 @@
 # Changelog
 
+## merge-kit v0.2.0 - 2026-09-04
+
+### Added
+
+- `/merge-kit:resolve <repo>` — a bare repo alias with no mode word now adopts whatever operation is
+  already stopped in that repository. The strategy, SOURCE and TARGET are read from `.git/MERGE_HEAD`
+  or from `.git/rebase-merge/{head-name,onto}`, the same files `merge-forensics.sh --in-progress`
+  reads, so the walk and the audit agree on the three references by construction. The form was
+  already what a caller mid-rebase reached for; it was not in the input table, so everything below it
+  ran on inference.
+
+### Fixed
+
+- The rebase lane was one sentence, and every phase after it was written for a merge. It is now a
+  loop that is spelled out: per stopped step, Phase 3.5, the walk, Phase 5.5, then
+  `rebase --continue`. Phase 5 is explicitly outside that loop and runs once, after the last step
+  lands, because a branch mid-rebase carries a half-replayed history whose failures say nothing about
+  the result and whose greens prove nothing either.
+- Phase 5.5 could not run at all where it mattered. `--in-progress` reads the rebase state directory
+  and the final `rebase --continue` deletes it, so an audit deferred to the end of the rebase exits 2
+  — correctly, since a rebase leaves no merge commit for the finished form to audit either. The phase
+  now says to run it before every `--continue`, and names the only honest recovery when the state is
+  already gone: a hand read of `git diff {TARGET}..HEAD` for deletions of lines the target owns.
+- Phase 2 told the run to confirm the current branch is SOURCE, which a stopped rebase can never
+  satisfy: HEAD is detached by design and SOURCE lives in `rebase-merge/head-name`. The phase is now
+  skipped outright for an adopted or stopped operation, where fetching and pulling are a way to lose
+  the state rather than a preparation for it.
+- Phase 6 assumed a `MERGE_MSG` that a rebase never writes. Steps 1 to 4 are now marked merge-only,
+  since each rebase step was already committed by its own `--continue`, and the no-push rule covers
+  the adopted mode alongside LOCAL.
+
 ## unslop-kit v0.7.1 - 2026-08-24
 
 ### Fixed

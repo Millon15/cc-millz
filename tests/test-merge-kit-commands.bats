@@ -236,3 +236,47 @@ teardown() { teardown_tmp; }
 	done <"${FIXTURES}/origin-urls.txt"
 	[ "${n}" -ge 7 ]
 }
+
+# ------------------------------------------------------------ the rebase lane --
+
+@test "merge-kit commands: the bare repo form is a documented mode, not an inference" {
+	# A caller already stopped mid-rebase reaches for `/merge-kit:resolve <repo>`.
+	# Leaving that form out of the hint and the table means everything below it
+	# runs on guesswork about SOURCE, TARGET and the strategy.
+	assert_contains "${RESOLVE}" 'argument-hint: <repo> | <repo> <pr-number> |'
+	assert_contains "${RESOLVE}" 'ADOPT mode — a merge or a rebase is already stopped in the repo'
+	# The three references come from the same files the forensic script reads,
+	# so a divergence between the walk and the audit is impossible by construction.
+	assert_contains "${RESOLVE}" '`.git/MERGE_HEAD` exists'
+	assert_contains "${RESOLVE}" '`rebase-merge/head-name`'
+	assert_contains "${RESOLVE}" '`rebase-merge/onto`'
+}
+
+@test "merge-kit commands: the rebase lane is a per-step loop with the suite outside it" {
+	# Phase 5 inside the loop gates on a half-replayed branch: its failures say
+	# nothing about the result, and its greens prove nothing either.
+	assert_contains "${RESOLVE}" 'One step is one FULL pass of Phase 3.5, the Phase 4 walk and Phase 5.5'
+	assert_contains "${RESOLVE}" 'Phase 5 is NOT in that loop'
+	assert_contains "${RESOLVE}" 'this phase runs ONCE, after the last step'
+	assert_contains "${RESOLVE}" 'the loop is PER STEP'
+}
+
+@test "merge-kit commands: the pre-continue forensic ordering is stated as load-bearing" {
+	# --in-progress reads the rebase state directory and the last --continue
+	# deletes it, so an audit deferred to the end of the rebase cannot run at all.
+	assert_contains "${RESOLVE}" 'before that step'"'"'s `rebase --continue`'
+	assert_contains "${RESOLVE}" 'the final `--continue` deletes it'
+	assert_contains "${RESOLVE}" 'no merge commit for the finished form to audit'
+	# The degrade is named rather than left to improvisation.
+	assert_contains "${RESOLVE}" 'diff {TARGET}..HEAD'
+}
+
+@test "merge-kit commands: no phase asks a stopped rebase for a current branch" {
+	# A stopped rebase detaches HEAD, so `branch --show-current` is empty by
+	# design and the Phase 2 check can never pass.
+	assert_contains "${RESOLVE}" 'a stopped rebase leaves HEAD detached'
+	assert_contains "${RESOLVE}" 'Skip this phase ENTIRELY in ADOPT mode'
+	# A rebase writes no MERGE_MSG, so the commit steps are merge-only.
+	assert_contains "${RESOLVE}" 'steps 1 to 4 do not apply'
+	assert_contains "${RESOLVE}" '6. LOCAL and ADOPT modes: NEVER push.'
+}

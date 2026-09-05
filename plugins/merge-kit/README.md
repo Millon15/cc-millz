@@ -11,6 +11,7 @@ Neither assumes a language, a forge or a directory layout. Both read the project
 - **The forge is never a committed field** — it is read from each repository's own `origin` remote on every run, so a repo that moved between hosts is right immediately instead of stale. `gh`, `bbkt`, `glab`, and an honest `null` for a host with no known CLI.
 - **A merge is measured against the fork point, not against the previous commit** — where one side rewrote a region the other side had extended, the extension can vanish with no conflict and nothing in the merge's own diff to show it. `merge-forensics.sh` compares FORK, PRE and POST, and reports the exact lines lost.
 - **Mid-conflict is a first-class state** — `--in-progress` autodetects a stopped merge from `MERGE_HEAD` and a stopped rebase from its state directory, reading POST from the index and worktree. The audit runs before anything is committed, twice: once before the walk, once before the commit.
+- **A rebase is a loop, not a merge** — every stopped step gets its own audit, walk and pre-continue forensic check, because `--in-progress` reads the rebase state directory and the last `rebase --continue` deletes it. The suite runs once, after the final step lands: a half-replayed branch proves nothing either way. Hand `/merge-kit:resolve` a bare repo alias and it adopts whatever is already stopped there.
 - **A squash is refused rather than guessed** — one parent means git recorded no link back to the source branch, so the fork point is not recoverable. The script exits 2 asking for `--fork` or `--source`; a fabricated fork point produces a confident wrong answer.
 - **Auto-resolve is licensed by the net** — the tiering only earns its speed because the audit, the full suite and the pre-commit forensic check all run unconditionally. Every automatic call is logged with the fact that settled it, and echoed for audit before the commit.
 
@@ -18,7 +19,7 @@ Neither assumes a language, a forge or a directory layout. Both read the project
 
 | Component | Trigger | Description |
 |-----------|---------|-------------|
-| command | `/merge-kit:resolve <repo> <pr>` · `<repo> local <feature> <target>` | 🔀 Tiered conflict resolution — auto for TRIVIAL and OBVIOUS, a one-at-a-time walk for AMBIGUOUS, forensics before the commit |
+| command | `/merge-kit:resolve <repo> <pr>` · `<repo> local <feature> <target>` · `<repo>` (adopt a stopped merge or rebase) | 🔀 Tiered conflict resolution — auto for TRIVIAL and OBVIOUS, a one-at-a-time walk for AMBIGUOUS, forensics before the commit |
 | command | `/merge-kit:verify <repo> <commit\|pr>` · `<repo> --in-progress` | 🔎 Forensic audit of a merge, rebase or squash — at-risk files, full reverts, the exact lines lost, per-file verdict |
 | script | `scripts/merge-kit.sh --explain` | Resolves the repo map, the forge CLI and the test command, and prints them as JSON with a source per key |
 | script | `scripts/merge-forensics.sh --repo <path>` | The comparison itself: FORK, PRE, POST, and one JSON verdict |
