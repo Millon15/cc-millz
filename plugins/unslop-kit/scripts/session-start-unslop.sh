@@ -4,7 +4,7 @@
 #
 # Injects the unslop-kit directive into the first system-reminder block so
 # Claude loads ALL THREE dolls before its first reply:
-# `unslop-kit:unslop-formatting` (layout), `pstack:unslop` (wording) and
+# `unslop-kit:unslop-formatting` (layout), `unslop-kit:unslop` (wording) and
 # `review:writing-style` (precision). Fires on every SessionStart source
 # (startup, resume, clear, compact): compaction drops loaded skills, so the
 # directive has to come back with it.
@@ -12,6 +12,11 @@
 # Why every name: a directive that names only the wrapper gets the wrapper
 # loaded and the inner skills skipped (observed 2026-08-19, the reply was
 # written against the abridged fallback while pstack was installed).
+#
+# Why unslop-kit:unslop and not pstack:unslop: upstream flagged pstack's copy
+# `disable-model-invocation` (cursor/plugins PR #300, 2026-09-01), which hides
+# it from the model's skill list and makes the Skill tool refuse it. The kit
+# ships its own copy, refreshed by scripts/sync-unslop.sh.
 #
 # stdin:  SessionStart payload (JSON), drained and ignored.
 # stdout: { "hookSpecificOutput": { "hookEventName": "SessionStart",
@@ -56,24 +61,15 @@ plugin_installed() {
 		jq -e --arg p "$1" '(.plugins[$p] // []) | length > 0' "$installed_json" >/dev/null 2>&1
 }
 
-if plugin_installed "pstack@cc-millz"; then
-	pass1_call='Skill(skill="pstack:unslop") - pass 1, the wording'
-	IFS= read -r -d '' pass1 <<'EOF' || true
-pstack@cc-millz is installed on this machine, so the pass-1 call is not optional:
-`Skill(skill="pstack:unslop")` in the SAME tool batch as the others. The abridged
-fallback checklist inside unslop-formatting is for machines where `pstack:unslop`
-is absent from the skill list; here it is a violation. A reply written without a
-visible `Skill(skill="pstack:unslop")` call in this context window did not get
-pass 1.
+pass1_call='Skill(skill="unslop-kit:unslop") - pass 1, the wording'
+IFS= read -r -d '' pass1 <<'EOF' || true
+`unslop-kit:unslop` ships with this kit, so the pass-1 call is never optional:
+`Skill(skill="unslop-kit:unslop")` in the SAME tool batch as the others. It is the
+31-pattern pstack unslop body kept model-invocable; `pstack:unslop` itself is
+user-invocation-only and the Skill tool refuses it. A reply written without a
+visible `Skill(skill="unslop-kit:unslop")` call in this context window did not
+get pass 1.
 EOF
-else
-	pass1_call='(skip) Skill(skill="pstack:unslop") is not available here, see below'
-	IFS= read -r -d '' pass1 <<'EOF' || true
-pstack@cc-millz is NOT installed on this machine, so pass 1 runs on the abridged
-fallback checklist inside unslop-formatting. Say so once, in your first reply.
-Install with `/plugin install pstack@cc-millz` to get the full 31-pattern pass.
-EOF
-fi
 
 if plugin_installed "review@umputun-cc-thingz"; then
 	pass2_call='Skill(skill="review:writing-style") - pass 2, the precision'
@@ -102,7 +98,7 @@ compaction (loaded skills do not survive it), make THREE Skill calls in ONE batc
 
 $pass1
 $pass2
-It is a Russian doll: pass 1 \`pstack:unslop\` cuts the AI tells from the wording,
+It is a Russian doll: pass 1 \`unslop-kit:unslop\` cuts the AI tells from the wording,
 pass 2 \`review:writing-style\` pins every claim to an exact reference
 (path:line, PR #n, commit, link) and a flat verdict, pass 3 \`unslop-formatting\`
 lays the reply out as figure-paragraphs (English Check block first and

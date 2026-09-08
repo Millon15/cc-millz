@@ -1,5 +1,31 @@
 # Changelog
 
+## unslop-kit v0.8.0 - 2026-09-08
+
+### Added
+
+- `unslop-kit:unslop` — poteto's unslop body vendored byte for byte under a model-facing frontmatter
+  (MIT, Lauren Tan). Upstream cursor/plugins PR #300 (2026-09-01, `73f8be4`) set
+  `disable-model-invocation: true` on `pstack:unslop`, which drops it from the model's skill list and
+  makes the Skill tool answer "cannot be used with Skill tool due to disable-model-invocation". The
+  kit's pass 1 needs the 31 patterns reachable by the model and by other skills, so it ships its own
+  copy. Vendored from pstack `71ed0d1076fe`; rule ids 3-33 unchanged.
+- `scripts/sync-unslop.sh` — re-vendors the skill from the installed `pstack@cc-millz` (path from
+  `installed_plugins.json`, `CLAUDE_CONFIG_DIR`-aware) or from a path argument, and writes a provenance
+  line with the upstream sha and date. `--check` exits 1 on drift, 2 when no source is found.
+- `tests/test-unslop-kit-sync.bats` covers the render, the provenance line, `--check` and the no-source
+  exit.
+
+### Changed
+
+- The SessionStart hook and `unslop-formatting` name `Skill(skill="unslop-kit:unslop")` for pass 1.
+  The pstack install check and the "fallback while pstack is installed is a violation" wording are
+  gone: the pass-1 skill always ships with the kit, so only the writing-style call stays gated.
+- `unslop-formatting` no longer scopes pstack's "Adding soul" step: upstream `e8d856f` (2026-09-07)
+  removed that step, so the paragraph overrode nothing.
+- `pstack@cc-millz` is no longer a runtime requirement of unslop-kit; it is needed only to re-run the
+  sync script.
+
 ## merge-kit v0.2.0 - 2026-09-04
 
 ### Added

@@ -2,7 +2,7 @@
 name: unslop-formatting
 description: >
   Millon15's reply contract, a Russian doll over pstack's unslop and umputun's
-  writing-style: pass 1 `pstack:unslop` cuts the AI tells from the wording, pass 2
+  writing-style: pass 1 `unslop-kit:unslop` cuts the AI tells from the wording, pass 2
   `review:writing-style` pins every claim to an exact reference and a flat verdict,
   pass 3 lays the reply out as figure-paragraphs (English Check first, TL;DR, then
   per paragraph: emoji claim line, two sentences of prose, a captioned
@@ -17,25 +17,17 @@ description: >
 
 Three passes, fixed order. Wording first, precision second, layout last: layout adds the emoji glyphs and bold lead-ins that unslop would strip if it ran last. On conflict: layout > writing-style > unslop; a project's outbound skill owns the layout of a send and may set its own precedence.
 
-## Pass 1: wording, `pstack:unslop`
+## Pass 1: wording, `unslop-kit:unslop`
 
-Gate, before anything else in this skill: if `pstack:unslop` is in your skill list and this context window holds no `Skill(skill="pstack:unslop")` call of yours, make that call now. Reading this file is not loading pstack. The unslop-kit hook names all three calls for a reason: a session that loads only the wrapper writes its replies against the fallback below and calls that pass 1. It is not. Repeat the call after compaction, since compaction drops loaded skills.
+Gate, before anything else in this skill: if this context window holds no `Skill(skill="unslop-kit:unslop")` call of yours, make that call now. Reading this file is not loading it. The unslop-kit hook names all three calls for a reason: a session that loads only the wrapper writes its replies from memory of the patterns and calls that pass 1. It is not. Repeat the call after compaction, since compaction drops loaded skills.
 
-Then run pstack's 31 patterns and its self-audit ("what makes this obviously AI generated?") over the draft.
+`unslop-kit:unslop` is pstack's unslop body, shipped inside this kit because upstream made `pstack:unslop` user-invocation-only (the Skill tool refuses it, and it is absent from the skill list). `scripts/sync-unslop.sh` refreshes the copy; never edit it by hand.
 
-pstack's "Adding soul" step (vary rhythm, let some mess in, first person) belongs to chat replies and prose. On layout-free surfaces (commit messages, PR bodies, code comments, docs, Slack/Jira/Linear bodies) run the 31 patterns and the self-audit, keep "be specific" and "have an opinion", skip the rest of that step; brevity wins there.
-
-Fallback, ONLY when `pstack:unslop` is absent from the skill list (pstack@cc-millz not installed): apply these checks and say so once. Using the fallback while pstack is installed is a violation, not a shortcut.
-
-- No em dashes. Period or comma.
-- No AI vocabulary: additionally, crucial, delve, leverage, robust, seamless, landscape, tapestry, testament, underscore, showcase, foster.
-- No "not just X but Y", no rule-of-three padding, no filler ("in order to", "it is important to note").
-- No chatbot closers ("Let me know if…", "Hope this helps") and no sycophancy ("Great question").
-- Active voice with a named actor. Plain word over the fancy synonym. The mechanism or the number instead of the feeling.
+Then run its 31 patterns and its self-audit ("what makes this obviously AI generated?") over the draft. On layout-free surfaces (commit messages, PR bodies, code comments, docs, Slack/Jira/Linear bodies) the same patterns apply and brevity wins.
 
 ## Pass 2: precision, `review:writing-style`
 
-Gate, same shape as pass 1: if `review:writing-style` is in your skill list and this context window holds no `Skill(skill="review:writing-style")` call of yours, make that call now, in the same batch as the pstack call when both are due.
+Gate, same shape as pass 1: if `review:writing-style` is in your skill list and this context window holds no `Skill(skill="review:writing-style")` call of yours, make that call now, in the same batch as the unslop call when both are due.
 
 Its User Override Check does not fire here: this skill IS the user's writing rule, and it invokes writing-style deliberately, for these sections. Its markdown-formatting section and its public-docs scope split yield to pass 3 and to the surface's own rules.
 
@@ -133,11 +125,11 @@ Every table, fence and visual sits at column zero with a blank line on each side
 
 ## Scope
 
-Chat replies get all three passes. Commit messages, PR bodies, code comments, docs, Slack, Jira and Linear bodies get passes 1 and 2 only, without the pass-3 overrides; `essentials:concise-writing` and the project's outbound skill own their layout. A project's outbound skill is such an orchestrator when it calls `pstack:unslop`, `review:writing-style` and `essentials:concise-writing` itself and ranks writing-style above unslop on conflict, the same ranking as here; this skill is not in that chain.
+Chat replies get all three passes. Commit messages, PR bodies, code comments, docs, Slack, Jira and Linear bodies get passes 1 and 2 only, without the pass-3 overrides; `essentials:concise-writing` and the project's outbound skill own their layout. A project's outbound skill is such an orchestrator when it calls `unslop-kit:unslop`, `review:writing-style` and `essentials:concise-writing` itself and ranks writing-style above unslop on conflict, the same ranking as here; this skill is not in that chain.
 
 ## Send-check
 
-- `Skill(skill="pstack:unslop")` is visible in this context window, or pstack is genuinely not installed and you said so once.
+- `Skill(skill="unslop-kit:unslop")` is visible in this context window.
 - `Skill(skill="review:writing-style")` is visible in this context window, or review@umputun-cc-thingz is genuinely not installed and you said so once.
 - English block first and untouched.
 - TL;DR before details.
