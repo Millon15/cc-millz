@@ -1,0 +1,1 @@
+{"workspaces":[{"id":"ws-1","name":"w","sessions":[{"id":"11111111-1111-1111-1111-111111111111","name":"claude","cwd":"/tmp/repo","foreground":["claude"],"hasSplit":true,"split":true,"splitForeground":["codex","-c","shell_environment_policy.set.AGTERM_SESSION_ID=\"11111111-1111-1111-1111-111111111111\""]}]}]}

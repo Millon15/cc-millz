@@ -1,0 +1,95 @@
+#!/usr/bin/env bats
+#
+# tests/test-peer-chat-install.bats
+#
+# peer-chat-install.sh writes into three places the two agents read from. The suite points all
+# three at a temp HOME through PEER_CHAT_BIN_DIR and CODEX_HOME, so a run never touches the real
+# ~/.codex, and asserts idempotence: a second run changes nothing and appends no duplicate rule.
+
+setup() {
+    REPO_ROOT="$(cd "${BATS_TEST_DIRNAME}/.." && pwd)"
+    # shellcheck source=/dev/null
+    source "${REPO_ROOT}/tests/helpers/common.bash"
+    setup_tmp
+    PLUGIN="${REPO_ROOT}/plugins/peer-chat"
+    INSTALL="${PLUGIN}/scripts/peer-chat-install.sh"
+    export PEER_CHAT_BIN_DIR="${TMP}/bin" CODEX_HOME="${TMP}/codex"
+    PATH="${PEER_CHAT_BIN_DIR}:${PATH}"
+    export PATH
+}
+
+teardown() { teardown_tmp; }
+
+@test "install: --check on a bare machine exits 1 and names every missing piece" {
+    run bash "${INSTALL}" --check
+    assert_status 1
+    assert_contains "${output}" "MISSING or stale  ${TMP}/bin/peer-chat.py"
+    assert_contains "${output}" "MISSING or stale  ${TMP}/codex/skills/peer-chat/SKILL.md"
+    assert_contains "${output}" "MISSING  peer-chat rules"
+}
+
+@test "install: writes the script, the codex skill and both rules, then --check passes" {
+    run bash "${INSTALL}"
+    assert_status 0
+    [ -x "${TMP}/bin/peer-chat.py" ]
+    cmp -s "${PLUGIN}/scripts/peer-chat.py" "${TMP}/bin/peer-chat.py"
+    cmp -s "${PLUGIN}/codex/SKILL.md" "${TMP}/codex/skills/peer-chat/SKILL.md"
+    run grep -c 'prefix_rule(pattern=\["peer-chat.py"' "${TMP}/codex/rules/default.rules"
+    [ "${output}" = "2" ]
+    run bash "${INSTALL}" --check
+    assert_status 0
+}
+
+@test "install: a second run is a no-op and never duplicates a rule" {
+    bash "${INSTALL}" >/dev/null
+    run bash "${INSTALL}"
+    assert_status 0
+    assert_contains "${output}" "unchanged ${TMP}/bin/peer-chat.py"
+    assert_contains "${output}" "present   prefix_rule"
+    run grep -c 'peer-chat.py' "${TMP}/codex/rules/default.rules"
+    [ "${output}" = "2" ]
+}
+
+@test "install: keeps rules the user already had in default.rules" {
+    mkdir -p "${TMP}/codex/rules"
+    printf 'prefix_rule(pattern=["git", "status"], decision="allow")\n' > "${TMP}/codex/rules/default.rules"
+    bash "${INSTALL}" >/dev/null
+    run cat "${TMP}/codex/rules/default.rules"
+    assert_contains "${output}" '"git", "status"'
+    assert_contains "${output}" '"--prepare-message"'
+    assert_contains "${output}" '"--to", "claude", "--message-file"'
+}
+
+@test "install: a stale copy of peer-chat.py is refreshed" {
+    bash "${INSTALL}" >/dev/null
+    printf '# stale\n' > "${TMP}/bin/peer-chat.py"
+    run bash "${INSTALL}" --check
+    assert_status 1
+    run bash "${INSTALL}"
+    assert_status 0
+    assert_contains "${output}" "wrote     ${TMP}/bin/peer-chat.py"
+    cmp -s "${PLUGIN}/scripts/peer-chat.py" "${TMP}/bin/peer-chat.py"
+}
+
+@test "install: warns when the bin dir is off PATH" {
+    PATH="/usr/bin:/bin" run bash "${INSTALL}"
+    assert_status 0
+    assert_contains "${output}" "WARN      add ${TMP}/bin to PATH"
+}
+
+@test "codex skill: the installed body is the vendored Codex side, with the spawn named" {
+    run head -2 "${PLUGIN}/codex/SKILL.md"
+    assert_contains "${output}" "name: peer-chat"
+    run grep -c 'peer-chat-spawn.sh' "${PLUGIN}/codex/SKILL.md"
+    [ "${output}" = "1" ]
+}
+
+@test "claude skill: names the preflight, the spawn, and keeps upstream's guardrails" {
+    body="$(cat "${PLUGIN}/skills/peer-chat/SKILL.md")"
+    assert_contains "${body}" 'peer-chat-install.sh" --check'
+    assert_contains "${body}" 'peer-chat-spawn.sh"'
+    assert_contains "${body}" "Never wait for a reply"
+    assert_contains "${body}" "sole writer"
+    assert_contains "${body}" "Chat from Codex:"
+    assert_not_contains "${body}" "never starts an agent"
+}

@@ -1,5 +1,32 @@
 # Changelog
 
+## peer-chat v0.1.0 - 2026-09-08
+
+### Added
+
+- `peer-chat` — umputun's agterm `two-agent-chat` cookbook recipe as a plugin: `peer-chat.py` and its
+  135-test unittest suite vendored byte for byte from `umputun/agterm@14858ea` (MIT), the Claude-side
+  skill edited, the Codex-side skill shipped under `codex/` for the installer to place.
+- `scripts/peer-chat-spawn.sh` — the one departure from upstream, which leaves starting Codex to the
+  human. Opens the split when it is missing, waits for a shell prompt to draw, types the single codex
+  launch line with this pane's session id injected through `shell_environment_policy`, and waits until
+  `tree --json` reports codex as the right pane's foreground. Refuses a busy right pane, a Claude that
+  is not the main pane's foreground, and anything outside agterm; `--explain` prints `codex_args`,
+  `codex_command`, `claude_command` and `start_timeout` with their sources (env, a committed
+  `.peer-chat.json`, or default) under the marketplace's `--explain` contract.
+- `scripts/peer-chat-install.sh` — copies `peer-chat.py` onto `PATH` (a copy, since a symlink into the
+  plugin cache dies on the next version bump), installs the Codex skill into `~/.codex/skills/peer-chat/`
+  and appends the two `prefix_rule` approval lines to `~/.codex/rules/default.rules` once; `--check`
+  is the skill's preflight.
+- The skill's description gains an autonomous branch: fire on your own when a design has two
+  defensible options, a root cause has not been disproved, a diff ships unreviewed, or an investigation's
+  reading can be split — and say so in one line before the first send.
+- `scripts/sync-upstream.sh` re-vendors the verbatim files and stages upstream's two skill files for a
+  hand merge; `UPSTREAM.md` pins the commit.
+- Tests: `tests/test-peer-chat-spawn.bats` drives the spawn against a stubbed `agtermctl` state machine
+  and asserts what is typed and, for a pane already running codex, what is not; `test-peer-chat-install.bats`
+  proves idempotence against a temp `CODEX_HOME`; `test-peer-chat-upstream.bats` runs the vendored suite.
+
 ## unslop-kit v0.8.0 - 2026-09-08
 
 ### Added
