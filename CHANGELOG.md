@@ -1,5 +1,12 @@
 # Changelog
 
+## plan v0.1.1 - 2026-09-09
+
+### Fixed
+
+- `plan-research.sh` no longer glob-expands a `claude_args` allow-list entry such as `Bash(docker:*)`
+  against the working directory before handing it to claude.
+
 ## plan v0.1.0 - 2026-09-09
 
 ### Added

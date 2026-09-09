@@ -1,7 +1,7 @@
 {
   "name": "plan",
   "description": "Answer a question with empirical proof instead of source-reading alone. /plan:research fans out to a read-only researcher (facts with file:line citations), the main thread drafts falsifiable hypotheses, and a proover writes runnable artifacts under tmp/a/<slug>/ that try to DISPROVE each one; the answer tags every claim PROVEN, DISPROVED, INCONCLUSIVE, READ-ONLY or ASSUMPTION. plan-research.sh runs the same pipeline headless, so a second agent (Codex in a peer-chat pane, a CI job) can ask for a proof and read the artifacts. Project tooling comes from a committed .plan.json.",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "author": {
     "name": "Millon15"
   }

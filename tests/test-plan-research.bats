@@ -25,11 +25,11 @@ teardown() { teardown_tmp; }
 
 # ------------------------------------------------------------- the package --
 
-@test "plan: manifest is 0.1.0 and the marketplace lists the plugin" {
+@test "plan: manifest is 0.1.1 and the marketplace lists the plugin" {
     run jq -r '.name, .version' "${PLUGIN}/.claude-plugin/plugin.json"
     assert_status 0
     assert_contains "${output}" "plan"
-    assert_contains "${output}" "0.1.0"
+    assert_contains "${output}" "0.1.1"
     run jq -r '.plugins[] | select(.name == "plan") | .source' "${REPO_ROOT}/.claude-plugin/marketplace.json"
     assert_status 0
     assert_contains "${output}" "./plugins/plan"
@@ -81,6 +81,9 @@ teardown() { teardown_tmp; }
     assert_status 0
     argv="$(cat "${TMP}/claude-argv")"
     assert_contains "${argv}" "--allowedTools Bash(docker:*) /plan:research slug=cache-check is it cached"
+    touch "Bash(docker:x)"
+    run bash "${SCRIPT}" "is it cached" --slug cache-check
+    assert_contains "$(cat "${TMP}/claude-argv")" "--allowedTools Bash(docker:*) /plan:research"
     [ -f "${TMP}/repo/tmp/proofs/cache-check/answer.md" ]
 }
 

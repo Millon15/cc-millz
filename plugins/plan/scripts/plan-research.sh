@@ -134,10 +134,14 @@ run_research() {
 	answer="${out_dir}/answer.md"
 	prefix="$(timeout_prefix)"
 	say "running /plan:research slug=${slug} (artifacts: ${ARTIFACTS_DIR}/${slug}/)"
+	# claude_args word-splits on purpose (several flags in one string); -f keeps a `Bash(docker:*)`
+	# allow-list entry from being glob-expanded against the working directory.
+	set -f
 	# shellcheck disable=SC2086
 	${prefix} "$CLAUDE_COMMAND" -p --strict-mcp-config --output-format text $CLAUDE_ARGS \
 		"/plan:research slug=${slug} ${question}" | tee "$answer"
 	status=${PIPESTATUS[0]}
+	set +f
 	[ "$status" -eq 0 ] || die "claude exited ${status}; partial answer in ${answer}" 1
 	say "answer: ${ARTIFACTS_DIR}/${slug}/answer.md"
 }
