@@ -40,7 +40,8 @@ case "\$1 \$2" in
     "tree --json") cat "${FIX}/\${state}.json" ;;
     "session split") printf 'tree-split-shell' > "${TMP}/tree-state"; echo ok ;;
     "session text") echo '%' ;;
-    "session type") cat >> "${TMP}/typed.log"; printf 'tree-split-codex' > "${TMP}/tree-state"; echo ok ;;
+    "session type") typed="\$(cat)"; printf '%s\n' "\$typed" >> "${TMP}/typed.log"
+        case "\$typed" in /quit*) printf 'tree-split-shell' > "${TMP}/tree-state" ;; *) printf 'tree-split-codex' > "${TMP}/tree-state" ;; esac; echo ok ;;
     "session focus") echo ok ;;
     *) echo "stub: unexpected \$*" >&2; exit 9 ;;
 esac
@@ -50,11 +51,11 @@ EOF
 
 # ------------------------------------------------------------- the package --
 
-@test "peer-chat: manifest is 0.1.0 and the marketplace lists the plugin" {
+@test "peer-chat: manifest is 0.2.0 and the marketplace lists the plugin" {
     run jq -r '.name, .version' "${PLUGIN}/.claude-plugin/plugin.json"
     assert_status 0
     assert_contains "${output}" "peer-chat"
-    assert_contains "${output}" "0.1.0"
+    assert_contains "${output}" "0.2.0"
     run jq -r '.plugins[] | select(.name == "peer-chat") | .source' "${REPO_ROOT}/.claude-plugin/marketplace.json"
     assert_status 0
     assert_contains "${output}" "./plugins/peer-chat"
@@ -139,7 +140,8 @@ EOF
 @test "spawn: exit 3 names the missing tool when peer-chat.py is not on PATH" {
     set_tree tree-no-split
     unstub peer-chat.py
-    run bash "${SPAWN}"
+    # a real ~/.local/bin/peer-chat.py from peer-chat-install.sh must not satisfy the probe
+    PATH="${STUB_BIN}:$(dirname "$(command -v jq)"):/usr/bin:/bin" run bash "${SPAWN}"
     assert_status 3
     assert_contains "${output}" "peer-chat.py not on PATH"
     assert_contains "${output}" "peer-chat-install.sh"
@@ -148,11 +150,40 @@ EOF
 @test "spawn: exit 1 with a read-back hint when codex never appears" {
     set_tree tree-split-shell
     # a `session type` that leaves the tree unchanged
-    sed -i.bak 's/printf .tree-split-codex. > "[^"]*"; //' "${STUB_BIN}/agtermctl"
+    sed -i.bak 's#\*) printf .tree-split-codex. > "[^"]*" ;;#*) : ;;#' "${STUB_BIN}/agtermctl"
     PEER_CHAT_START_TIMEOUT=1 run bash "${SPAWN}"
     assert_status 1
     assert_contains "${output}" "did not appear"
     assert_contains "${output}" "agtermctl session text --pane right --target ${SID}"
+}
+
+# ---------------------------------------------------------------- restart --
+
+@test "restart: codex in the right pane gets /quit, then the launch line, reports restarted" {
+    set_tree tree-split-codex
+    run bash "${SPAWN}" --restart
+    assert_status 0
+    assert_contains "${output}" '"state":"restarted"'
+    typed="$(cat "${TMP}/typed.log")"
+    [ "$(printf '%s' "${typed}" | head -1)" = "/quit" ]
+    assert_contains "$(printf '%s' "${typed}" | tail -1)" "codex -c 'shell_environment_policy.set.AGTERM_SESSION_ID=\"${SID}\"'"
+    assert_not_contains "$(cat "${TMP}/calls.log")" "session split on"
+}
+
+@test "restart: with no codex running it behaves like a plain spawn and types no /quit" {
+    set_tree tree-no-split
+    run bash "${SPAWN}" --restart
+    assert_status 0
+    assert_contains "${output}" '"state":"started"'
+    assert_not_contains "$(cat "${TMP}/typed.log")" "/quit"
+}
+
+@test "restart: exit 1 with a read-back hint when codex ignores /quit" {
+    set_tree tree-split-codex
+    sed -i.bak 's#/quit\*) printf .tree-split-shell. > "[^"]*" ;;#/quit*) : ;;#' "${STUB_BIN}/agtermctl"
+    PEER_CHAT_START_TIMEOUT=1 run bash "${SPAWN}" --restart
+    assert_status 1
+    assert_contains "${output}" "still the right pane's foreground"
 }
 
 # ---------------------------------------------------------------- explain --

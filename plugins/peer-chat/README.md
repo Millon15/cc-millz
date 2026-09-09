@@ -12,6 +12,9 @@ Claude Code and Codex hold a conversation in one agterm split, each typing a lin
 - **Vendored recipe, one departure.** `peer-chat.py` and its 135 tests are umputun's [two-agent-chat](https://github.com/umputun/agterm/tree/master/cookbook/two-agent-chat) recipe, byte for byte (see `UPSTREAM.md`). Upstream leaves starting Codex to the human; this plugin lets Claude open the pane itself.
 - **Claude decides when a colleague is worth it.** The skill fires on "work with codex" and friends, on an incoming `Chat from Codex:`, and on its own when a decision would be better for an adversary: a design with two defensible options, a root cause nobody has tried to disprove, a diff about to ship unreviewed. It says so in one line first; closing the pane ends the exchange.
 - **The spawn types exactly one line.** `peer-chat-spawn.sh` opens the split, watches a shell prompt draw, types the codex launch line with this pane's session id injected (`shell_environment_policy.set.AGTERM_SESSION_ID`, since Codex strips it from tool subprocesses), and waits until agterm reports codex as the pane's foreground. Every later keystroke goes through `peer-chat.py`'s checks.
+- **One line the user can follow.** Every message is an emoji ledger: `🎯` claim, `🔎` evidence as `path:line` or a proof path, `📎` an artifact with how to run it and what it showed, `❓` the one question. Under 700 characters, one claim per message, no "round n of m" staging. The point is that the human reading both panes can catch a domain mistake and interrupt either side.
+- **Artifacts, not prose files.** Scripts, outputs, queries, HTML and fixtures go to `tmp/peer-chat/<slug>/` under the repo root as `NN-<agent>-<what>.<ext>`; both agents write there and the record outlives the session. A markdown file only when reasoning does not fit a line, and the chat line still carries the claim.
+- **Proofs beat agreed readings.** A contested claim about runtime behaviour gets a proof before the next send: Claude runs `/plan:research` (plugin `plan@cc-millz`), Codex runs `plan-research.sh` or a script of its own. An unproved claim goes out marked `🎯 unproven:`.
 - **Sole-writer rule survives.** The agent that received the user's request writes; the one brought in by a `Chat from` message or by the spawn stays read-only and hands patches over as mode-0600 temp files with a SHA-256.
 - **No prompt is ever answered for you.** Trust dialogs, login, permission requests and choosers are the user's; both skills stop and report.
 
@@ -22,7 +25,7 @@ Claude Code and Codex hold a conversation in one agterm split, each typing a lin
 | skill | `peer-chat` | 🗣️ Claude side: preflight, spawn, send, receive, shared-work rules, manners |
 | file | `codex/SKILL.md` | 🤖 Codex side, installed to `~/.codex/skills/peer-chat/SKILL.md` by the installer |
 | script | `scripts/peer-chat.py` | 📨 the vendored transport: composer and caret checks, 197-byte marked events, submit confirmation |
-| script | `scripts/peer-chat-spawn.sh` | 🪟 open the split and start Codex; `--explain` prints the resolved config |
+| script | `scripts/peer-chat-spawn.sh` | 🪟 open the split and start Codex; `--restart` quits and relaunches it after a skill update; `--explain` prints the resolved config |
 | script | `scripts/peer-chat-install.sh` | 🔧 copy `peer-chat.py` onto PATH, install the Codex skill and its two approval rules; `--check` reports |
 | script | `scripts/sync-upstream.sh` | 🔄 re-vendor from umputun/agterm and stage the two skill files for a hand merge |
 

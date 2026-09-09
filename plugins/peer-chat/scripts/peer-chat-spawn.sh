@@ -2,19 +2,23 @@
 # peer-chat-spawn — make sure Codex is running in the RIGHT pane of this agterm session.
 #
 #   peer-chat-spawn.sh            # open the split if needed, start codex, wait until it runs
+#   peer-chat-spawn.sh --restart  # quit the codex already there, then start a fresh one
 #   peer-chat-spawn.sh --explain  # print the resolved config as JSON, change nothing
 #
 # peer-chat.py hard-codes the layout: Claude Code in the main (left) pane, Codex in the split
 # (right) pane, both in ONE session. Upstream leaves starting Codex to the human; this script is the
-# one deliberate departure, so Claude can bring in a peer on its own. The ONLY thing it ever types
-# is the codex launch line, into a shell prompt it has watched draw in a pane that was empty.
+# one deliberate departure, so Claude can bring in a peer on its own. The ONLY things it ever types
+# are the codex launch line, into a shell prompt it has watched draw in a pane that was empty, and
+# on --restart the one `/quit` line that ends the codex already running there, so a Codex started
+# before a skill update can pick the update up.
 #
 # Codex strips AGTERM_SESSION_ID from its tool subprocesses, so the launch line re-injects the
 # pane's session id through shell_environment_policy; without it peer-chat.py refuses a send
 # whenever two sessions share the checkout.
 #
 # Exit codes: 0 codex runs in the right pane (already, or started here) — stdout carries one JSON
-# line {"state":"already"|"started","session":ID}. 1 codex did not appear within start_timeout.
+# line {"state":"already"|"started"|"restarted","session":ID}. 1 codex did not appear within
+# start_timeout, or did not quit within it on --restart.
 # 2 unreadable .peer-chat.json or bad usage. 3 a required tool is missing. 4 wrong place: outside
 # agterm, this pane is not the main pane, or its foreground is not claude.
 set -u
@@ -183,6 +187,21 @@ type_launch_line() {
 	agtermctl session focus left --target "$AGTERM_SESSION_ID" >/dev/null 2>&1 || true
 }
 
+wait_for_codex_gone() {
+	local deadline=$((SECONDS + START_TIMEOUT))
+	while [ "$SECONDS" -lt "$deadline" ]; do
+		pane_runs splitForeground "$CODEX_COMMAND" || return 0
+		sleep 0.5
+	done
+	die "'${CODEX_COMMAND}' is still the right pane's foreground ${START_TIMEOUT}s after /quit; read it with: agtermctl session text --pane right --target ${AGTERM_SESSION_ID}" 1
+}
+
+quit_codex() {
+	printf '/quit\n' | agtermctl session type --stdin --pane right --target "$AGTERM_SESSION_ID" >/dev/null ||
+		die "typing /quit failed" 1
+	wait_for_codex_gone
+}
+
 wait_for_codex() {
 	local deadline=$((SECONDS + START_TIMEOUT))
 	while [ "$SECONDS" -lt "$deadline" ]; do
@@ -190,6 +209,19 @@ wait_for_codex() {
 		sleep 0.5
 	done
 	die "'${CODEX_COMMAND}' did not appear in the right pane within ${START_TIMEOUT}s; read it with: agtermctl session text --pane right --target ${AGTERM_SESSION_ID}" 1
+}
+
+restart_codex_pane() {
+	if ! has_split || ! pane_runs splitForeground "$CODEX_COMMAND"; then
+		ensure_codex_pane
+		return
+	fi
+	split_visible || open_split
+	quit_codex
+	wait_for_shell_prompt
+	type_launch_line
+	wait_for_codex
+	report restarted
 }
 
 ensure_codex_pane() {
@@ -220,7 +252,13 @@ main() {
 		require_place
 		ensure_codex_pane
 		;;
-	*) die "usage: peer-chat-spawn.sh [--explain]" 2 ;;
+	--restart)
+		resolve_all
+		require_tools
+		require_place
+		restart_codex_pane
+		;;
+	*) die "usage: peer-chat-spawn.sh [--restart|--explain]" 2 ;;
 	esac
 }
 

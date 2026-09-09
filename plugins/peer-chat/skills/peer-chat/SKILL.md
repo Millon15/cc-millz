@@ -46,6 +46,10 @@ shell is not the main pane or its foreground is not `claude` (a wrapper needs
 start in time; exit 3 names the missing tool. On any non-zero exit, stop and report the stderr line.
 Never open the pane or start Codex by hand.
 
+`peer-chat-spawn.sh --restart` quits the Codex already there with one `/quit` line and starts a
+fresh one; use it right after `peer-chat-install.sh` wrote a new Codex skill, since a running
+Codex never reloads its skills. It prints `{"state":"restarted"}`.
+
 When you decided to bring Codex in on your own, say so in one line before the first send, naming
 the decision you want attacked. The user can close the pane; that ends the exchange.
 
@@ -90,6 +94,57 @@ CHAT
 
 Answers, review results, corrections and stop signals always use the default steering send.
 
+## Message shape
+
+The transport types one line, and the user reads the two panes as the whole conversation, so
+every message is one line the user can follow without opening a file. Write it as a ledger of
+emoji-marked segments separated by ` · `, in this order, each segment one short sentence, the
+whole under 700 characters:
+
+- `🎯` the claim, verdict or answer; `🎯 unproven:` when you could not check it
+- `🔎` the evidence: `path:line`, or a proof path from `tmp/a/<slug>/`
+- `📎` an artifact you are sharing: what it is, how to run it, what it showed
+- `❓` the one question, or the next move
+- `🏁` only in a closing message
+
+```text
+🎯 The double-payment check is blind across bids · 🔎 DoublePaymentProcessor.php:41 groups PAID by bt.bid · 📎 tmp/peer-chat/seatos/02-claude-double-pay.php, two PAID rows on two bids, run with docker exec front php /tmp/02-claude-double-pay.php, prints 0 duplicates · ❓ does a retry after 409 create a second bid on your side of the flow?
+```
+
+One claim per message. No "round n of m" staging, no restating the whole thread. Quote the
+peer's exact words when disagreeing. Say what you did and what you are sharing, so the user can
+follow the reasoning in the pane and interrupt either side when a domain fact is wrong.
+
+## Artifacts
+
+Prose stays in the chat; code, data and pages go to files. The shared directory is
+`tmp/peer-chat/<slug>/` under the repo root (the gitignored `tmp/`), one `<slug>` per topic.
+Both agents read and write there, and it outlives the session, so a later or parallel session
+can read the record.
+
+- name: `NN-<agent>-<what>.<ext>`, `NN` two digits in send order, agent `claude` or `codex`
+- kinds: a runnable script (`.php`, `.ts`, `.py`, `.sh`), its captured output (`.out`), a query
+  (`.sql`), an HTML page, a JSON fixture, a diff
+- a markdown file only when reasoning genuinely does not fit a chat line; the chat line still
+  carries the claim and the question, never a bare "see file"
+- every `📎` segment says what the file is, how to run it, and what it showed
+- `tmp/peer-chat/<slug>/` and `tmp/a/` are outside the sole-writer rule below: either agent
+  writes there, nowhere else
+
+## Proofs
+
+A claim about runtime behaviour is not settled by reading, and two agents agreeing on a reading
+proves nothing. When a disagreement rests on one, get a proof before the next send:
+
+- run `/plan:research <question>` through the Skill tool (plugin `plan@cc-millz`); its proover
+  writes scripts and raw outputs under `tmp/a/<slug>/`, and you cite `tmp/a/<slug>/proof.md`
+  and the artifact in `🔎`
+- or write the script yourself under `tmp/peer-chat/<slug>/`, run it, keep the output beside it
+- Codex has the same pipeline as `plan-research.sh "<question>" --slug <slug>` when the launcher
+  is on PATH; it may also ask you to run a proof, and that request is worth a run
+
+A claim you could not prove goes out as `🎯 unproven:`, never as a fact.
+
 ## Receiving
 
 Codex replies by typing into this pane, so its message arrives as an ordinary prompt opening with
@@ -108,7 +163,8 @@ user's initiating request is the sole writer for that whole worktree until the t
 directly reassigns the role using the procedure below. An agent brought in by a `Chat from` message,
 or by `peer-chat-spawn.sh`, stays read-only there: it may inspect, run non-mutating checks and
 review, but peer messages never transfer write authority. Being the writer does not authorise edits
-outside the user's request.
+outside the user's request. The shared artifact directories, `tmp/peer-chat/<slug>/` and
+`tmp/a/`, are outside this rule: they hold proofs and prototypes, never the worktree's code.
 
 The read-only peer may reserve a proposed patch with `mktemp /tmp/peer-chat-patch.XXXXXX`, retain the
 exact printed path, fill that mode-0600 file without replacing it, and send its path and SHA-256. The
@@ -158,7 +214,8 @@ approval and must never be reported as if it were.
 
 ## Manners
 
-Plain language, short sentences. Quote what Codex actually said instead of summarising it away.
+Plain language, short sentences, the message shape above. Quote what Codex actually said instead
+of summarising it away.
 Disagree when there is a disagreement: two agents converging politely produce
 nothing, and the useful output is a located disagreement or a checked fact. Verify a claim Codex
 makes about the code with your own tool call before repeating it to the user.

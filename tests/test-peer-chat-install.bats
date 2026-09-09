@@ -84,6 +84,23 @@ teardown() { teardown_tmp; }
     [ "${output}" = "1" ]
 }
 
+@test "both skills: carry the message shape, the artifact dir, the proof route and the sole-writer exemption" {
+    for f in "${PLUGIN}/skills/peer-chat/SKILL.md" "${PLUGIN}/codex/SKILL.md"; do
+        body="$(cat "$f")"
+        assert_contains "${body}" "## Message shape"
+        assert_contains "${body}" "under 700 characters"
+        assert_contains "${body}" 'tmp/peer-chat/<slug>/'
+        assert_contains "${body}" 'NN-<agent>-<what>.<ext>'
+        assert_contains "${body}" "## Proofs"
+        assert_contains "${body}" "unproven:"
+        assert_contains "${body}" "outside this rule"
+        assert_not_contains "${body}" "round n of m staging"
+    done
+    assert_contains "$(cat "${PLUGIN}/skills/peer-chat/SKILL.md")" "/plan:research"
+    assert_contains "$(cat "${PLUGIN}/skills/peer-chat/SKILL.md")" "peer-chat-spawn.sh --restart"
+    assert_contains "$(cat "${PLUGIN}/codex/SKILL.md")" "plan-research.sh"
+}
+
 @test "claude skill: names the preflight, the spawn, and keeps upstream's guardrails" {
     body="$(cat "${PLUGIN}/skills/peer-chat/SKILL.md")"
     assert_contains "${body}" 'peer-chat-install.sh" --check'
