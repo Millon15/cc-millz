@@ -61,14 +61,24 @@ and `PEER_CHAT_CLAUDE_COMMAND` for wrappers, or the same keys (`codex_args`, `co
 ## Sending
 
 ```bash
-peer-chat.py --to codex --stdin <<'CHAT'
-the message goes here, as one paragraph
+peer-chat-paste.py --to codex --stdin <<'CHAT'
+🎯 the claim, on its own line
+
+🔎 path:line
+
+❓ the one question
 CHAT
 ```
 
-Pass the message on stdin through a quoted heredoc, never as an argument. The script collapses all
-whitespace to single spaces before typing, because typing a newline submits the fragment before it,
-so write for one paragraph.
+Pass the message on stdin through a quoted heredoc, never as an argument. `peer-chat-paste.py`
+keeps the line breaks: it loads `peer-chat.py` as a module for the same target and composer
+checks, refuses a composer that is not empty, puts the body in through a bracketed paste
+(`agtermctl session paste`, the clipboard saved and restored around it), confirms the last line
+is visible in the pane, sends the submit key, and confirms the composer cleared. Every refusal
+names the step; nothing is typed after a failed one.
+
+`peer-chat.py --to codex --stdin` is the one-line transport: it collapses all whitespace to single
+spaces because a typed newline submits, so use it only for a one-line note or a `--queue` send.
 
 Before typing, the script confirms the target pane really is running Codex, looking for `codex` in
 what agterm reports for that pane. If this machine starts Codex through a wrapper, add
@@ -96,19 +106,30 @@ Answers, review results, corrections and stop signals always use the default ste
 
 ## Message shape
 
-The transport types one line, and the user reads the two panes as the whole conversation, so
-every message is one line the user can follow without opening a file. Write it as a ledger of
-emoji-marked segments separated by ` · `, in this order, each segment one short sentence, the
-whole under 700 characters:
+The user reads both panes as the conversation, and the Codex pane is usually a thin split, so a
+message is a short ledger the eye can follow: one segment per line, a blank line between
+segments, every line under 50 characters (the split wraps hard at about 55), the whole under
+20 lines. Send it with `peer-chat-paste.py`, which keeps the line breaks; `peer-chat.py` collapses
+a message to one line and is only for a one-line note or a `--queue` send.
 
 - `🎯` the claim, verdict or answer; `🎯 unproven:` when you could not check it
 - `🔎` the evidence: `path:line`, or a proof path from `tmp/a/<slug>/`
-- `📎` an artifact you are sharing: what it is, how to run it, what it showed
+- `📎` an artifact you are sharing: path, how to run it, what it showed
 - `❓` the one question, or the next move
 - `🏁` only in a closing message
 
 ```text
-🎯 The double-payment check is blind across bids · 🔎 DoublePaymentProcessor.php:41 groups PAID by bt.bid · 📎 tmp/peer-chat/seatos/02-claude-double-pay.php, two PAID rows on two bids, run with docker exec front php /tmp/02-claude-double-pay.php, prints 0 duplicates · ❓ does a retry after 409 create a second bid on your side of the flow?
+🎯 the double-payment guard is blind across bids
+
+🔎 DoublePaymentProcessor.php:23-31
+   GROUP BY bt.bid: a count per bid, never per purchase
+
+📎 tmp/peer-chat/seatos/02-claude-double-pay.php
+   run: docker exec front php /tmp/02-claude-double-pay.php
+   two PAID on two bids: false; two PAID on one bid: true
+
+❓ does a retry after a 409 create a second bid
+   on your side of the flow?
 ```
 
 One claim per message. No "round n of m" staging, no restating the whole thread. Quote the

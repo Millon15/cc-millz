@@ -24,18 +24,23 @@ teardown() { teardown_tmp; }
     run bash "${INSTALL}" --check
     assert_status 1
     assert_contains "${output}" "MISSING or stale  ${TMP}/bin/peer-chat.py"
+    assert_contains "${output}" "MISSING or stale  ${TMP}/bin/peer-chat-paste.py"
     assert_contains "${output}" "MISSING or stale  ${TMP}/codex/skills/peer-chat/SKILL.md"
     assert_contains "${output}" "MISSING  peer-chat rules"
 }
 
-@test "install: writes the script, the codex skill and both rules, then --check passes" {
+@test "install: writes both scripts, the codex skill and the three rules, then --check passes" {
     run bash "${INSTALL}"
     assert_status 0
     [ -x "${TMP}/bin/peer-chat.py" ]
+    [ -x "${TMP}/bin/peer-chat-paste.py" ]
     cmp -s "${PLUGIN}/scripts/peer-chat.py" "${TMP}/bin/peer-chat.py"
+    cmp -s "${PLUGIN}/scripts/peer-chat-paste.py" "${TMP}/bin/peer-chat-paste.py"
     cmp -s "${PLUGIN}/codex/SKILL.md" "${TMP}/codex/skills/peer-chat/SKILL.md"
     run grep -c 'prefix_rule(pattern=\["peer-chat.py"' "${TMP}/codex/rules/default.rules"
     [ "${output}" = "2" ]
+    run grep -c 'prefix_rule(pattern=\["peer-chat-paste.py", "--to", "claude", "--message-file"\]' "${TMP}/codex/rules/default.rules"
+    [ "${output}" = "1" ]
     run bash "${INSTALL}" --check
     assert_status 0
 }
@@ -46,8 +51,8 @@ teardown() { teardown_tmp; }
     assert_status 0
     assert_contains "${output}" "unchanged ${TMP}/bin/peer-chat.py"
     assert_contains "${output}" "present   prefix_rule"
-    run grep -c 'peer-chat.py' "${TMP}/codex/rules/default.rules"
-    [ "${output}" = "2" ]
+    run grep -c 'peer-chat' "${TMP}/codex/rules/default.rules"
+    [ "${output}" = "3" ]
 }
 
 @test "install: keeps rules the user already had in default.rules" {
@@ -88,7 +93,8 @@ teardown() { teardown_tmp; }
     for f in "${PLUGIN}/skills/peer-chat/SKILL.md" "${PLUGIN}/codex/SKILL.md"; do
         body="$(cat "$f")"
         assert_contains "${body}" "## Message shape"
-        assert_contains "${body}" "under 700 characters"
+        assert_contains "${body}" "under 50 characters"
+        assert_contains "${body}" "peer-chat-paste.py"
         assert_contains "${body}" 'tmp/peer-chat/<slug>/'
         assert_contains "${body}" 'NN-<agent>-<what>.<ext>'
         assert_contains "${body}" "## Proofs"

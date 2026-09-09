@@ -8,7 +8,7 @@ Vendored from https://github.com/umputun/agterm/tree/14858eaeaf0d51ad55e4ba378b8
 | tests/fixtures/peer-chat/test_peer_chat.py (repo root) | test_peer_chat.py | verbatim |
 | skills/peer-chat/SKILL.md | SKILL-claude.md | edited: spawn step (+ --restart), autonomous trigger, preflight; added: Message shape, Artifacts, Proofs, the sole-writer exemption for the artifact dirs |
 | codex/SKILL.md | SKILL-codex.md | edited: the pane may be opened by peer-chat-spawn.sh; added: the same three sections and the exemption |
-| scripts/peer-chat-spawn.sh, scripts/peer-chat-install.sh | (none) | local |
+| scripts/peer-chat-spawn.sh, scripts/peer-chat-install.sh, scripts/peer-chat-paste.py | (none) | local; the paste sender loads peer-chat.py as a module for its checks |
 
 Re-sync: `bash scripts/sync-upstream.sh`, then fold `upstream/*.md` into the two edited skills
 and delete `upstream/`.

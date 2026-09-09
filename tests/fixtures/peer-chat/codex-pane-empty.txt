@@ -1,0 +1,8 @@
+  runner; the behavioral assertions haven’t run yet.
+ 
+• Working (2m 30s • esc to interrupt)
+ 
+ 
+› Ask Codex to do anything
+ 
+  gpt-6-astra high · repo · Context 28% used · weekly 83% …

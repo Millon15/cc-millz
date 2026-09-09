@@ -1,5 +1,21 @@
 # Changelog
 
+## peer-chat v0.3.0 - 2026-09-09
+
+### Added
+
+- `scripts/peer-chat-paste.py` — the multi-line send. The vendored transport types keystrokes and a
+  typed newline submits, so every message became one line; in a thin split pane that is a wall the
+  user cannot follow. The paste sender loads `peer-chat.py` as a module for the same target and
+  composer checks, refuses a composer that is not empty, puts the body in through a bracketed
+  paste (`agtermctl session paste`, the clipboard saved and restored around it), confirms the last
+  line is visible, sends the submit key and confirms the composer cleared. `--message-file` is the
+  transport's own spool contract, so the Codex side keeps `--prepare-message`.
+- Message shape, both skills: one segment per line, a blank line between segments, lines under 50
+  characters, the whole under 20 lines; `peer-chat.py` is kept for one-line notes and `--queue`.
+- The installer copies the paste sender onto PATH and appends its one approval rule for Codex;
+  `--check` reports both.
+
 ## plan v0.1.1 - 2026-09-09
 
 ### Fixed

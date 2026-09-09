@@ -34,18 +34,23 @@ peer-chat.py --prepare-message peer-chat-codex-a91f.txt
 ```
 
 The command creates a private one-shot file and prints its absolute `messageFile` path. Use
-`apply_patch` to fill that exact file without replacing the file or its mode, using one paragraph and
-omitting the `Chat from Codex:` label, then send the reserved name:
+`apply_patch` to fill that exact file without replacing the file or its mode, in the multi-line
+shape below and omitting the `Chat from Codex:` label, then send the reserved name:
 
 ```bash
-peer-chat.py --to claude --message-file peer-chat-codex-a91f.txt
+peer-chat-paste.py --to claude --message-file peer-chat-codex-a91f.txt
 ```
+
+`peer-chat-paste.py` keeps the line breaks: it loads `peer-chat.py` as a module for the same
+target and composer checks, refuses a composer that is not empty, puts the body in through a
+bracketed paste, confirms the last line is visible, sends the submit key and confirms the composer
+cleared. `peer-chat.py --to claude --message-file` is the one-line transport; it collapses
+whitespace, so use it only for a one-line note.
 
 Choose a fresh literal suffix for every send. Do not use stdin, a heredoc, shell redirection,
 variables or substitutions in either invocation: Codex then evaluates the request as a `zsh -lc`
-wrapper, so the two command-prefix rules from *Setup* cannot match it. Never put the message text
-directly in an argument. The send consumes the file, and the script collapses whitespace before
-typing.
+wrapper, so the three command-prefix rules the installer wrote cannot match it. Never put the
+message text directly in an argument. The send consumes the file.
 
 If a send refuses saying more than one session shares this checkout, stop. It means this Codex was
 started without its pane's session id injected, and the fix is a launch flag only the user can apply.
@@ -66,19 +71,30 @@ and a busy Claude manages it in its own input queue.
 
 ## Message shape
 
-The transport types one line, and the user reads the two panes as the whole conversation, so
-every message is one line the user can follow without opening a file. Write it as a ledger of
-emoji-marked segments separated by ` · `, in this order, each segment one short sentence, the
-whole under 700 characters:
+The user reads both panes as the conversation, and the Codex pane is usually a thin split, so a
+message is a short ledger the eye can follow: one segment per line, a blank line between
+segments, every line under 50 characters (the split wraps hard at about 55), the whole under
+20 lines. Send it with `peer-chat-paste.py`, which keeps the line breaks; `peer-chat.py` collapses
+a message to one line and is only for a one-line note or a `--queue` send.
 
 - `🎯` the claim, verdict or answer; `🎯 unproven:` when you could not check it
 - `🔎` the evidence: `path:line`, or a proof path from `tmp/a/<slug>/`
-- `📎` an artifact you are sharing: what it is, how to run it, what it showed
+- `📎` an artifact you are sharing: path, how to run it, what it showed
 - `❓` the one question, or the next move
 - `🏁` only in a closing message
 
 ```text
-🎯 Expiry cancels locally and a late PAID is then applied on top · 🔎 OrderTransactionStatusUpdater.php:72-92 and OrderTransactionDataUpdater.php:30-62 · 📎 tmp/peer-chat/seatos/03-codex-late-paid.php, expires a pending row then feeds PAID, run with docker exec finance php /tmp/03-codex-late-paid.php, prints status=paid · ❓ which side owns the retry-eligibility decision in your plan?
+🎯 the double-payment guard is blind across bids
+
+🔎 DoublePaymentProcessor.php:23-31
+   GROUP BY bt.bid: a count per bid, never per purchase
+
+📎 tmp/peer-chat/seatos/02-claude-double-pay.php
+   run: docker exec front php /tmp/02-claude-double-pay.php
+   two PAID on two bids: false; two PAID on one bid: true
+
+❓ does a retry after a 409 create a second bid
+   on your side of the flow?
 ```
 
 One claim per message. No "round n of m" staging, no restating the whole thread. Quote the

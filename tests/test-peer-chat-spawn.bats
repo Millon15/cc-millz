@@ -51,11 +51,11 @@ EOF
 
 # ------------------------------------------------------------- the package --
 
-@test "peer-chat: manifest is 0.2.0 and the marketplace lists the plugin" {
+@test "peer-chat: manifest is 0.3.0 and the marketplace lists the plugin" {
     run jq -r '.name, .version' "${PLUGIN}/.claude-plugin/plugin.json"
     assert_status 0
     assert_contains "${output}" "peer-chat"
-    assert_contains "${output}" "0.2.0"
+    assert_contains "${output}" "0.3.0"
     run jq -r '.plugins[] | select(.name == "peer-chat") | .source' "${REPO_ROOT}/.claude-plugin/marketplace.json"
     assert_status 0
     assert_contains "${output}" "./plugins/peer-chat"

@@ -24,9 +24,11 @@ SKILL_DIR="$CODEX_HOME/skills/peer-chat"
 RULES_FILE="$CODEX_HOME/rules/default.rules"
 
 SRC_SCRIPT="$PLUGIN_ROOT/scripts/peer-chat.py"
+SRC_PASTE="$PLUGIN_ROOT/scripts/peer-chat-paste.py"
 SRC_SKILL="$PLUGIN_ROOT/codex/SKILL.md"
 RULE_PREPARE='prefix_rule(pattern=["peer-chat.py", "--prepare-message"], decision="allow")'
 RULE_SEND='prefix_rule(pattern=["peer-chat.py", "--to", "claude", "--message-file"], decision="allow")'
+RULE_PASTE='prefix_rule(pattern=["peer-chat-paste.py", "--to", "claude", "--message-file"], decision="allow")'
 
 say() { printf 'peer-chat-install: %s\n' "$1"; }
 die() {
@@ -55,6 +57,12 @@ check() {
 		say "MISSING or stale  $BIN_DIR/peer-chat.py"
 		missing=1
 	fi
+	if same_file "$SRC_PASTE" "$BIN_DIR/peer-chat-paste.py" && [ -x "$BIN_DIR/peer-chat-paste.py" ]; then
+		say "ok   $BIN_DIR/peer-chat-paste.py"
+	else
+		say "MISSING or stale  $BIN_DIR/peer-chat-paste.py"
+		missing=1
+	fi
 	on_path "$BIN_DIR" || {
 		say "WARN $BIN_DIR is not on PATH; both skills call peer-chat.py by bare name"
 		missing=1
@@ -65,8 +73,8 @@ check() {
 		say "MISSING or stale  $SKILL_DIR/SKILL.md"
 		missing=1
 	fi
-	if has_rule "$RULE_PREPARE" && has_rule "$RULE_SEND"; then
-		say "ok   $RULES_FILE carries both peer-chat rules"
+	if has_rule "$RULE_PREPARE" && has_rule "$RULE_SEND" && has_rule "$RULE_PASTE"; then
+		say "ok   $RULES_FILE carries the three peer-chat rules"
 	else
 		say "MISSING  peer-chat rules in $RULES_FILE"
 		missing=1
@@ -85,6 +93,13 @@ install_script() {
 		say "wrote     $BIN_DIR/peer-chat.py"
 	fi
 	chmod +x "$BIN_DIR/peer-chat.py"
+	if same_file "$SRC_PASTE" "$BIN_DIR/peer-chat-paste.py"; then
+		say "unchanged $BIN_DIR/peer-chat-paste.py"
+	else
+		cat "$SRC_PASTE" >"$BIN_DIR/peer-chat-paste.py" || die "cannot write $BIN_DIR/peer-chat-paste.py" 1
+		say "wrote     $BIN_DIR/peer-chat-paste.py"
+	fi
+	chmod +x "$BIN_DIR/peer-chat-paste.py"
 	on_path "$BIN_DIR" || say "WARN      add $BIN_DIR to PATH; both skills call peer-chat.py by bare name"
 }
 
@@ -112,11 +127,13 @@ install_codex_rules() {
 	[ -f "$RULES_FILE" ] || : >"$RULES_FILE"
 	append_rule "$RULE_PREPARE"
 	append_rule "$RULE_SEND"
+	append_rule "$RULE_PASTE"
 }
 
 install_all() {
 	[ -f "$SRC_SCRIPT" ] || die "missing $SRC_SCRIPT; is this script inside the plugin?" 2
 	[ -f "$SRC_SKILL" ] || die "missing $SRC_SKILL; is this script inside the plugin?" 2
+	[ -f "$SRC_PASTE" ] || die "missing $SRC_PASTE; is this script inside the plugin?" 2
 	install_script
 	install_codex_skill
 	install_codex_rules
