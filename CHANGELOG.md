@@ -1,5 +1,45 @@
 # Changelog
 
+## plan v0.1.0 - 2026-09-09
+
+### Added
+
+- `plan` — `/plan:research` and its two subagents, extracted from a private monorepo and made neutral:
+  `answer-researcher` (Sonnet, read-only, facts with `file:line` cites and suggested hypotheses) and
+  `answer-proover` (Sonnet, runnable artifacts under `tmp/a/<slug>/` that try to DISPROVE each claim,
+  honesty gate, raw output kept as `<n>-proof.out`). The command is model-invocable, so a skill such as
+  peer-chat can fire it on a contested claim. Project facts (skills to load, container, test-runner
+  and read-only DB command shapes, knowledge indexes) come from a committed `.plan.json`.
+- `scripts/plan-research.sh` — the same pipeline headless (`claude -p "/plan:research slug=<slug> …"`
+  with every MCP server off), so a peer agent or a CI job can ask for a proof and read
+  `tmp/a/<slug>/answer.md`. Permissions stay Claude's: the default is `--permission-mode acceptEdits`,
+  a project widens it through `claude_args`. `--explain` under the marketplace contract; `--install`
+  writes a launcher onto `PATH` that resolves the newest plugin copy; `--check` is the preflight. No
+  Codex approval rule is written; that decision is the user's.
+
+## peer-chat v0.2.0 - 2026-09-09
+
+### Added
+
+- Message shape, both skills: one line the user can follow in the pane, as an emoji ledger
+  (`🎯` claim, `🔎` evidence, `📎` artifact with how to run it and what it showed, `❓` the one
+  question, `🏁` closing), under 700 characters, one claim per message, no "round n of m" staging.
+- Artifacts, both skills: code, data and pages go to `tmp/peer-chat/<slug>/` under the repo root as
+  `NN-<agent>-<what>.<ext>`; a markdown file only when reasoning does not fit a line, and the chat line
+  still carries the claim. The artifact dirs (`tmp/peer-chat/`, `tmp/a/`) are outside the sole-writer
+  rule.
+- Proofs, both skills: a contested claim about runtime behaviour gets a proof before the next send —
+  Claude through `/plan:research` (plugin `plan@cc-millz`), Codex through `plan-research.sh` or a
+  script of its own; an unproved claim goes out marked `🎯 unproven:`.
+- `peer-chat-spawn.sh --restart` — quits the Codex already in the right pane with one `/quit` line and
+  starts a fresh one, for a Codex that predates a skill update; reports `{"state":"restarted"}`, exit 1
+  with a read-back hint when Codex ignores the quit.
+
+### Fixed
+
+- The spawn suite's missing-tool test no longer passes by accident when a real `peer-chat.py` sits in
+  `~/.local/bin`.
+
 ## peer-chat v0.1.0 - 2026-09-08
 
 ### Added
