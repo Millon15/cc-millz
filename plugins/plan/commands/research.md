@@ -118,4 +118,7 @@ preamble.
   (`simple lookup, skipped the research pipeline`).
 - When `plan-research.sh` invoked this command headless, the last block of the answer MUST
   list the artifact paths one per line under a `## Artifacts` heading, so the caller can find
-  them without parsing prose.
+  them without parsing prose. Every `<n>-proof.json` contract is listed there too: a peer
+  re-runs it with `plan-research.sh --slug <slug> --verify <n>`.
+- A proof with no `<n>-proof.json` beside it is INCONCLUSIVE in the answer, whatever its
+  output showed; the proover writes the contract, never the main thread.

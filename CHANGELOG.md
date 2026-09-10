@@ -55,6 +55,23 @@ did not fit it. Every change below is keyed to one of those.
 - The installer copies the paste sender onto PATH and appends its one approval rule for Codex;
   `--check` reports both.
 
+## plan v0.2.0 - 2026-09-10
+
+### Added
+
+- The proof contract. Every artifact prints `PROOF <case>: <got>` lines and the proover writes
+  `tmp/a/<slug>/<n>-proof.json` beside it: the run line, the artifact and raw output paths, the
+  tree sha, and each case with `expect` (what the requirement demands) and `got`. The honesty gate
+  gains a fifth question; a proof without a contract is INCONCLUSIVE. An `expect` is never edited
+  in place: a change is a reviewed revision (`case`, `old_expect`, `new_expect`, `requirement`,
+  `reviewer`) appended to `revisions`, and unresolved intent goes to the user.
+- `plan-research.sh --slug <slug> --verify <n>` re-runs one proof against its contract: exit 0 when
+  every case matches, 1 on a regression with the cases listed, 2 when the artifact fails to run,
+  3 with no usable contract (missing, no cases, no run line, or a revision missing a field). Every
+  run is appended to `<n>-proof.runs.tsv` with the tree sha and the contract's sha256, and the
+  verify output lands in `<n>-proof.verify.out`. The `peer-chat` skills quote that exit line for a
+  "fixed" claim.
+
 ## plan v0.1.1 - 2026-09-09
 
 ### Fixed

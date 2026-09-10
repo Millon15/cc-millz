@@ -10,6 +10,7 @@ Answer a question with empirical proof instead of source-reading alone. `/plan:r
 - **A claim about runtime behaviour gets a script, not a paragraph.** The proover calls the REAL function, query or endpoint from a throwaway file under `tmp/a/<slug>/`; a re-implementation caps the verdict at INCONCLUSIVE.
 - **Bias toward disproving.** Every hypothesis gets a boundary and an adversarial input, not only the happy path. A surprising negative is the point.
 - **Five tags, no inflation.** PROVEN, DISPROVED, INCONCLUSIVE, READ-ONLY (cited), ASSUMPTION (flagged). DISPROVED findings lead the answer.
+- **Every proof carries its oracle.** The artifact prints `PROOF <case>: <got>` lines and the proover writes `<n>-proof.json` beside it: the run line, each case with its `expect` and `got`, the tree sha. `plan-research.sh --slug <slug> --verify <n>` re-runs the artifact and exits 0 when every case matches, 1 on a regression (cases listed), 2 when the artifact fails to run, 3 with no usable contract; every run lands in `<n>-proof.runs.tsv` with the tree sha and the contract's sha256, so an edited oracle shows as a new hash. An `expect` changes only as a reviewed revision (`case`, `old_expect`, `new_expect`, `requirement`, `reviewer`), and a proof without a contract is INCONCLUSIVE.
 - **Peers can ask too.** `plan-research.sh "<question>"` runs the same command headless with every MCP server off, prints the answer and leaves `tmp/a/<slug>/answer.md` beside the proofs. The `peer-chat` plugin's Codex side calls it when a chat claim needs a check.
 - **Project tooling lives in the project.** A committed `.plan.json` names the skills to load, the container and test-runner command shapes and the read-only DB path. No profile: the agents derive what they can from the repo and say so.
 
@@ -20,7 +21,7 @@ Answer a question with empirical proof instead of source-reading alone. `/plan:r
 | command | `/plan:research <question>` | 🔬 orchestrates researcher, hypotheses, proover, honest answer |
 | agent | `plan:answer-researcher` | 📚 Sonnet, read-only, writes `tmp/a/<slug>/research.md` with cites and suggested hypotheses |
 | agent | `plan:answer-proover` | 🧪 Sonnet, writes proof scripts, raw outputs and `tmp/a/<slug>/proof.md` with verdicts |
-| script | `scripts/plan-research.sh` | 🤖 headless runner; `--explain`, `--install` (launcher on PATH), `--check` |
+| script | `scripts/plan-research.sh` | 🤖 headless runner; `--slug <s> --verify <n>` re-runs one proof against its contract; `--explain`, `--install` (launcher on PATH), `--check` |
 
 ## Config
 

@@ -3,6 +3,7 @@
 # ask for a proof and read the artifacts: Codex in a peer-chat pane, a CI job, a script.
 #
 #   plan-research.sh "<question>" [--slug <name>]   # run the pipeline, print the answer, exit 0
+#   plan-research.sh --slug <name> --verify <n>      # re-run proof <n> against its proof.json contract
 #   plan-research.sh --explain                       # print the resolved config as JSON, change nothing
 #   plan-research.sh --install                       # write the launcher onto PATH
 #   plan-research.sh --check                         # exit 0 when the launcher is in place
@@ -17,6 +18,15 @@
 #
 # Exit codes: 0 answer written. 1 claude exited non-zero (its stderr is passed through).
 # 2 bad usage or an unparseable .plan.json. 3 a required tool is missing.
+#
+# --verify re-runs one proof the proover left under <artifacts_dir>/<slug>/: it reads
+# <n>-proof.json (the contract: the run command, the cases with their expected values, the
+# artifact and raw output paths), runs the command, parses the `PROOF <case>: <got>` lines the
+# artifact prints, and compares. The run is appended to <n>-proof.runs.tsv with the tree sha and
+# the sha256 of the contract, so a silently edited oracle shows as a new hash. A revision of an
+# expectation is only accepted with its case, old_expect, new_expect, requirement and reviewer.
+# Exit codes in this mode: 0 every case matches, 1 a regression (cases listed), 2 the artifact
+# failed to run, 3 no usable contract. A proof without a contract is INCONCLUSIVE, never "fixed".
 set -u
 
 PLUGIN="plan"
@@ -146,6 +156,89 @@ run_research() {
 	say "answer: ${ARTIFACTS_DIR}/${slug}/answer.md"
 }
 
+# ---------------------------------------------------------------- verify --
+
+proof_dir() {
+	printf '%s/%s/%s' "$(profile_root)" "$ARTIFACTS_DIR" "$1"
+}
+
+load_contract() {
+	local file="$1"
+	[ -f "$file" ] || die "no contract: ${file} is missing; a proof without it is INCONCLUSIVE" 3
+	CONTRACT="$(jq -c . "$file" 2>/dev/null)" || die "no contract: ${file} is not JSON" 3
+	[ "$(contract_query '[.cases[]? | select(.case != null and .expect != null)] | length')" -gt 0 ] ||
+		die "no contract: ${file} has no case with both case and expect" 3
+	[ -n "$(contract_query '.run // empty')" ] || die "no contract: ${file} has no run command" 3
+	[ "$(contract_query '[.revisions[]? | select((.case and (.old_expect != null) and (.new_expect != null) and .requirement and .reviewer) | not)] | length')" -eq 0 ] ||
+		die "no contract: ${file} has a revision missing case, old_expect, new_expect, requirement or reviewer" 3
+}
+
+contract_query() {
+	printf '%s' "$CONTRACT" | jq -r "$1"
+}
+
+file_sha() {
+	if have sha256sum; then
+		sha256sum "$1" | cut -c1-64
+	else
+		shasum -a 256 "$1" | cut -c1-64
+	fi
+}
+
+tree_sha() {
+	git -C "$(profile_root)" rev-parse HEAD 2>/dev/null || printf 'no-git'
+}
+
+run_artifact() {
+	local run="$1" out="$2"
+	(cd "$(profile_root)" && bash -c "$run") >"$out" 2>&1 ||
+		die "execution failure: '${run}' exited non-zero; output in ${out}" 2
+}
+
+got_for() {
+	awk -v n="PROOF ${1}: " 'index($0, n) == 1 { print substr($0, length(n) + 1) }' "$2" | tail -n 1
+}
+
+list_regressions() {
+	local out="$1" name expect got
+	while IFS=$'\t' read -r name expect; do
+		got="$(got_for "$name" "$out")"
+		[ -n "$got" ] || got="<no PROOF line>"
+		[ "$got" = "$expect" ] || printf 'regression: %s: expect %s, got %s\n' "$name" "$expect" "$got"
+	done < <(contract_query '.cases[] | [.case, (.expect | tostring)] | @tsv')
+}
+
+print_revisions() {
+	contract_query '.revisions[]? | "revision: \(.case): expect \(.old_expect) -> \(.new_expect); \(.requirement); reviewed by \(.reviewer)"'
+}
+
+record_run() {
+	printf '%s\t%s\t%s\t%s\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$2" "$3" "$4" >>"$1"
+}
+
+verify_proof() {
+	local slug="$1" n="$2" dir contract out regressions tree contract_sha status=0
+	[ -n "$slug" ] && [ -n "$n" ] || die "usage: plan-research.sh --slug <name> --verify <n>" 2
+	resolve_all
+	have jq || die "jq not found (brew install jq)" 3
+	dir="$(proof_dir "$slug")"
+	contract="${dir}/${n}-proof.json"
+	out="${dir}/${n}-proof.verify.out"
+	load_contract "$contract"
+	tree="$(tree_sha)"
+	contract_sha="$(file_sha "$contract")"
+	print_revisions
+	run_artifact "$(contract_query .run)" "$out"
+	regressions="$(list_regressions "$out")"
+	[ -z "$regressions" ] || status=1
+	record_run "${dir}/${n}-proof.runs.tsv" "$tree" "$contract_sha" "$status"
+	[ "$status" -eq 0 ] || {
+		printf '%s\n' "$regressions"
+		die "regression in ${ARTIFACTS_DIR}/${slug}/${n}-proof.json; tree ${tree}; contract ${contract_sha}" 1
+	}
+	say "verified ${ARTIFACTS_DIR}/${slug}/${n}-proof.json: $(contract_query '.cases | length') cases match; tree ${tree}; contract ${contract_sha}; output ${ARTIFACTS_DIR}/${slug}/${n}-proof.verify.out"
+}
+
 # --------------------------------------------------------------- install --
 
 on_path() {
@@ -212,13 +305,19 @@ main() {
 		check
 		return
 		;;
-	'' | --help | -h) die "usage: plan-research.sh \"<question>\" [--slug <name>] | --explain | --install | --check" 2 ;;
+	'' | --help | -h) die "usage: plan-research.sh \"<question>\" [--slug <name>] | --slug <name> --verify <n> | --explain | --install | --check" 2 ;;
 	esac
+	local verify=""
 	while [ $# -gt 0 ]; do
 		case "$1" in
 		--slug)
 			[ -n "${2:-}" ] || die "--slug needs a value" 2
 			slug="$2"
+			shift 2
+			;;
+		--verify)
+			[ -n "${2:-}" ] || die "--verify needs the proof number" 2
+			verify="$2"
 			shift 2
 			;;
 		--*) die "unknown option $1" 2 ;;
@@ -229,6 +328,11 @@ main() {
 			;;
 		esac
 	done
+	if [ -n "$verify" ]; then
+		[ -z "$question" ] || die "--verify takes no question" 2
+		verify_proof "$slug" "$verify"
+		return
+	fi
 	run_research "$question" "$slug"
 }
 

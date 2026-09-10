@@ -25,11 +25,11 @@ teardown() { teardown_tmp; }
 
 # ------------------------------------------------------------- the package --
 
-@test "plan: manifest is 0.1.1 and the marketplace lists the plugin" {
+@test "plan: manifest is 0.2.0 and the marketplace lists the plugin" {
     run jq -r '.name, .version' "${PLUGIN}/.claude-plugin/plugin.json"
     assert_status 0
     assert_contains "${output}" "plan"
-    assert_contains "${output}" "0.1.1"
+    assert_contains "${output}" "0.2.0"
     run jq -r '.plugins[] | select(.name == "plan") | .source' "${REPO_ROOT}/.claude-plugin/marketplace.json"
     assert_status 0
     assert_contains "${output}" "./plugins/plan"
@@ -59,6 +59,11 @@ teardown() { teardown_tmp; }
     assert_contains "${proover}" "commands.php_in_container"
     assert_contains "${proover}" "PROOF_DONE path=tmp/a/<slug>/proof.md"
     assert_contains "${proover}" "NEVER stub the thing under"
+    assert_contains "${proover}" "<n>-proof.json"
+    assert_contains "${proover}" "PROOF <case>: <got>"
+    assert_contains "${proover}" "without a contract file is INCONCLUSIVE"
+    assert_contains "${proover}" "reviewer"
+    assert_contains "$(cat "${PLUGIN}/commands/research.md")" "--verify"
 }
 
 # ----------------------------------------------------------------- run --
@@ -105,6 +110,77 @@ teardown() { teardown_tmp; }
     run bash "${SCRIPT}" "a" "b"
     assert_status 2
     assert_contains "${output}" "one question only"
+}
+
+# ------------------------------------------------------------- verify --
+
+write_contract() { # write_contract <expect for "two bids"> [revisions json]
+    mkdir -p tmp/a/seatos
+    printf '#!/usr/bin/env bash\necho "PROOF two bids: $(cat tmp/a/seatos/two-bids)"\necho "PROOF one bid: true"\n' > tmp/a/seatos/1-proof.sh
+    printf 'false' > tmp/a/seatos/two-bids
+    jq -n --arg e "$1" --argjson r "${2:-[]}" '{hypothesis:1, artifact:"tmp/a/seatos/1-proof.sh", run:"bash tmp/a/seatos/1-proof.sh", raw_path:"tmp/a/seatos/1-proof.out", cases:[{case:"two bids", expect:$e, got:"false"},{case:"one bid", expect:"true", got:"true"}], revisions:$r}' > tmp/a/seatos/1-proof.json
+}
+
+@test "verify: exit 0 when every case matches, the run is recorded with the tree and contract hashes" {
+    write_contract false
+    git add -A && git -c commit.gpgsign=false commit -qm seed
+    run bash "${SCRIPT}" --slug seatos --verify 1
+    assert_status 0
+    assert_contains "${output}" "verified tmp/a/seatos/1-proof.json: 2 cases match; tree $(git rev-parse HEAD); contract "
+    assert_contains "${output}" "output tmp/a/seatos/1-proof.verify.out"
+    assert_contains "$(cat tmp/a/seatos/1-proof.verify.out)" "PROOF two bids: false"
+    row="$(tail -1 tmp/a/seatos/1-proof.runs.tsv)"
+    assert_contains "${row}" $'\t'"$(git rev-parse HEAD)"$'\t'
+    assert_contains "${row}" $'\t0'
+    [ "$(printf '%s' "${row}" | cut -f3 | wc -c)" -eq 65 ]
+}
+
+@test "verify: exit 1 lists every regression and still records the run" {
+    write_contract false
+    printf 'true' > tmp/a/seatos/two-bids
+    run bash "${SCRIPT}" --slug seatos --verify 1
+    assert_status 1
+    assert_contains "${output}" "regression: two bids: expect false, got true"
+    assert_not_contains "${output}" "regression: one bid"
+    assert_contains "${output}" "regression in tmp/a/seatos/1-proof.json"
+    assert_contains "$(tail -1 tmp/a/seatos/1-proof.runs.tsv)" $'\t1'
+}
+
+@test "verify: exit 2 when the artifact fails to run, and a case with no PROOF line is a regression" {
+    write_contract false
+    printf '#!/usr/bin/env bash\nexit 5\n' > tmp/a/seatos/1-proof.sh
+    run bash "${SCRIPT}" --slug seatos --verify 1
+    assert_status 2
+    assert_contains "${output}" "execution failure"
+    printf '#!/usr/bin/env bash\necho "PROOF one bid: true"\n' > tmp/a/seatos/1-proof.sh
+    run bash "${SCRIPT}" --slug seatos --verify 1
+    assert_status 1
+    assert_contains "${output}" "regression: two bids: expect false, got <no PROOF line>"
+}
+
+@test "verify: exit 3 with no contract, a contract without cases, or a revision missing its reviewer; a full revision is printed" {
+    run bash "${SCRIPT}" --slug seatos --verify 1
+    assert_status 3
+    assert_contains "${output}" "no contract: "
+    assert_contains "${output}" "1-proof.json is missing; a proof without it is INCONCLUSIVE"
+    mkdir -p tmp/a/seatos
+    printf '{"run":"true","cases":[]}' > tmp/a/seatos/1-proof.json
+    run bash "${SCRIPT}" --slug seatos --verify 1
+    assert_status 3
+    assert_contains "${output}" "no case with both case and expect"
+    write_contract false '[{"case":"two bids","old_expect":"true","new_expect":"false","requirement":"a retry must not double-charge"}]'
+    run bash "${SCRIPT}" --slug seatos --verify 1
+    assert_status 3
+    assert_contains "${output}" "revision missing case, old_expect, new_expect, requirement or reviewer"
+    write_contract false '[{"case":"two bids","old_expect":"true","new_expect":"false","requirement":"a retry must not double-charge","reviewer":"codex"}]'
+    run bash "${SCRIPT}" --slug seatos --verify 1
+    assert_status 0
+    assert_contains "${output}" "revision: two bids: expect true -> false; a retry must not double-charge; reviewed by codex"
+    run bash "${SCRIPT}" --verify 1
+    assert_status 2
+    run bash "${SCRIPT}" "q" --slug seatos --verify 1
+    assert_status 2
+    assert_contains "${output}" "--verify takes no question"
 }
 
 # ------------------------------------------------------------- explain --

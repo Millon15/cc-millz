@@ -133,6 +133,39 @@ Use this exact structure; the orchestrator parses it:
 Keep the raw output on disk too, as `tmp/a/<slug>/<n>-proof.out`, so a peer can read it
 without re-running.
 
+### 4b. Write the contract, `tmp/a/<slug>/<n>-proof.json`
+
+Every artifact prints one line per case, `PROOF <case>: <got>`, and every artifact gets a
+contract beside it. The contract is the oracle: without it a later re-run cannot tell a fixed
+bug from a broken fixture, and a proof without a contract file is INCONCLUSIVE, whatever the
+output looked like.
+
+```json
+{
+  "hypothesis": 1,
+  "artifact": "tmp/a/<slug>/1-proof.php",
+  "run": "docker exec <svc> php /tmp/1-proof.php",
+  "raw_path": "tmp/a/<slug>/1-proof.out",
+  "tree_sha": "<git rev-parse HEAD at the time of the run>",
+  "cases": [
+    { "case": "two PAID on two bids", "expect": "true", "got": "false" }
+  ],
+  "revisions": []
+}
+```
+
+`expect` is what the requirement demands, `got` is what the artifact printed; they differ
+exactly when the hypothesis is DISPROVED. `run` is the `Run:` line, executable from the repo
+root. `plan-research.sh --slug <slug> --verify <n>` re-runs the artifact, compares every `PROOF`
+line to its `expect`, records the run with the tree sha and the contract's sha256, and exits 0
+only when every case matches; that exit line is what a "fixed" claim quotes.
+
+An `expect` is never changed in place. A change is a reviewed revision appended to `revisions`
+with `case`, `old_expect`, `new_expect`, `requirement` (the sentence of the requirement that
+decides it) and `reviewer` (the peer or user who agreed). A revision missing any of the five
+makes the contract unusable. When the two agents cannot settle what the requirement demands,
+the question goes to the user; a peer agreement never redefines the user's scope.
+
 ### 5. Honesty gate
 
 Before the final verdict:
@@ -142,8 +175,10 @@ Before the final verdict:
 2. Was at least one adversarial input tested?
 3. Can the user re-run the artifact verbatim from the `Run:` line?
 4. If PROVEN, is there ANY untested scenario where it would fail?
+5. Does `<n>-proof.json` exist beside the artifact, with a `run` line and an `expect` per case?
 
-A "re-implementation" on 1 or a "yes" on 4 downgrades the confidence and adds the caveat.
+A "re-implementation" on 1 or a "yes" on 4 downgrades the confidence and adds the caveat. A
+"no" on 5 is INCONCLUSIVE until the contract is written.
 
 ### 6. Emit completion
 
