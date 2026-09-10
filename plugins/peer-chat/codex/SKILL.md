@@ -38,13 +38,16 @@ The command creates a private one-shot file and prints its absolute `messageFile
 shape below and omitting the `Chat from Codex:` label, then send the reserved name:
 
 ```bash
-peer-chat-paste.py --to claude --message-file peer-chat-codex-a91f.txt
+peer-chat-paste.py --to claude --message-file peer-chat-codex-a91f.txt --slug <slug>
 ```
 
-`peer-chat-paste.py` keeps the line breaks: it loads `peer-chat.py` as a module for the same
-target and composer checks, refuses a composer that is not empty, puts the body in through a
-bracketed paste, confirms the last line is visible, sends the submit key and confirms the composer
-cleared. `peer-chat.py --to claude --message-file` is the one-line transport; it collapses
+`--slug` is the topic, the same on every send; it names the ask ledger (see Asks) and comes
+after `--message-file` so the approval rule still matches. `peer-chat-paste.py` keeps the line
+breaks: it loads `peer-chat.py` as a module for the same target and composer checks, refuses a
+composer that is not empty, refuses a send that leaves a new ask from Claude without a
+disposition and then restores the message file so you can fix the body and resend, puts the body
+in through a bracketed paste, confirms the last line is visible, sends the submit key and
+confirms the composer cleared. `peer-chat.py --to claude --message-file` is the one-line transport; it collapses
 whitespace, so use it only for a one-line note.
 
 Choose a fresh literal suffix for every send. Do not use stdin, a heredoc, shell redirection,
@@ -71,16 +74,19 @@ and a busy Claude manages it in its own input queue.
 
 ## Message shape
 
-The user reads both panes as the conversation, and the Codex pane is usually a thin split, so a
-message is a short ledger the eye can follow: one segment per line, a blank line between
-segments, every line under 50 characters (the split wraps hard at about 55), the whole under
-20 lines. Send it with `peer-chat-paste.py`, which keeps the line breaks; `peer-chat.py` collapses
-a message to one line and is only for a one-line note or a `--queue` send.
+The user reads both panes as the conversation, and the Claude pane is usually a thin split, so a
+message is a ledger the eye can follow: one segment per line, a blank line between segments.
+There is no length cap. A thought takes as many lines as it needs, and every line of the
+reasoning belongs here, not in a file: the user follows the argument in the pane and interrupts
+either side when a domain fact is wrong. `peer-chat-paste.py` keeps the line breaks and wraps a
+prose line at 50 columns on a word boundary (`PEER_CHAT_WRAP`), so write naturally; a `path:line`
+longer than that stays whole. `peer-chat.py` collapses a message to one line and is only for a
+one-line note or a `--queue` send.
 
 - `🎯` the claim, verdict or answer; `🎯 unproven:` when you could not check it
 - `🔎` the evidence: `path:line`, or a proof path from `tmp/a/<slug>/`
 - `📎` an artifact you are sharing: path, how to run it, what it showed
-- `❓` the one question, or the next move
+- `❓` a question for the peer; the script stamps it with an id (see Asks)
 - `🏁` only in a closing message
 
 ```text
@@ -88,48 +94,82 @@ a message to one line and is only for a one-line note or a `--queue` send.
 
 🔎 DoublePaymentProcessor.php:23-31
    GROUP BY bt.bid: a count per bid, never per purchase
+   the caller passes the current transaction's own bids,
+   so a retry that opened a second bid is a second group
 
 📎 tmp/peer-chat/seatos/02-claude-double-pay.php
    run: docker exec front php /tmp/02-claude-double-pay.php
    two PAID on two bids: false; two PAID on one bid: true
 
+🎯 I said the fix is a query change; a schema change is
+   right because no column ties two bids to one purchase
+   (migrations grep, 0 hits for external_reference)
+
 ❓ does a retry after a 409 create a second bid
    on your side of the flow?
 ```
 
-One claim per message. No "round n of m" staging, no restating the whole thread. Quote the
-peer's exact words when disagreeing. Say what you did and what you are sharing, so the user can
-follow the reasoning in the pane and interrupt either side when a domain fact is wrong.
+One thread per message: the claim, the steps that led to it, the evidence, the question. No
+"round n of m" staging, no restating the whole thread. Quote the peer's exact words when
+disagreeing. Say what you did and what you are sharing.
+
+Before any `❓` about the code, make one tool call of your own that could answer it. If it does,
+send the answer as `🎯` with its `🔎` instead of the question. The script warns on a `❓` with no
+`🔎` anywhere in the message.
+
+## Asks
+
+Every `❓` line is an ask. `peer-chat-paste.py --slug <slug>` stamps it `❓ #codex-004 …` and
+records it in `tmp/peer-chat/<slug>/asks.tsv`, the script's own ledger; pass the same `--slug` on
+every send of a topic. The peer's next send must carry one disposition line per new ask, or the
+script refuses the send and lists the ids with their questions:
+
+```text
+#codex-004 answered: <the answer, or "see 🎯 above">
+#codex-004 deferred(<what has to happen first>)
+#codex-004 declined(<why>)
+```
+
+`answered` and `declined` close the ask. `deferred` keeps it open: after 20 minutes
+(`PEER_CHAT_DEFER_MINUTES`) with no new disposition, the script prepends `overdue: #codex-004 …`
+to the deferrer's next send. Later sends carry only changed dispositions. A confirmed paste means
+the line landed, not that anything was accepted.
 
 ## Artifacts
 
-Prose stays in the chat; code, data and pages go to files. The shared directory is
-`tmp/peer-chat/<slug>/` under the repo root (the gitignored `tmp/`), one `<slug>` per topic.
-Both agents read and write there, and it outlives the session, so a later or parallel session
-can read the record.
+Prose never goes to a file. Every thought, argument, agreed list and retro is chat text, however
+long. `tmp/peer-chat/<slug>/` under the repo root (the gitignored `tmp/`) holds what is not prose:
+runnable scripts, captured output, queries, HTML pages, fixtures, diffs. One `<slug>` per topic;
+both agents write there, and it outlives the session, so a later or parallel session can read
+the record.
 
 - name: `NN-<agent>-<what>.<ext>`, `NN` two digits in send order, agent `claude` or `codex`
 - kinds: a runnable script (`.php`, `.ts`, `.py`, `.sh`), its captured output (`.out`), a query
   (`.sql`), an HTML page, a JSON fixture, a diff
-- a markdown file only when reasoning genuinely does not fit a chat line; the chat line still
-  carries the claim and the question, never a bare "see file"
 - every `📎` segment says what the file is, how to run it, and what it showed
+- a `.md` or `.txt` of reasoning under `tmp/peer-chat/` is a violation: the peer names it, and
+  the author sends the content as chat
 - `tmp/peer-chat/<slug>/` and `tmp/a/` are outside the sole-writer rule below: either agent
   writes there, nowhere else
 
 ## Proofs
 
 A claim about runtime behaviour is not settled by reading, and two agents agreeing on a reading
-proves nothing. When a disagreement rests on one, get a proof before the next send:
+proves nothing. When either agent disputes such a claim, get a proof before the next send:
 
 - `plan-research.sh "<question>" --slug <slug>` when the launcher is on PATH runs Claude's
-  research pipeline headless: a researcher, falsifiable hypotheses, a proover that writes scripts
-  and raw outputs under `tmp/a/<slug>/`, and `tmp/a/<slug>/answer.md`. It asks for approval like
-  any other command; the user answers, never you.
-- or write the script yourself under `tmp/peer-chat/<slug>/`, run it, keep the output beside it
+  research pipeline headless: a researcher, falsifiable hypotheses, a proover that writes scripts,
+  raw outputs and a `proof.json` contract under `tmp/a/<slug>/`, and `tmp/a/<slug>/answer.md`.
+  It asks for approval like any other command; the user answers, never you.
 - or ask Claude in `❓` to run `/plan:research` on the exact claim; it has the same pipeline
+- an undisputed measurement (a port, a size, a timing) is a hand script under
+  `tmp/peer-chat/<slug>/`, run, with its output kept beside it
 
 A claim you could not prove goes out as `🎯 unproven:`, never as a fact.
+
+"Fixed" is claimed only by quoting the re-run of the peer's own proof in `🔎`:
+`plan-research.sh --slug <slug> --verify <n>` exiting 0, or the artifact's fresh output with the
+values that flipped. Without that re-run the line is `🎯 unproven: fix applied, fixture not re-run`.
 
 ## Receiving
 
@@ -199,7 +239,13 @@ not approval and must never be reported as if it were.
 ## Manners
 
 Plain language, short sentences, the message shape above. Quote what Claude actually said instead
-of summarising it away.
-Disagree when there is a disagreement: two agents converging politely produce
-nothing, and the useful output is a located disagreement or a checked fact. Verify a claim Claude
-makes about the code yourself before repeating it to the user.
+of summarising it away. Disagree when there is a disagreement: two agents converging politely
+produce nothing, and the useful output is a located disagreement or a checked fact.
+
+A reversal is named before the new claim: `🎯 I said <X>; <Y> is right because <Z>`. A position
+dropped without that line reads as a contradiction to the user.
+
+Accept a peer's claim only as `accepted: "<their words>"; checked <path:line or artifact>`. An
+acceptance with no named check is not allowed: if you have not checked, say `🎯 unproven:` or
+ask. Verify a claim Claude makes about the code with your own tool call before repeating it to
+the user.

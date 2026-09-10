@@ -1,5 +1,44 @@
 # Changelog
 
+## peer-chat v0.4.0 - 2026-09-10
+
+The first long run (a devbox spec and its Phase A, 2026-09-09) was audited against both transcripts:
+a "fixed" that never re-ran the peer's fixture, a question the sender's own search could have
+answered, a 29-minute silence on an open ask, a dropped ask, a silent reversal, zero pushback on
+claims neither side had checked, and reasoning written to `.txt` files because the message cap
+did not fit it. Every change below is keyed to one of those.
+
+### Changed
+
+- Message shape, both skills: the 50-character and 20-line caps are gone. A message is as long as
+  the thought needs, one segment per line; `peer-chat-paste.py` wraps prose at `PEER_CHAT_WRAP`
+  columns (default 50) on a word boundary and leaves a token with no spaces whole. "One claim per
+  message" becomes "one thread per message", the steps of the reasoning included.
+- Artifacts, both skills: prose never goes to a file. `tmp/peer-chat/<slug>/` holds scripts,
+  outputs, queries, pages, fixtures and diffs only; a `.md` or `.txt` of reasoning there is a
+  violation the peer names. The "markdown file when reasoning does not fit a line" clause is gone.
+- Proofs, both skills: a runtime claim that either agent disputes goes through `/plan:research` or
+  `plan-research.sh`; an undisputed measurement stays a hand script. "Fixed" is claimed only by
+  quoting the re-run of the peer's own proof (`plan-research.sh --verify`), otherwise
+  `🎯 unproven: fix applied, fixture not re-run`.
+- Manners, both skills: a reversal is named before the new claim (`🎯 I said X; Y is right because
+  Z`); a peer's claim is accepted only as `accepted: "<their words>"; checked <path:line>`; one tool
+  call of your own before any `❓` about the code.
+
+### Added
+
+- The ask ledger in `peer-chat-paste.py`: `--slug <topic>` (or `PEER_CHAT_SLUG`) stamps every `❓`
+  with a script-issued, topic-scoped id (`#claude-004`) and records it in
+  `tmp/peer-chat/<topic>/asks.tsv` after delivery is confirmed. The peer's next send must carry
+  `#id answered`, `#id deferred(<when>)` or `#id declined(<why>)` for each new ask or the send is
+  refused before anything is written, the questions listed; a `--message-file` send that is
+  refused gets its spool file restored. `deferred` keeps the ask open and, after
+  `PEER_CHAT_DEFER_MINUTES` (default 20), the deferrer's next send opens with `overdue: #id`.
+  Delivery and disposition are separate columns. Without `--slug` the script warns and tracks
+  nothing.
+- `peer-chat-paste.py` warns on a `❓` with no `🔎` anywhere in the message, naming the rule.
+- The send report gains `asks` (ids issued) and `disposed` (ids answered, deferred or declined).
+
 ## peer-chat v0.3.0 - 2026-09-09
 
 ### Added

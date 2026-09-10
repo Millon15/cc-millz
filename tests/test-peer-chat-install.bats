@@ -89,22 +89,39 @@ teardown() { teardown_tmp; }
     [ "${output}" = "1" ]
 }
 
-@test "both skills: carry the message shape, the artifact dir, the proof route and the sole-writer exemption" {
+@test "both skills: carry the message shape with no length cap, the asks ledger, the artifact rule, the proof handshake and the sole-writer exemption" {
     for f in "${PLUGIN}/skills/peer-chat/SKILL.md" "${PLUGIN}/codex/SKILL.md"; do
         body="$(cat "$f")"
         assert_contains "${body}" "## Message shape"
-        assert_contains "${body}" "under 50 characters"
+        assert_contains "${body}" "There is no length cap"
+        assert_not_contains "${body}" "under 50 characters"
+        assert_not_contains "${body}" "under 20 lines"
+        assert_not_contains "${body}" "One claim per message"
+        assert_contains "${body}" "PEER_CHAT_WRAP"
         assert_contains "${body}" "peer-chat-paste.py"
+        assert_contains "${body}" "## Asks"
+        assert_contains "${body}" "asks.tsv"
+        assert_contains "${body}" "deferred(<what has to happen first>)"
+        assert_contains "${body}" "overdue:"
+        assert_contains "${body}" "one tool call of your own"
+        assert_contains "${body}" "Prose never goes to a file"
+        assert_not_contains "${body}" "markdown file only when reasoning"
         assert_contains "${body}" 'tmp/peer-chat/<slug>/'
         assert_contains "${body}" 'NN-<agent>-<what>.<ext>'
         assert_contains "${body}" "## Proofs"
         assert_contains "${body}" "unproven:"
+        assert_contains "${body}" "--verify <n>"
+        assert_contains "${body}" "fixture not re-run"
+        assert_contains "${body}" "I said <X>; <Y> is right because <Z>"
+        assert_contains "${body}" 'accepted: "<their words>"; checked'
         assert_contains "${body}" "outside this rule"
         assert_not_contains "${body}" "round n of m staging"
     done
     assert_contains "$(cat "${PLUGIN}/skills/peer-chat/SKILL.md")" "/plan:research"
+    assert_contains "$(cat "${PLUGIN}/skills/peer-chat/SKILL.md")" "--to codex --slug <slug> --stdin"
     assert_contains "$(cat "${PLUGIN}/skills/peer-chat/SKILL.md")" "peer-chat-spawn.sh --restart"
     assert_contains "$(cat "${PLUGIN}/codex/SKILL.md")" "plan-research.sh"
+    assert_contains "$(cat "${PLUGIN}/codex/SKILL.md")" "--message-file peer-chat-codex-a91f.txt --slug <slug>"
 }
 
 @test "claude skill: names the preflight, the spawn, and keeps upstream's guardrails" {
