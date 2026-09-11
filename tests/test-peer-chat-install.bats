@@ -45,6 +45,21 @@ teardown() { teardown_tmp; }
     assert_status 0
 }
 
+@test "install: stamps the plugin version, and an older plugin copy never downgrades a newer install" {
+    bash "${INSTALL}" >/dev/null
+    version="$(jq -r .version "${PLUGIN}/.claude-plugin/plugin.json")"
+    [ "$(cat "${TMP}/codex/skills/peer-chat/.version")" = "${version}" ]
+    printf '9.9.9\n' > "${TMP}/codex/skills/peer-chat/.version"
+    printf '# newer\n' > "${TMP}/codex/skills/peer-chat/SKILL.md"
+    run bash "${INSTALL}" --check
+    assert_status 0
+    assert_contains "${output}" "peer-chat 9.9.9 is installed; this ${version} copy is older and changes nothing"
+    run bash "${INSTALL}"
+    assert_status 0
+    [ "$(cat "${TMP}/codex/skills/peer-chat/SKILL.md")" = "# newer" ]
+    [ "$(cat "${TMP}/codex/skills/peer-chat/.version")" = "9.9.9" ]
+}
+
 @test "install: a second run is a no-op and never duplicates a rule" {
     bash "${INSTALL}" >/dev/null
     run bash "${INSTALL}"

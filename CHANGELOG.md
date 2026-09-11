@@ -1,5 +1,19 @@
 # Changelog
 
+## peer-chat v0.4.1 - 2026-09-11
+
+### Fixed
+
+- `peer-chat-spawn.sh --restart` typed `/quit` and its Return in one burst; Codex's slash-command
+  popup swallowed the Return and the composer kept `/quit` unsubmitted (two live failures on
+  2026-09-10). The text and the Return are now two keystroke batches with a settle between
+  (`PEER_CHAT_QUIT_SETTLE`, default 3s), and a `/quit` already sitting in the composer gets only the
+  Return.
+- `peer-chat-install.sh` stamps the installed version in `~/.codex/skills/peer-chat/.version` and a
+  copy from an older plugin never overwrites a newer install: `--check` reports ok and the install
+  changes nothing. A Claude session still holding the 0.3.0 skill in context had "refreshed" the
+  0.4.0 files back to 0.3.0 on its preflight (2026-09-10 22:31).
+
 ## peer-chat v0.4.0 - 2026-09-10
 
 The first long run (a devbox spec and its Phase A, 2026-09-09) was audited against both transcripts:

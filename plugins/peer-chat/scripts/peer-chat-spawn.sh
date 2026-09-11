@@ -28,6 +28,7 @@ DEFAULT_CODEX_COMMAND="codex"
 DEFAULT_CLAUDE_COMMAND="claude"
 DEFAULT_START_TIMEOUT=30
 SHELL_READY_TIMEOUT=5
+QUIT_SETTLE_TIMEOUT="${PEER_CHAT_QUIT_SETTLE:-3}"
 
 die() {
 	printf 'peer-chat-spawn: %s\n' "$1" >&2
@@ -196,9 +197,34 @@ wait_for_codex_gone() {
 	die "'${CODEX_COMMAND}' is still the right pane's foreground ${START_TIMEOUT}s after /quit; read it with: agtermctl session text --pane right --target ${AGTERM_SESSION_ID}" 1
 }
 
+right_pane_text() {
+	agtermctl session text --pane right --target "$AGTERM_SESSION_ID" 2>/dev/null
+}
+
+# The composer holds "/quit" and nothing else: a previous restart typed it and its Return was lost.
+composer_shows_quit() {
+	right_pane_text | grep -qE '›[[:space:]]*/quit[[:space:]]*$'
+}
+
+type_right() {
+	printf '%s' "$1" | agtermctl session type --stdin --pane right --target "$AGTERM_SESSION_ID" >/dev/null
+}
+
+wait_for_quit_visible() {
+	local deadline=$((SECONDS + QUIT_SETTLE_TIMEOUT))
+	while [ "$SECONDS" -lt "$deadline" ]; do
+		composer_shows_quit && return 0
+		sleep 0.2
+	done
+	return 0
+}
+
+# Codex opens its slash-command popup on "/quit"; a Return typed in the same burst is swallowed by
+# the popup, so the text and the Return are two separate keystroke batches with a settle between.
 quit_codex() {
-	printf '/quit\n' | agtermctl session type --stdin --pane right --target "$AGTERM_SESSION_ID" >/dev/null ||
-		die "typing /quit failed" 1
+	composer_shows_quit || type_right '/quit' || die "typing /quit failed" 1
+	wait_for_quit_visible
+	type_right $'\n' || die "typing Return after /quit failed" 1
 	wait_for_codex_gone
 }
 

@@ -41,7 +41,7 @@ case "\$1 \$2" in
     "session split") printf 'tree-split-shell' > "${TMP}/tree-state"; echo ok ;;
     "session text") echo '%' ;;
     "session type") typed="\$(cat)"; printf '%s\n' "\$typed" >> "${TMP}/typed.log"
-        case "\$typed" in /quit*) printf 'tree-split-shell' > "${TMP}/tree-state" ;; *) printf 'tree-split-codex' > "${TMP}/tree-state" ;; esac; echo ok ;;
+        case "\$typed" in /quit*) printf 'tree-split-shell' > "${TMP}/tree-state" ;; *codex*) printf 'tree-split-codex' > "${TMP}/tree-state" ;; esac; echo ok ;;
     "session focus") echo ok ;;
     *) echo "stub: unexpected \$*" >&2; exit 9 ;;
 esac
@@ -51,11 +51,11 @@ EOF
 
 # ------------------------------------------------------------- the package --
 
-@test "peer-chat: manifest is 0.4.0 and the marketplace lists the plugin" {
+@test "peer-chat: manifest is 0.4.1 and the marketplace lists the plugin" {
     run jq -r '.name, .version' "${PLUGIN}/.claude-plugin/plugin.json"
     assert_status 0
     assert_contains "${output}" "peer-chat"
-    assert_contains "${output}" "0.4.0"
+    assert_contains "${output}" "0.4.1"
     run jq -r '.plugins[] | select(.name == "peer-chat") | .source' "${REPO_ROOT}/.claude-plugin/marketplace.json"
     assert_status 0
     assert_contains "${output}" "./plugins/peer-chat"
@@ -168,6 +168,24 @@ EOF
     [ "$(printf '%s' "${typed}" | head -1)" = "/quit" ]
     assert_contains "$(printf '%s' "${typed}" | tail -1)" "codex -c 'shell_environment_policy.set.AGTERM_SESSION_ID=\"${SID}\"'"
     assert_not_contains "$(cat "${TMP}/calls.log")" "session split on"
+}
+
+@test "restart: /quit and its Return are two keystroke batches, with the Return after the text" {
+    printf 'tree-split-codex' > "${TMP}/tree-state"
+    run bash "${SPAWN}" --restart
+    assert_status 0
+    [ "$(sed -n 1p "${TMP}/typed.log")" = "/quit" ]
+    [ "$(sed -n 2p "${TMP}/typed.log")" = "" ]
+    assert_contains "$(sed -n 3p "${TMP}/typed.log")" "codex -c"
+}
+
+@test "restart: a /quit already sitting in the composer gets only the Return" {
+    printf 'tree-split-codex' > "${TMP}/tree-state"
+    sed -i.bak 's#"session text") echo .%. ;;#"session text") printf "› /quit\\n" ;;#; s#/quit\*)#/quit*|"")#' "${STUB_BIN}/agtermctl"
+    run bash "${SPAWN}" --restart
+    assert_status 0
+    assert_not_contains "$(cat "${TMP}/typed.log")" "/quit"
+    [ "$(sed -n 1p "${TMP}/typed.log")" = "" ]
 }
 
 @test "restart: with no codex running it behaves like a plain spawn and types no /quit" {

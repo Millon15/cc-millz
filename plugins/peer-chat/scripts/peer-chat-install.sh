@@ -13,7 +13,10 @@
 #      for approval.
 # The Claude side needs nothing here: the skill ships in the plugin and Claude Code loads it.
 #
-# Re-run after a plugin update; --check is what the skill runs as its preflight.
+# Re-run after a plugin update; --check is what the skill runs as its preflight. The installed
+# version is stamped in ~/.codex/skills/peer-chat/.version, and a copy of this script from an OLDER
+# plugin never overwrites a newer install: a Claude session still holding last week's skill in
+# context would otherwise "refresh" the files back to its own version on every preflight.
 set -u
 
 HERE="$(cd "$(dirname "$0")" && pwd)"
@@ -29,6 +32,8 @@ SRC_SKILL="$PLUGIN_ROOT/codex/SKILL.md"
 RULE_PREPARE='prefix_rule(pattern=["peer-chat.py", "--prepare-message"], decision="allow")'
 RULE_SEND='prefix_rule(pattern=["peer-chat.py", "--to", "claude", "--message-file"], decision="allow")'
 RULE_PASTE='prefix_rule(pattern=["peer-chat-paste.py", "--to", "claude", "--message-file"], decision="allow")'
+MANIFEST="$PLUGIN_ROOT/.claude-plugin/plugin.json"
+STAMP="$SKILL_DIR/.version"
 
 say() { printf 'peer-chat-install: %s\n' "$1"; }
 die() {
@@ -47,10 +52,28 @@ on_path() {
 
 has_rule() { [ -f "$RULES_FILE" ] && grep -qF -- "$1" "$RULES_FILE"; }
 
+plugin_version() { jq -r '.version // "0"' "$MANIFEST" 2>/dev/null || printf '0'; }
+installed_version() { [ -f "$STAMP" ] && tr -d '[:space:]' <"$STAMP" || printf '0'; }
+
+# newer_installed: the stamp names a version above this plugin copy's own.
+newer_installed() {
+	local mine theirs
+	mine="$(plugin_version)"
+	theirs="$(installed_version)"
+	[ "$mine" != "$theirs" ] && [ "$(printf '%s\n%s\n' "$mine" "$theirs" | sort -V | tail -n 1)" = "$theirs" ]
+}
+
+refuse_downgrade() {
+	newer_installed || return 1
+	say "ok   peer-chat $(installed_version) is installed; this $(plugin_version) copy is older and changes nothing"
+	return 0
+}
+
 # ------------------------------------------------------------------ check --
 
 check() {
 	local missing=0
+	refuse_downgrade && return 0
 	if same_file "$SRC_SCRIPT" "$BIN_DIR/peer-chat.py" && [ -x "$BIN_DIR/peer-chat.py" ]; then
 		say "ok   $BIN_DIR/peer-chat.py"
 	else
@@ -130,13 +153,19 @@ install_codex_rules() {
 	append_rule "$RULE_PASTE"
 }
 
+write_stamp() {
+	printf '%s\n' "$(plugin_version)" >"$STAMP" || die "cannot write $STAMP" 1
+}
+
 install_all() {
 	[ -f "$SRC_SCRIPT" ] || die "missing $SRC_SCRIPT; is this script inside the plugin?" 2
 	[ -f "$SRC_SKILL" ] || die "missing $SRC_SKILL; is this script inside the plugin?" 2
 	[ -f "$SRC_PASTE" ] || die "missing $SRC_PASTE; is this script inside the plugin?" 2
+	refuse_downgrade && return 0
 	install_script
 	install_codex_skill
 	install_codex_rules
+	write_stamp
 	say "done. Start Codex in the right pane with the session id injected, or let peer-chat-spawn.sh do it."
 }
 
