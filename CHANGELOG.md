@@ -1,5 +1,13 @@
 # Changelog
 
+## peer-chat v0.4.2 - 2026-09-13
+
+### Fixed
+
+- Separate Claude's `⧉ In <filename>` IDE context from editable composer text and
+  account for its cursor offset throughout delivery. Switching active files no
+  longer blocks an empty composer; draft text after the label still blocks it.
+
 ## peer-chat v0.4.1 - 2026-09-11
 
 ### Fixed

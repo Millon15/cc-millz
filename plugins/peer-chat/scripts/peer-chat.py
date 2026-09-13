@@ -50,6 +50,9 @@ CODEX_FOOTER_RE = re.compile(r"^ {2}\S.*$")
 CLAUDE_PROMPT_RE = re.compile(r"^\s*❯[\s ]*(.*?)\s*$")
 # status-line commands can add padding beyond Claude Code's two-space indent.
 CLAUDE_FOOTER_RE = re.compile(r"^ {2,}\S.*$")
+# The IDE adds this label before the editable input. Never consume trailing
+# words as part of the filename: an ambiguous label with spaces stays blocked.
+CLAUDE_IDE_PREFIX_RE = re.compile(r"^⧉[ \u00a0]+In[ \u00a0]+[^\s]+(?:[ \u00a0]|(?=\n|$))")
 CLAUDE_EMPTY_PROMPTS = {
     "",
     "Press up to edit queued messages",
@@ -512,10 +515,34 @@ def claude_live_prompt_text(text: str) -> str | None:
     return None
 
 
+def split_claude_ide_prefix(content: str) -> tuple[str, int]:
+    """Return editable content and the IDE label's width in terminal columns."""
+    match = CLAUDE_IDE_PREFIX_RE.match(content)
+    if not match:
+        return content, 0
+    # Prompt extraction trims trailing spaces. The IDE still reserves one space
+    # between the filename and the caret when the editable input is empty.
+    prefix = match.group().rstrip(" \u00a0") + " "
+    width = sum(
+        0 if unicodedata.combining(char) else
+        2 if unicodedata.east_asian_width(char) in ("W", "F") else 1
+        for char in prefix
+    )
+    return content[match.end():].lstrip("\n"), width
+
+
+def ide_cursor_offset(profile: Profile, pane: str) -> int:
+    if profile.agent != "claude":
+        return 0
+    content = claude_live_prompt_text(pane)
+    return split_claude_ide_prefix(content)[1] if content is not None else 0
+
+
 def live_prompt_text(profile: Profile, text: str) -> str | None:
     if profile.agent == "codex":
         return codex_live_prompt_text(text)
-    return claude_live_prompt_text(text)
+    content = claude_live_prompt_text(text)
+    return split_claude_ide_prefix(content)[0] if content is not None else None
 
 
 def composer_is_empty(profile: Profile, content: str) -> bool:
@@ -532,12 +559,12 @@ def composer_state(
     sid: str, profile: Profile, window: str | None = None
 ) -> tuple[str, int] | None:
     resolved = require_target(sid, profile, window)
-    content = live_prompt_text(
-        profile, _pane_text_unchecked(resolved, profile, window)
-    )
+    pane = _pane_text_unchecked(resolved, profile, window)
+    content = live_prompt_text(profile, pane)
     if content is None:
         return None
-    return content, _cursor_column_unchecked(resolved, profile, window)
+    column = _cursor_column_unchecked(resolved, profile, window)
+    return content, column - ide_cursor_offset(profile, pane)
 
 
 def wait_for_composer_change(
@@ -957,11 +984,12 @@ def send(
                 "nothing was typed"
             )
         # Claude's free-form suggestions look like drafts in plain screen text.
-        if profile.agent == "codex" and not composer_is_empty(profile, empty_text):
+        offset = ide_cursor_offset(profile, pane)
+        if (profile.agent == "codex" or offset) and not composer_is_empty(profile, empty_text):
             raise PromptBlocked(
                 "target composer contains text; nothing was typed"
             )
-        if cursor_column(sid, profile, window) != EMPTY_CURSOR_COLUMN:
+        if cursor_column(sid, profile, window) - offset != EMPTY_CURSOR_COLUMN:
             raise PromptBlocked(
                 "target composer is not confirmably empty; nothing was typed"
             )

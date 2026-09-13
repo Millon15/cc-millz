@@ -144,6 +144,47 @@ class ClaudeLivePromptTextTests(unittest.TestCase):
                 self.assertEqual(content, hint)
                 self.assertTrue(COMPOSER_IS_EMPTY(CLAUDE_PROFILE, content))
 
+    def test_ide_context_is_removed_for_any_filename(self) -> None:
+        for name in ("prompt.md", "personal.md", "app.php", "src/main.ts", "README", "说明.md"):
+            with self.subTest(name=name):
+                screen = f"{RULE} codex-draft-delivery ─\n❯\u00a0⧉ In {name}\n{RULE}\n  repo status"
+                content = LIVE_PROMPT_TEXT(CLAUDE_PROFILE, screen)
+                self.assertEqual(content, "")
+                self.assertTrue(COMPOSER_IS_EMPTY(CLAUDE_PROFILE, content))
+
+    def test_ide_context_preserves_draft_text(self) -> None:
+        for name in ("prompt.md", "personal.md", "app.php"):
+            for separator in (" ", "\n  "):
+                with self.subTest(name=name, separator=separator):
+                    draft = "check on the PR creation status"
+                    screen = f"{RULE}\n❯ ⧉ In {name}{separator}{draft}\n{RULE}"
+                    content = LIVE_PROMPT_TEXT(CLAUDE_PROFILE, screen)
+                    self.assertEqual(content, draft)
+                    self.assertFalse(COMPOSER_IS_EMPTY(CLAUDE_PROFILE, content))
+
+    def test_ide_prefix_only_matches_at_start_and_never_swallows_extra_words(self) -> None:
+        for text in ("please review ⧉ In prompt.md", "In prompt.md", "⧉ In", "⧉ In my file.md"):
+            with self.subTest(text=text):
+                screen = f"{RULE}\n❯ {text}\n{RULE}"
+                self.assertFalse(COMPOSER_IS_EMPTY(CLAUDE_PROFILE, LIVE_PROMPT_TEXT(CLAUDE_PROFILE, screen)))
+
+    def test_ide_context_preserves_multiline_draft(self) -> None:
+        screen = f"{RULE}\n❯ ⧉ In personal.md first line\n  second line\n{RULE}"
+        self.assertEqual(LIVE_PROMPT_TEXT(CLAUDE_PROFILE, screen), "first line\nsecond line")
+
+    def test_ide_cursor_is_normalized_for_empty_and_nonempty_input(self) -> None:
+        # Widths include the label and the separating space, not the ❯ prompt.
+        for name, width in (("prompt.md", 15), ("personal.md", 17), ("说明.md", 13)):
+            for draft in ("", "hello"):
+                with self.subTest(name=name, draft=draft):
+                    screen = f"{RULE}\n❯ ⧉ In {name} {draft}\n{RULE}"
+                    with patch.dict(COMPOSER_STATE.__globals__, {
+                        "require_target": Mock(return_value="sid"),
+                        "_pane_text_unchecked": Mock(return_value=screen),
+                        "_cursor_column_unchecked": Mock(return_value=2 + width + len(draft)),
+                    }):
+                        self.assertEqual(COMPOSER_STATE("sid", CLAUDE_PROFILE), (draft, 2 + len(draft)))
+
     def test_startup_hints_are_known_empty_claude_placeholders(self) -> None:
         hints = [
             'Try "fix lint errors"',
@@ -346,6 +387,32 @@ class CodexLivePromptTextTests(unittest.TestCase):
 
 
 class SendPreflightTests(unittest.TestCase):
+    def test_empty_ide_context_allows_send_at_shifted_cursor(self) -> None:
+        for name, column in (("prompt.md", 17), ("personal.md", 19)):
+            with self.subTest(name=name):
+                expected = "Chat from Codex: ping"
+                type_body = Mock(return_value=(expected, 22))
+                with patch.dict(SEND.__globals__, {
+                    "pane_text": Mock(return_value=f"{RULE}\n❯ ⧉ In {name}\n{RULE}"),
+                    "cursor_column": Mock(return_value=column),
+                    "type_body": type_body,
+                    "composer_state": Mock(return_value=(expected, 22)),
+                    "type_text": Mock(),
+                    "wait_for_accepted": Mock(return_value=True),
+                }):
+                    SEND("sid", CLAUDE_PROFILE, "ping")
+                self.assertEqual(type_body.call_args.args[3], ("", 2))
+
+    def test_ide_draft_is_refused_even_with_caret_at_start(self) -> None:
+        type_body = Mock()
+        with patch.dict(SEND.__globals__, {
+            "pane_text": Mock(return_value=f"{RULE}\n❯ ⧉ In personal.md draft\n{RULE}"),
+            "cursor_column": Mock(return_value=19),
+            "type_body": type_body,
+        }), self.assertRaises(PROMPT_BLOCKED):
+            SEND("sid", CLAUDE_PROFILE, "ping")
+        type_body.assert_not_called()
+
     def test_prompt_is_checked_before_cursor(self) -> None:
         pane_text = Mock(return_value=f"! ls -la\n{CODEX_FOOTER}")
         cursor_column = Mock(return_value=2)
