@@ -43,11 +43,11 @@ peer-chat-paste.py --to claude --message-file peer-chat-codex-a91f.txt --slug <s
 
 `--slug` is the topic, the same on every send; it names the ask ledger (see Asks) and comes
 after `--message-file` so the approval rule still matches. `peer-chat-paste.py` keeps the line
-breaks: it loads `peer-chat.py` as a module for the same target and composer checks, refuses a
-composer that is not empty, refuses a send that leaves a new ask from Claude without a
+breaks: it loads `peer-chat.py` as a module for target checks, ignores composer occupancy for both
+agents, and refuses a send that leaves a new ask from Claude without a
 disposition and then restores the message file so you can fix the body and resend, puts the body
-in through a bracketed paste, confirms the last line is visible, sends the submit key and
-confirms the composer cleared. `peer-chat.py --to claude --message-file` is the one-line transport; it collapses
+in through a bracketed paste, confirms the last line is visible, and sends the submit key.
+It does not check composer clearing or erase existing drafts before pasting. `peer-chat.py --to claude --message-file` is the one-line transport; it collapses
 whitespace, so use it only for a one-line note.
 
 Choose a fresh literal suffix for every send. Do not use stdin, a heredoc, shell redirection,
@@ -220,8 +220,8 @@ owed.
 
 ## What you may not do
 
-The only thing you may put into that pane is text in a prompt the script has checked before typing: a
-recognisable composer with its caret at column 2.
+Use the checked transport for pane input. The paste wrapper deliberately ignores composer occupancy
+and cursor position for both agents; its target and paste-confirmation checks still apply.
 
 Never answer anything on the user's behalf: not a chooser entry, not a trust prompt, not a
 permission or approval request, not a warning. Those answers carry the user's authority and are his

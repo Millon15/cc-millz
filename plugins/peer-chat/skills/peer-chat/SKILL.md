@@ -73,10 +73,10 @@ CHAT
 
 Pass the message on stdin through a quoted heredoc, never as an argument, with the topic's
 `--slug` on every send. `peer-chat-paste.py` keeps the line breaks: it loads `peer-chat.py` as a
-module for the same target and composer checks, refuses a composer that is not empty, refuses a
+module for target checks, ignores composer occupancy for both agents, and refuses a
 send that leaves a new ask from Codex without a disposition (see Asks), puts the body in through a
 bracketed paste (`agtermctl session paste`, the clipboard saved and restored around it), confirms
-the last line is visible in the pane, sends the submit key, and confirms the composer cleared.
+the last line is visible in the pane, and sends the submit key. It does not check composer clearing.
 Every refusal names the step; nothing is typed after a failed one.
 
 `peer-chat.py --to codex --stdin` is the one-line transport: it collapses all whitespace to single
@@ -92,8 +92,8 @@ Do not write `Chat from Claude:` yourself. The script adds the label, and that l
 read the message as conversation instead of as a fresh instruction from the user.
 
 A busy Codex is not a reason to wait. The script submits with Return, Codex's steering key. It
-confirms that the composer cleared, while Codex may queue the message when its current state cannot
-accept a steer.
+does not wait for the composer to clear; Codex may queue the message when its current state cannot
+accept a steer. Existing draft text is not cleared before pasting.
 
 Add `--queue` only for an informational note that needs no action before Codex's current turn ends.
 It changes Return to Tab for that send:
@@ -254,7 +254,7 @@ owed, and never say Codex is "thinking about it" when all you know is that the l
 
 ## What you may not do
 
-The only thing you may put into that pane is text in a prompt the script has confirmed is empty. The
+Use the checked transport for pane input. The paste wrapper deliberately ignores composer occupancy. The
 one exception is the launch line `peer-chat-spawn.sh` types into a fresh shell prompt, and only that
 script types it.
 

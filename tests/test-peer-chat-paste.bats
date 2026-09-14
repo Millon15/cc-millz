@@ -5,8 +5,8 @@
 # peer-chat-paste.py loads the vendored transport as a module and drives agterm through it, so
 # the suite stubs agtermctl with a state machine (empty composer, pasted, submitted) and pbcopy /
 # pbpaste with a clipboard file. The assertions read what was pasted (the label, the preserved
-# line breaks), the single submit keystroke, the clipboard restore, and the refusals: a busy
-# composer gets nothing, an unconfirmed paste gets no submit.
+# line breaks), the single submit keystroke, the clipboard restore, and paste confirmation.
+# Composer state never blocks either target, before paste or after submission.
 
 setup() {
     REPO_ROOT="$(cd "${BATS_TEST_DIRNAME}/.." && pwd)"
@@ -14,7 +14,7 @@ setup() {
     source "${REPO_ROOT}/tests/helpers/common.bash"
     setup_tmp
     PLUGIN="${REPO_ROOT}/plugins/peer-chat"
-    PASTE="${PLUGIN}/scripts/peer-chat-paste.py"
+    PASTE="${PEER_CHAT_TEST_PASTE:-${PLUGIN}/scripts/peer-chat-paste.py}"
     FIX="${REPO_ROOT}/tests/fixtures/peer-chat"
     SID="11111111-1111-1111-1111-111111111111"
     export AGTERM_SESSION_ID="${SID}" PEER_CHAT_TRANSPORT="${PLUGIN}/scripts/peer-chat.py"
@@ -38,15 +38,16 @@ state="\$(cat "${TMP}/state")"
 case "\$1 \$2" in
     "window list") echo '{"result":{"windows":[{"id":"win-1","active":true,"open":true}]}}' ;;
     "tree --json") cat "${FIX}/tree-split-codex.json" ;;
-    "surface cursor") echo 2 ;;
+    "surface cursor") [ ! -f "${TMP}/cursor-unavailable" ] || exit 9; echo 2 ;;
     "session text")
         case "\$state" in
-            pasted) cat "${TMP}/clip-last-set"; echo; cat "${FIX}/codex-pane-empty.txt" ;;
+            pasted) cat "${TMP}/clip-last-set"; echo; cat "${TMP}/composer" 2>/dev/null || cat "${FIX}/codex-pane-empty.txt" ;;
             busy) printf '› half a line the user typed\n \n  footer row\n' ;;
-            *) cat "${FIX}/codex-pane-empty.txt" ;;
+            submitted) cat "${TMP}/after-submit" 2>/dev/null || cat "${FIX}/codex-pane-empty.txt" ;;
+            *) cat "${TMP}/composer" 2>/dev/null || cat "${FIX}/codex-pane-empty.txt" ;;
         esac ;;
     "session paste") [ -f "${TMP}/paste-ignored" ] || printf 'pasted' > "${TMP}/state"; echo ok ;;
-    "session type") cat >> "${TMP}/typed.log"; printf 'empty' > "${TMP}/state"; echo ok ;;
+    "session type") cat >> "${TMP}/typed.log"; printf 'submitted' > "${TMP}/state"; echo ok ;;
     *) echo "stub: unexpected \$*" >&2; exit 9 ;;
 esac
 EOF
@@ -78,15 +79,65 @@ send_file() { # send_file <message-file> [extra args]
     [ "$(cat "${TMP}/clip-first-set")" = "Chat from Claude: 🎯 one line" ]
 }
 
-@test "paste: a composer that is not empty is refused before anything is written" {
+@test "paste: existing draft text does not block paste or submit" {
     printf 'busy' > "${TMP}/state"
     printf '🎯 x\n' > "${TMP}/msg"
     send_file "${TMP}/msg"
-    assert_status 1
-    assert_contains "${output}" "composer is not empty"
-    assert_not_contains "$(cat "${TMP}/calls.log")" "session paste"
-    [ ! -f "${TMP}/typed.log" ]
+    assert_status 0
+    assert_contains "$(cat "${TMP}/calls.log")" "session paste"
+    [ "$(wc -l < "${TMP}/typed.log")" -eq 1 ]
     [ "$(cat "${TMP}/clip")" = "user clipboard" ]
+}
+
+composer_matrix() {
+    local target="$1" prompt pane state after expected_label
+    if [ "$target" = claude ]; then
+        prompt='❯'; pane=left; expected_label='Chat from Codex:'
+    else
+        prompt='›'; pane=right; expected_label='Chat from Claude:'
+    fi
+    for state in empty suggestion startup_hint ide_context draft multiline queued unknown; do
+        case "$state" in
+            empty) printf '%s \n' "$prompt" > "${TMP}/composer" ;;
+            suggestion) printf '%s keep grilling, dont wait for me\n' "$prompt" > "${TMP}/composer" ;;
+            startup_hint) printf '%s Try "fix a bug"\n' "$prompt" > "${TMP}/composer" ;;
+            ide_context) printf '%s ⧉ In file.php\n' "$prompt" > "${TMP}/composer" ;;
+            draft) printf '%s half a line the user typed\n' "$prompt" > "${TMP}/composer" ;;
+            multiline) printf '%s draft line one\n  draft line two\n' "$prompt" > "${TMP}/composer" ;;
+            queued) printf '%s Press up to edit queued messages\n' "$prompt" > "${TMP}/composer" ;;
+            unknown) printf 'unrecognized composer rendering\n' > "${TMP}/composer" ;;
+        esac
+        for after in empty occupied; do
+            printf 'empty' > "${TMP}/state"
+            : > "${TMP}/calls.log"
+            : > "${TMP}/typed.log"
+            # No cursor probe is needed even if it is unavailable or moved into a draft.
+            touch "${TMP}/cursor-unavailable"
+            if [ "$after" = empty ]; then
+                printf '%s \n' "$prompt" > "${TMP}/after-submit"
+            else
+                printf '%s another draft or suggestion\n' "$prompt" > "${TMP}/after-submit"
+            fi
+            printf '🎯 occupancy matrix %s %s %s\n' "$target" "$state" "$after" > "${TMP}/msg"
+            run python3 "${PASTE}" --to "$target" --stdin < "${TMP}/msg"
+            assert_status 0
+            assert_contains "$(cat "${TMP}/clip-last-set")" "$expected_label"
+            assert_contains "$(cat "${TMP}/calls.log")" "session paste --pane ${pane} --target ${SID}"
+            [ "$(wc -l < "${TMP}/typed.log")" -eq 1 ]
+            [ "$(cat "${TMP}/clip")" = "user clipboard" ]
+            assert_not_contains "$(cat "${TMP}/calls.log")" 'surface cursor'
+            assert_not_contains "$output" 'composer is not empty'
+            assert_not_contains "$output" 'composer did not clear'
+        done
+    done
+}
+
+@test "paste: Claude occupancy matrix never blocks before or after submit" {
+    composer_matrix claude
+}
+
+@test "paste: Codex occupancy matrix never blocks before or after submit" {
+    composer_matrix codex
 }
 
 @test "paste: an unconfirmed paste gets no submit key and the clipboard is still restored" {

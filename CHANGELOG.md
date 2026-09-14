@@ -1,5 +1,18 @@
 # Changelog
 
+## peer-chat v0.4.3 - 2026-09-13
+
+### Changed
+
+- Comment out the paste wrapper's composer-occupancy guards before paste and after
+  submit for both Claude and Codex. Grey suggestions, existing drafts, IDE labels,
+  and cursor state no longer block this transport. Keep the guard code for reference.
+- Success now means the paste was observed and the submit key sent; composer clearing
+  is not checked. Existing drafts are not erased. Target, body, ledger, and paste
+  confirmation checks remain active.
+- Cover both targets with 32 combinations of initial composer contents and post-submit
+  occupancy, including the reported free-form suggestion and unavailable cursor data.
+
 ## peer-chat v0.4.2 - 2026-09-13
 
 ### Fixed

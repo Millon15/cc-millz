@@ -5,7 +5,7 @@ peer-chat.py types the body as keystrokes, and a typed newline submits, so it co
 message to one line. This companion keeps the line breaks: the body goes in through a bracketed
 paste (`agtermctl session paste`, the system clipboard, saved and restored around the call), which
 both TUIs insert as multi-line composer text without submitting. It reuses peer-chat.py's own
-target resolution and composer checks by loading the installed script as a module.
+target resolution by loading the installed script as a module.
 
     peer-chat-paste.py --to codex --stdin --slug <topic> < message.txt
     peer-chat-paste.py --to claude --message-file peer-chat-codex-a91f.txt --slug <topic>
@@ -13,11 +13,12 @@ target resolution and composer checks by loading the installed script as a modul
 --message-file is peer-chat.py's own spool contract: the name a `peer-chat.py --prepare-message`
 call printed, consumed on read.
 
-Guards, in order: the target pane runs the expected agent; its composer is empty; every new ask
-from the peer carries a disposition; after the paste the pane shows the message's last line (or
-the TUI's collapsed-paste marker); after the submit key the composer is empty again. Any failure
-stops before the next step and reports it. Nothing is ever typed into a composer that is not
-empty. Exit 0 sent, 1 refused or failed, 2 usage.
+Guards, in order: the target pane runs the expected agent; every new ask from the peer carries
+a disposition; after the paste the pane shows the message's last line (or the TUI's collapsed-paste
+marker). Composer occupancy checks before paste and after submit are intentionally disabled for
+both agents: suggestions, existing drafts, and cursor state do not block delivery. Existing text
+is not cleared before pasting. Success reports that paste was observed and the submit key was
+sent, not that the target accepted the message. Exit 0 sent, 1 refused or failed, 2 usage.
 
 The ask ledger, `tmp/peer-chat/<slug>/asks.tsv` under the repo root, is the script's own state:
 every `❓` line gets a topic-scoped id (`#claude-004`), and the peer's next send must carry
@@ -407,14 +408,15 @@ def paste_and_submit(
         return 1
     time.sleep(PASTE_SETTLE)
     t["type_text"](sid, profile, profile.submit, window)
-    if not wait_until(
-        lambda: composer_empty_now(t, sid, profile, window), ACCEPT_TIMEOUT
-    ):
-        print(
-            "submit not confirmed: the composer did not clear; read the pane, never resend blind",
-            file=sys.stderr,
-        )
-        return 1
+    # Post-submit occupancy check disabled too: new suggestions/drafts are not failures.
+    # if not wait_until(
+    #     lambda: composer_empty_now(t, sid, profile, window), ACCEPT_TIMEOUT
+    # ):
+    #     print(
+    #         "submit not confirmed: the composer did not clear; read the pane, never resend blind",
+    #         file=sys.stderr,
+    #     )
+    #     return 1
     return 0
 
 
@@ -445,12 +447,13 @@ def report(message: str, plan: Plan) -> None:
 def send(t: dict[str, Any], args: argparse.Namespace, body: str) -> int:
     profile = t["target_profile"](args.to, args.target_command, False)
     window, sid = t["resolve_target"](args.session, args.window, profile)
-    if not composer_empty_now(t, sid, profile, window):
-        print(
-            f"refused: the {profile.agent} composer is not empty; nothing written",
-            file=sys.stderr,
-        )
-        return 1
+    # Occupancy preflight disabled by user request for both agents (2026-09-13).
+    # if not composer_empty_now(t, sid, profile, window):
+    #     print(
+    #         f"refused: the {profile.agent} composer is not empty; nothing written",
+    #         file=sys.stderr,
+    #     )
+    #     return 1
     sender = peer_of(profile.agent)
     ledger = Ledger.for_slug(args.slug) if args.slug else None
     moment = now_utc()
