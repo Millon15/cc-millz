@@ -1,5 +1,15 @@
 # Changelog
 
+## essentials v0.7.0 - 2026-09-14
+
+### Added
+
+- `q-sql` skill: harelba's `q` CLI (3.x) for SQL over CSV/TSV/delimited files, command output and
+  sqlite files. Covers the flags its defaults get wrong (space delimiter, no header, lossy type
+  detection), `-A` when the schema is unknown, the stdin table `-`, joins across files, `.qsql` cache
+  side-files, `-S` saving inputs without running the SELECT, strict-mode width checks, and when DuckDB or
+  qsv is the better tool. Every claim probed on q 3.1.6 and cross-checked by Codex, not copied from the README.
+
 ## peer-chat v0.4.3 - 2026-09-13
 
 ### Changed
