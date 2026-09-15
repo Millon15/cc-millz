@@ -1,5 +1,12 @@
 # Changelog
 
+## essentials v0.7.1 - 2026-09-14
+
+### Fixed
+
+- `q-sql`: `-H` on a headerless input consumes the first data row when its values pass as names,
+  and a headerless glob works without `-H`; both rows now say so instead of claiming an error.
+
 ## essentials v0.7.0 - 2026-09-14
 
 ### Added

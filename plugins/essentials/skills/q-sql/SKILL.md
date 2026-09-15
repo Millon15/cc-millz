@@ -53,12 +53,12 @@ or awkward query goes in a file: `q -H -d , -q query.sql`. Extra functions beyon
 | delimited file | `./path/file.csv` (relative to cwd) |
 | stdin | `-` |
 | gzipped file | `file.csv.gz`, auto; gzipped stdin needs `-z` |
-| glob | `logs/*.csv`, ONLY when every file has an identical header, else "Bad header row" |
+| glob | `logs/*.csv`; with `-H` every file must carry the same header, else "Bad header row" |
 | sqlite table | `db.sqlite:::table`, or `db.sqlite` alone when it holds one table |
 | a join | `from a.csv a left join b.csv b on a.id = b.id`, every file gets the same `-d`/`-H` |
 
-Command output whose first line is not a header (`ls -l` begins with `total N`) fails with "Header line is
-expected but missing"; drop that line with `tail -n +2` before the pipe.
+Use `-H` only when the first row really holds column names: on a headerless input it consumes the first data
+row when those values pass as names. Strip a known preamble first (`ls -l | tail -n +2` drops the `total N` line).
 
 ## Cache and persistence
 
