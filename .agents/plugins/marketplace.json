@@ -1,0 +1,12 @@
+{
+  "name": "cc-millz",
+  "interface": { "displayName": "cc-millz" },
+  "plugins": [
+    {
+      "name": "essentials",
+      "source": { "source": "local", "path": "./plugins/essentials" },
+      "policy": { "installation": "AVAILABLE" },
+      "category": "Developer Tools"
+    }
+  ]
+}

@@ -1,5 +1,13 @@
 # Changelog
 
+## essentials v0.7.2 - 2026-09-14
+
+### Added
+
+- Codex manifests: `.agents/plugins/marketplace.json` at the repo root and
+  `plugins/essentials/.codex-plugin/plugin.json`, so `codex plugin marketplace add Millon15/cc-millz`
+  followed by `codex plugin add essentials@cc-millz` installs the same skills into Codex.
+
 ## essentials v0.7.1 - 2026-09-14
 
 ### Fixed
