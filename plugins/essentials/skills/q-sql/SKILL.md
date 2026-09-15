@@ -74,4 +74,4 @@ Persistent flag defaults live in `~/.qrc`; `q --dump-defaults` prints the templa
 
 q is for joins across a few delimited files, SQL over `ps` / `df` / log output through `-`, and a sqlite
 file queried without opening a shell. Parquet, JSON, or inputs measured in gigabytes go to DuckDB; SQL-free
-transforms (dedup, frequency tables, reshaping) go to qsv or mlr.
+transforms (dedup, frequency tables, schema, validation, conversion) go to qsv (skill `essentials:qsv`).

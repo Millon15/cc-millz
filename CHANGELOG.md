@@ -1,5 +1,16 @@
 # Changelog
 
+## essentials v0.8.0 - 2026-09-14
+
+### Added
+
+- `qsv` skill: dathere's qsv CLI (23.x) as the CSV toolkit beside q-sql. Names the Homebrew build's
+  missing Polars commands (no sqlp/joinp/pivotp, SQL stays with q), the sniff/stats/frequency workflow,
+  a command matrix (select, search, sort, dedup, join, safenames, luau, schema, validate, to, excel),
+  input rules (delimiter by extension, ragged rows fail, space-aligned output is not CSV) and the side
+  files stats/index/schema leave beside the data. Every row probed on qsv 23.0.1 and reviewed by Codex.
+- `q-sql`: the closing section now points SQL-free CSV work at `essentials:qsv`.
+
 ## essentials v0.7.2 - 2026-09-14
 
 ### Added

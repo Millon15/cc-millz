@@ -17,7 +17,7 @@
     {
       "name": "essentials",
       "source": "./plugins/essentials",
-      "description": "General-purpose personal skills — code-style (personal code taste), concise-writing (the compression procedure for comments, commits, PR descriptions and team sends) and q-sql (SQL over CSV/TSV/command output with harelba's q). Install at user scope only."
+      "description": "General-purpose personal skills — code-style (personal code taste), concise-writing (the compression procedure for comments, commits, PR descriptions and team sends), q-sql (SQL over CSV/TSV/command output with harelba's q) and qsv (CSV inspect/clean/dedup/join/validate/convert with dathere's qsv). Install at user scope only."
     },
     {
       "name": "gws-workspace",

@@ -24,7 +24,7 @@ Provenance: several of these plugins were generalized out of a private codebase 
 |--------|-------------|
 | [🪧 agterm-lanes](plugins/agterm-lanes/README.md) | Self-labelling agterm panes — name, emoji, tint, glyph and reboot-survivable sessions |
 | [🤖 codex-delegation](plugins/codex-delegation/README.md) | Codex CLI (gpt-5.6/gpt-5.5) as a second-tier workforce under Claude's orchestration |
-| [🧰 essentials](plugins/essentials/README.md) | General-purpose personal skills — code-style, concise-writing, q-sql, `/e15`, `/tldr`, `/recall` |
+| [🧰 essentials](plugins/essentials/README.md) | General-purpose personal skills — code-style, concise-writing, q-sql, qsv, `/e15`, `/tldr`, `/recall` |
 | [📄 gws-workspace](plugins/gws-workspace/README.md) | Google Workspace from an agent through the `gws` CLI — Docs, Sheets, Slides, Tasks, Drive, the `+read`/`+write` helpers, and the finding that a highlighted Docs comment is a browser-UI path only. Extracted from a private monorepo. |
 | [🔀 merge-kit](plugins/merge-kit/README.md) | Conflict resolution and merge forensics for any repo — profile-driven, forge read from `origin`, nothing silently reverted. Extracted from a private monorepo. |
 | [🔬 plan](plugins/plan/README.md) | `/plan:research` answers a question with empirical proof: a read-only researcher, falsifiable hypotheses, a proover that writes runnable artifacts under `tmp/a/<slug>/` and tries to disprove each claim; every proof carries a `proof.json` contract and `plan-research.sh --verify` re-runs it with an exit code a "fixed" claim can quote; the same script runs the pipeline headless for a peer agent. Extracted from a private monorepo |

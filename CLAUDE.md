@@ -45,7 +45,7 @@ Millon15 personal Claude Code plugin marketplace — skills, agents, (future) ho
 - `.claude-plugin/marketplace.json` — marketplace catalog
 - `plugins/agterm-lanes/` — self-labelling agterm panes (3 hooks, macOS + agterm only)
 - `plugins/codex-delegation/` — Codex CLI second-tier delegation (3 skills + 1 agent)
-- `plugins/essentials/` — general-purpose personal skills and commands (code-style, concise-writing, q-sql, /e15)
+- `plugins/essentials/` — general-purpose personal skills and commands (code-style, concise-writing, q-sql, qsv, /e15)
 - `plugins/peer-chat/` — Claude and Codex talking in one agterm split (1 skill + vendored transport + spawn/install scripts)
 - `plugins/plan/` — `/plan:research` with empirical proof (1 command + 2 agents + headless runner)
 - `plugins/phpstorm/` — PhpStorm MCP + Xdebug agent surface (2 skills)

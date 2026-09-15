@@ -13,6 +13,7 @@ General-purpose personal skills and everyday commands. Install at user scope —
 | command | `/recall` | 🔎 Forensic search of past sessions by natural-language description — full session UUIDs, models, timelines, dialog-vs-headless-worker split, ready `claude --resume` line |
 | skill | `essentials:concise-writing` | 🪒 The compression procedure — the "does the reader lose a FACT?" test, merge-repeats-upward, the annotation two-bucket rule, a hard stop condition |
 | skill | `essentials:q-sql` | 🗃️ SQL over CSV/TSV/command output/sqlite with harelba's `q` — the flag ladder its defaults get wrong (`-H -d , -O`), `-A` when the schema is unknown, `--as-text` for identifier columns, stdin as `-`, joins across files, `.qsql` cache side-files, when to use DuckDB or qsv instead |
+| skill | `essentials:qsv` | 🧹 CSV toolkit beside q-sql with dathere's `qsv` (Homebrew build, no Polars, so SQL stays with q) — sniff/stats/frequency before any transform, the command matrix (select, search, sort, dedup, join, safenames, luau, schema, validate, to sqlite/xlsx, excel), input rules, the side files stats/index/schema leave behind |
 | skill | `essentials:code-style` | 🎨 Personal code taste — declarative orchestrators with small intent-named helpers (SLAP), flat control flow, no narrating comments, typed value objects, fail-fast; decoded DRY/YAGNI/KISS/SOLID principles plus a patterns-to-reach-for menu |
 
 ---
