@@ -1,5 +1,17 @@
 # Changelog
 
+## unslop-kit v0.9.0 - 2026-09-17
+
+### Added
+
+- `human-brief` skill: the shape of a send to a human colleague. A 1-2 line headline, at most 8 flat facts of at
+  most 15 words with at most one link each, and every path, method name, query, timing, caveat or hedge moved into
+  an optional "How to verify" block after the facts or into the ticket. Sits after the cut and before the reword;
+  a project outbound skill loads it as its shape step. Born from two sends the same day that shipped 2000+ chars
+  of proof to a colleague who wanted eight lines.
+- Codex manifest (`.codex-plugin/plugin.json`) and a marketplace entry, so `codex plugin add unslop-kit@cc-millz`
+  installs the same three skills into Codex.
+
 ## essentials v0.8.0 - 2026-09-14
 
 ### Added

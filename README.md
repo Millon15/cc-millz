@@ -36,7 +36,7 @@ Provenance: several of these plugins were generalized out of a private codebase 
 | [🎬 short-video-reader](plugins/short-video-reader/README.md) | Read one short clip end-to-end from local artifacts — provenance, frames, contact sheets, captions, offline-only transcription; the scratch tree is a printed three-rung ladder and a delete needs the tool's own marker. Extracted from a private monorepo. |
 | [📟 statusline](plugins/statusline/README.md) | Two-line status line — git scopes, context window, loaded skills and MCP, quota and spend |
 | [🛠 toolsmith](plugins/toolsmith/README.md) | Author, review, retire and explain agent dev tools in any layout — the directories come from a layout adapter, the reuse search runs first, companion skills are soft. Extracted from a private monorepo. |
-| [🪆 unslop-kit](plugins/unslop-kit/README.md) | My reply contract as a Russian doll: a vendored, model-invocable copy of pstack's unslop (wording), umputun's writing-style (precision), then the layout pass, loaded by a SessionStart hook |
+| [🪆 unslop-kit](plugins/unslop-kit/README.md) | My reply contract as a Russian doll: a vendored, model-invocable copy of pstack's unslop (wording), umputun's writing-style (precision), human-brief (headline plus flat facts for a human colleague, proof in its own block), then the layout pass, loaded by a SessionStart hook |
 | [🥔 pstack](https://github.com/cursor/plugins/tree/main/pstack) (mirror) | poteto's pstack, mirrored via `git-subdir` from `cursor/plugins` because upstream ships no Claude Code marketplace — 44 skills + 2 agents, Cursor-authored (model panels and `~/.cursor/rules` do not apply); unslop-kit re-vendors its `unslop` skill from it |
 
 Each plugin is independent: install only what you want, in any combination.

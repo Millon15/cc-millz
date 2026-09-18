@@ -1,11 +1,29 @@
 {
   "name": "cc-millz",
-  "interface": { "displayName": "cc-millz" },
+  "interface": {
+    "displayName": "cc-millz"
+  },
   "plugins": [
     {
       "name": "essentials",
-      "source": { "source": "local", "path": "./plugins/essentials" },
-      "policy": { "installation": "AVAILABLE" },
+      "source": {
+        "source": "local",
+        "path": "./plugins/essentials"
+      },
+      "policy": {
+        "installation": "AVAILABLE"
+      },
+      "category": "Developer Tools"
+    },
+    {
+      "name": "unslop-kit",
+      "source": {
+        "source": "local",
+        "path": "./plugins/unslop-kit"
+      },
+      "policy": {
+        "installation": "AVAILABLE"
+      },
       "category": "Developer Tools"
     }
   ]
