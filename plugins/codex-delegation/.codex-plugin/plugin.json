@@ -1,0 +1,17 @@
+{
+  "name": "codex-delegation",
+  "version": "0.1.1",
+  "description": "Route second-tier work to Codex CLI (gpt-5.6/gpt-5.5) through the openai-codex plugin: routing rubric, workflow fan-out wrappers, computer-use verification. REQUIRES plugin: codex@openai-codex (marketplace openai/codex-plugin-cc).",
+  "author": {
+    "name": "Millon15"
+  },
+  "license": "MIT",
+  "repository": "https://github.com/Millon15/cc-millz",
+  "skills": "./skills/",
+  "interface": {
+    "displayName": "codex-delegation",
+    "shortDescription": "Millon15 codex-delegation: codex-computer-use codex-delegate codex-workflow-fanout",
+    "developerName": "Millon15",
+    "category": "Developer Tools"
+  }
+}

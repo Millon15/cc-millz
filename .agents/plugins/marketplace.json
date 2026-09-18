@@ -25,6 +25,94 @@
         "installation": "AVAILABLE"
       },
       "category": "Developer Tools"
+    },
+    {
+      "name": "codex-delegation",
+      "source": {
+        "source": "local",
+        "path": "./plugins/codex-delegation"
+      },
+      "policy": {
+        "installation": "AVAILABLE"
+      },
+      "category": "Developer Tools"
+    },
+    {
+      "name": "gws-workspace",
+      "source": {
+        "source": "local",
+        "path": "./plugins/gws-workspace"
+      },
+      "policy": {
+        "installation": "AVAILABLE"
+      },
+      "category": "Developer Tools"
+    },
+    {
+      "name": "peer-chat",
+      "source": {
+        "source": "local",
+        "path": "./plugins/peer-chat"
+      },
+      "policy": {
+        "installation": "AVAILABLE"
+      },
+      "category": "Developer Tools"
+    },
+    {
+      "name": "phpstorm",
+      "source": {
+        "source": "local",
+        "path": "./plugins/phpstorm"
+      },
+      "policy": {
+        "installation": "AVAILABLE"
+      },
+      "category": "Developer Tools"
+    },
+    {
+      "name": "ralphex-revmux",
+      "source": {
+        "source": "local",
+        "path": "./plugins/ralphex-revmux"
+      },
+      "policy": {
+        "installation": "AVAILABLE"
+      },
+      "category": "Developer Tools"
+    },
+    {
+      "name": "revmux-kit",
+      "source": {
+        "source": "local",
+        "path": "./plugins/revmux-kit"
+      },
+      "policy": {
+        "installation": "AVAILABLE"
+      },
+      "category": "Developer Tools"
+    },
+    {
+      "name": "short-video-reader",
+      "source": {
+        "source": "local",
+        "path": "./plugins/short-video-reader"
+      },
+      "policy": {
+        "installation": "AVAILABLE"
+      },
+      "category": "Developer Tools"
+    },
+    {
+      "name": "toolsmith",
+      "source": {
+        "source": "local",
+        "path": "./plugins/toolsmith"
+      },
+      "policy": {
+        "installation": "AVAILABLE"
+      },
+      "category": "Developer Tools"
     }
   ]
 }

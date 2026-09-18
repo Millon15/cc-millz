@@ -1,5 +1,16 @@
 # Changelog
 
+## Codex manifests for every skill-bearing plugin - 2026-09-17
+
+### Added
+
+- `.codex-plugin/plugin.json` and a `.agents/plugins/marketplace.json` entry for codex-delegation 0.1.1,
+  gws-workspace 0.1.1, peer-chat 0.4.4, phpstorm 0.2.1, ralphex-revmux 0.1.2, revmux-kit 0.1.2,
+  short-video-reader 0.1.1 and toolsmith 0.1.1 (patch bumps, no content change), so `codex plugin add <name>@cc-millz`
+  installs their skills into Codex the way essentials and unslop-kit already do. agterm-lanes, merge-kit, plan,
+  security-audit and statusline ship only commands, agents or hooks, which a Codex manifest cannot carry, so they
+  stay Claude-only.
+
 ## unslop-kit v0.9.0 - 2026-09-17
 
 ### Added

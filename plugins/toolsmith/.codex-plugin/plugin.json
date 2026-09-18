@@ -1,0 +1,17 @@
+{
+  "name": "toolsmith",
+  "version": "0.1.1",
+  "description": "Author, review and retire agent dev tools — skills, commands, subagents and rules — in any project, whatever its agent-config layout. A layout adapter resolves the target paths from a positive marker (a rulesync config file, a plugin manifest, or an agent-config marker such as AGENTS.md), so the same commands write to the right place in a rulesync-generated repo, a plugin repo, or a plain .claude checkout. Ships a skill finder that ranks what already exists across five tiers before anything new is authored, a non-blocking dev-tool linter, and a vendoring script for public skills that ship no plugin.",
+  "author": {
+    "name": "Millon15"
+  },
+  "license": "MIT",
+  "repository": "https://github.com/Millon15/cc-millz",
+  "skills": "./skills/",
+  "interface": {
+    "displayName": "toolsmith",
+    "shortDescription": "Millon15 toolsmith: dev-tool-authoring skill-discovery",
+    "developerName": "Millon15",
+    "category": "Developer Tools"
+  }
+}

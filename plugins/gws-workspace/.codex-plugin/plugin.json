@@ -1,0 +1,17 @@
+{
+  "name": "gws-workspace",
+  "version": "0.1.1",
+  "description": "Drive the Google Workspace CLI (`gws`, the `@googleworkspace/cli` npm package) from an agent — one skill plus six references covering Docs, Sheets, Slides, Tasks and Drive: the shared flag set, the `<service> <resource> <method>` call shape, the `+read` / `+write` / `+append` / `+upload` helpers, and the schema-discovery commands that answer a method's required params without a web search. It also carries the Google Docs comment finding: `gws drive comments create` posts an unanchored card whatever anchor you supply, because the Drive API renders any supplied anchor as deleted content, so a highlighted inline comment is a browser-UI path only. Write and delete commands are confirmed with the user first, destructive ones are rehearsed with `--dry-run`, and secrets are never printed. Requires the `gws` CLI.",
+  "author": {
+    "name": "Millon15"
+  },
+  "license": "MIT",
+  "repository": "https://github.com/Millon15/cc-millz",
+  "skills": "./skills/",
+  "interface": {
+    "displayName": "gws-workspace",
+    "shortDescription": "Millon15 gws-workspace: gws-workspace",
+    "developerName": "Millon15",
+    "category": "Developer Tools"
+  }
+}
