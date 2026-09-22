@@ -42,16 +42,23 @@ Millon15 personal Claude Code plugin marketplace — skills, agents, (future) ho
 
 ## Structure
 
-- `.claude-plugin/marketplace.json` — marketplace catalog
+- `.claude-plugin/marketplace.json` — Claude marketplace catalog; also lists `pstack`, a git-subdir mirror of cursor/plugins with no directory here
+- `.agents/plugins/marketplace.json` — Codex marketplace catalog, one entry per plugin that ships a `.codex-plugin/plugin.json`
 - `plugins/agterm-lanes/` — self-labelling agterm panes (3 hooks, macOS + agterm only)
 - `plugins/codex-delegation/` — Codex CLI second-tier delegation (3 skills + 1 agent)
-- `plugins/essentials/` — general-purpose personal skills and commands (code-style, concise-writing, q-sql, qsv, /e15)
+- `plugins/essentials/` — general-purpose personal skills and commands (code-style, concise-writing, q-sql, qsv, /e15, /recall, /tldr)
+- `plugins/gws-workspace/` — Google Workspace through the `gws` CLI (1 skill + references)
+- `plugins/merge-kit/` — conflict resolution and merge forensics (2 commands + scripts)
 - `plugins/peer-chat/` — Claude and Codex talking in one agterm split (1 skill + vendored transport + spawn/install scripts)
 - `plugins/plan/` — `/plan:research` with empirical proof (1 command + 2 agents + headless runner)
 - `plugins/phpstorm/` — PhpStorm MCP + Xdebug agent surface (2 skills)
 - `plugins/ralphex-revmux/` — revmux as ralphex's external reviewer (1 skill + 1 command + 2 agents + scripts)
 - `plugins/revmux-kit/` — revmux project layer bootstrap (1 skill + templates)
-- `plugins/unslop-kit/` — reply contract over a vendored pstack unslop (2 skills + 1 SessionStart hook + sync script)
+- `plugins/security-audit/` — pre-adoption security audit of a repo, MCP server or package (1 command)
+- `plugins/short-video-reader/` — read one short video from a URL or file, visible content only (1 skill + script)
+- `plugins/statusline/` — two-line status line, self-installs into settings.json (1 SessionStart hook + scripts)
+- `plugins/toolsmith/` — agent dev-tool lifecycle (4 commands + 2 skills + scripts)
+- `plugins/unslop-kit/` — reply contract over a vendored pstack unslop (3 skills + 1 SessionStart hook + sync script)
 
 ## Local Plugin Development
 

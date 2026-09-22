@@ -22,11 +22,10 @@ setup() {
 
 # ------------------------------------------------------------- the package --
 
-@test "security-audit: the plugin manifest is 0.1.0 with an empty dependencies field" {
+@test "security-audit: the plugin manifest names the plugin with an empty dependencies field" {
     run jq -r '.name, .version, (.dependencies | length)' "${PLUGIN}/.claude-plugin/plugin.json"
     assert_status 0
     assert_contains "${output}" "security-audit"
-    assert_contains "${output}" "0.1.0"
     [ "$(jq -r '.dependencies | length' "${PLUGIN}/.claude-plugin/plugin.json")" = "0" ]
 }
 

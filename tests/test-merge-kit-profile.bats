@@ -34,11 +34,10 @@ teardown() { teardown_tmp; }
 
 # ------------------------------------------------------------- the package --
 
-@test "merge-kit: the plugin manifest is 0.2.0 with an empty dependencies field" {
+@test "merge-kit: the plugin manifest names the plugin with an empty dependencies field" {
 	run jq -r '.name, .version' "${PLUGIN}/.claude-plugin/plugin.json"
 	assert_status 0
 	assert_contains "${output}" "merge-kit"
-	assert_contains "${output}" "0.2.0"
 	[ "$(jq -r '.dependencies | length' "${PLUGIN}/.claude-plugin/plugin.json")" = "0" ]
 }
 

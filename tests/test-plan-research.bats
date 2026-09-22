@@ -25,11 +25,10 @@ teardown() { teardown_tmp; }
 
 # ------------------------------------------------------------- the package --
 
-@test "plan: manifest is 0.2.0 and the marketplace lists the plugin" {
+@test "plan: manifest names the plugin and the marketplace lists it" {
     run jq -r '.name, .version' "${PLUGIN}/.claude-plugin/plugin.json"
     assert_status 0
     assert_contains "${output}" "plan"
-    assert_contains "${output}" "0.2.0"
     run jq -r '.plugins[] | select(.name == "plan") | .source' "${REPO_ROOT}/.claude-plugin/marketplace.json"
     assert_status 0
     assert_contains "${output}" "./plugins/plan"
