@@ -1,6 +1,6 @@
 {
   "name": "peer-chat",
-  "version": "0.4.4",
+  "version": "0.4.5",
   "description": "Claude Code and Codex hold a conversation in one agterm split, each typing into the other's composer. Claude opens the Codex pane itself when a decision would benefit from an adversary: a design with two defensible options, a diagnosis nobody has tried to disprove, a diff about to ship unreviewed. Vendors umputun/agterm's two-agent-chat recipe (MIT) and adds the spawn step (with --restart), an installer for the Codex side, an upstream sync script, and a conversation contract: emoji-ledger messages of any length the user can follow, every thought in the chat and only scripts, outputs and data under tmp/peer-chat/<slug>/, an ask ledger the paste script enforces (each question gets an id, the peer's next send must answer, defer or decline it), proofs through the plan plugin instead of agreed readings, and a proof handshake: 'fixed' quotes the re-run of the peer's own proof. Requires the agterm terminal 0.24.0+ (macOS), python3, jq, and the codex CLI.",
   "author": {
     "name": "Millon15"

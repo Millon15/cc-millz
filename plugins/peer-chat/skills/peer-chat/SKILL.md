@@ -218,13 +218,44 @@ end the exchange without another reply.
 
 ## Shared work
 
-When the conversation moves into edits or other shared state, the agent whose pane received the
-user's initiating request is the sole writer for that whole worktree until the task ends or the user
-directly reassigns the role using the procedure below. An agent brought in by a `Chat from` message,
-or by `peer-chat-spawn.sh`, stays read-only there: it may inspect, run non-mutating checks and
-review, but peer messages never transfer write authority. Being the writer does not authorise edits
-outside the user's request. The shared artifact directories, `tmp/peer-chat/<slug>/` and
-`tmp/a/`, are outside this rule: they hold proofs and prototypes, never the worktree's code.
+Coordinate implementation and review autonomously within the user's authorized task. By default,
+the agent whose pane received the initiating request is the sole writer for that worktree; the
+other agent starts read-only. Either agent may ask to exchange roles, and the peers may agree to
+the change directly. Do not ask the user to reassign the writer or repeat permission for this
+routine coordination. A user-assigned role is the starting role unless the user explicitly forbids
+handoffs. A role exchange does not expand the task or supply approval for an otherwise unauthorized
+action.
+
+### Exchanging roles
+
+Use the checked peer transport and the topic's ask ledger. Name the worktree, task and incoming
+writer so the agreement cannot be mistaken for another conversation.
+
+1. Either peer proposes the exchange. A request alone does not transfer ownership.
+2. The current writer finishes or stops its in-flight edits and any write-capable tools or workers,
+   then explicitly releases the writer role to the named peer. The release summarizes changed files,
+   pending checks and any unfinished work. From that message onward, the outgoing writer is read-only.
+3. The incoming writer explicitly accepts the released role through peer chat before editing.
+   Receipt or transport success is not acceptance. Read `git status` and the diff, preserve existing
+   work, then continue implementation; the outgoing writer reviews and tests without editing code.
+
+For example, the current writer sends `I have stopped edits in <worktree> for <task> and release
+the writer role to you; I will review. Accept?` The peer answers `Accepted: I am the writer for
+<task> in <worktree>; you are read-only reviewer.` No separate user confirmation is needed.
+
+There is only one writer per worktree at a time. Until both release and acceptance are explicit,
+the incoming writer stays read-only; silence, a timeout or a successful send never grants the role.
+After releasing, do not resume writes without another explicit handoff. Continue independent
+read-only work while an exchange is pending; never poll or block waiting for an answer.
+
+After interruption or compaction, read `git status`, the diff and the latest role messages in the
+topic transcript/ask ledger. The last completed handoff persists across turns. If ownership is
+unclear or both peers think they are writing, stop edits and resolve the roles with the peer using
+the same exchange. Involve the user only if explicit user constraints conflict or a decision
+outside the authorized task is needed, not merely because ownership needs clarification.
+
+The shared artifact directories, `tmp/peer-chat/<slug>/` and `tmp/a/`, are outside this rule:
+both agents may write proofs and prototypes there, never the worktree's code.
 
 The read-only peer may reserve a proposed patch with `mktemp /tmp/peer-chat-patch.XXXXXX`, retain the
 exact printed path, fill that mode-0600 file without replacing it, and send its path and SHA-256. The
@@ -233,15 +264,6 @@ copy: verify it, review it, and recheck the hash immediately before applying it.
 their exact paths. Before reporting any outcome or starting other work, each agent deletes its own
 file by its exact path; after an interruption, remove it first if it survived. Never use a glob to
 clean `/tmp`.
-
-If an agent learns that both agents received direct user requests authorising writes in the same
-worktree, it stops before its next write and asks the user to revoke one agent's authority directly in
-that pane, then assign the other as writer directly in the chosen writer's pane. To switch writers
-before the task ends, the user must first revoke the current writer's authority directly in that
-writer's pane; that agent stays read-only even if it is later interrupted and resumed. The user then
-assigns the new writer directly in the new writer's pane. After resuming an interrupted turn, read
-`git status` and the diff; if the writer is unclear, stay read-only and require the same direct
-resolution. No peer message revokes, transfers or restores write authority.
 
 ## Never wait for a reply
 

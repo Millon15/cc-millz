@@ -148,3 +148,26 @@ teardown() { teardown_tmp; }
     assert_contains "${body}" "Chat from Codex:"
     assert_not_contains "${body}" "never starts an agent"
 }
+
+@test "both skills: peers can exchange roles without user reassignment and preserve exclusive ownership" {
+    claude_shared="$(sed -n '/^## Shared work$/,/^## Never wait for a reply$/p' "${PLUGIN}/skills/peer-chat/SKILL.md")"
+    codex_shared="$(sed -n '/^## Shared work$/,/^## Never wait for a reply$/p' "${PLUGIN}/codex/SKILL.md")"
+    [ "${claude_shared}" = "${codex_shared}" ]
+    assert_contains "${claude_shared}" "Either agent may ask to exchange roles"
+    assert_contains "${claude_shared}" "Do not ask the user to reassign the writer"
+    assert_contains "${claude_shared}" "finishes or stops its in-flight edits"
+    assert_contains "${claude_shared}" "explicitly releases the writer role"
+    assert_contains "${claude_shared}" "explicitly accepts the released role"
+    assert_contains "${claude_shared}" "silence, a timeout or a successful send never grants the role"
+    assert_contains "${claude_shared}" "last completed handoff persists across turns"
+    assert_contains "${claude_shared}" "resolve the roles with the peer"
+    assert_contains "${claude_shared}" "unless the user explicitly forbids"
+    assert_contains "${claude_shared}" "does not expand the task or supply approval"
+    for f in "${PLUGIN}/skills/peer-chat/SKILL.md" "${PLUGIN}/codex/SKILL.md"; do
+        body="$(cat "$f")"
+        assert_not_contains "${body}" "peer messages never transfer write authority"
+        assert_not_contains "${body}" "No peer message revokes, transfers or restores write authority"
+        assert_not_contains "${body}" "asks the user to revoke one agent's authority"
+        assert_not_contains "${body}" "user must first revoke"
+    done
+}

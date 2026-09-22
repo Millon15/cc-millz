@@ -1,5 +1,26 @@
 # Changelog
 
+## statusline v0.2.1 - 2026-09-22
+
+### Fixed
+
+- The effort label shows the live session level. Claude Code sends it on stdin as `effort.level`; the script read
+  an `.effortLevel` key that stdin never carries, so it always fell back to the top-level `effortLevel` in
+  settings.json. `/model` saves a per-model level under `modelSettings`, which left the label on a stale top-level
+  value (`High` while the session ran `xhigh`).
+- `tests/test-statusline-effort.bats` covers the stdin level, the settings fallback, and no effort at all.
+
+## peer-chat v0.4.5 - 2026-09-18
+
+### Fixed
+
+- Claude and Codex can exchange implementation/review roles by explicit peer agreement without
+  requiring the user to reassign them in each pane. The outgoing writer stops and releases the
+  worktree, the incoming writer accepts, and the handoff persists across interruptions. One writer
+  at a time and the user's task/approval boundaries remain in force.
+- Both skill bodies share the same handoff contract; installer tests guard against restoring the
+  user-only reassignment requirement.
+
 ## Codex manifests for every skill-bearing plugin - 2026-09-17
 
 ### Added

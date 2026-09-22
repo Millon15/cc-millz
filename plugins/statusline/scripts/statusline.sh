@@ -751,7 +751,7 @@ IFS="$FS" read -r cwd project_dir transcript_path session_id model_raw used_toke
 		(.context_window.used_percentage // ""),
 		(.context_window.context_window_size // ""),
 		(.output_style.name // "default"),
-		(.effortLevel // $settings[0].effortLevel // ""),
+		(.effort.level // $settings[0].effortLevel // ""),
 		(.cost.total_cost_usd // "")
 	] | map(tostring) | join($sep)'
 )"
