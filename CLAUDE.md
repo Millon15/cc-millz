@@ -49,7 +49,7 @@ Millon15 personal Claude Code plugin marketplace — skills, agents, (future) ho
 - `plugins/essentials/` — general-purpose personal skills and commands (code-style, concise-writing, q-sql, qsv, /e15, /recall, /tldr)
 - `plugins/gws-workspace/` — Google Workspace through the `gws` CLI (1 skill + references)
 - `plugins/merge-kit/` — conflict resolution and merge forensics (2 commands + scripts)
-- `plugins/peer-chat/` — Claude and Codex talking in one agterm split (1 skill + vendored transport + spawn/install scripts)
+- `plugins/peer-chat/` — two coding agents, any harness and model, talking in one agterm split (1 skill + vendored engine + adapter + spawn/install scripts)
 - `plugins/plan/` — `/plan:research` with empirical proof (1 command + 2 agents + headless runner)
 - `plugins/phpstorm/` — PhpStorm MCP + Xdebug agent surface (2 skills)
 - `plugins/ralphex-revmux/` — revmux as ralphex's external reviewer (1 skill + 1 command + 2 agents + scripts)

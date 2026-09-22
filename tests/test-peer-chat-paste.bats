@@ -17,11 +17,13 @@ setup() {
     PASTE="${PEER_CHAT_TEST_PASTE:-${PLUGIN}/scripts/peer-chat-paste.py}"
     FIX="${REPO_ROOT}/tests/fixtures/peer-chat"
     SID="11111111-1111-1111-1111-111111111111"
-    export AGTERM_SESSION_ID="${SID}" PEER_CHAT_TRANSPORT="${PLUGIN}/scripts/peer-chat.py"
+    export AGTERM_SESSION_ID="${SID}" AGTERM_PANE=left PEER_CHAT_TRANSPORT="${PLUGIN}/scripts/peer-chat.py"
+    unset PEER_CHAT_NAME PEER_CHAT_CLAUDE_COMMAND PEER_CHAT_CODEX_COMMAND
     export PEER_CHAT_PASTE_TIMEOUT=1 PEER_CHAT_ACCEPT_TIMEOUT=1
     unset AGTERM_WINDOW_ID
     printf 'user clipboard' > "${TMP}/clip"
     printf 'empty' > "${TMP}/state"
+    cp "${FIX}/tree-split-codex.json" "${TMP}/tree.json"
     stub pbcopy "cat > '${TMP}/clip'; grep -q '^Chat from' '${TMP}/clip' || exit 0; cp '${TMP}/clip' '${TMP}/clip-last-set'; [ -f '${TMP}/clip-first-set' ] || cp '${TMP}/clip' '${TMP}/clip-first-set'"
     stub pbpaste "cat '${TMP}/clip'"
     stub_agtermctl
@@ -37,7 +39,7 @@ printf '%s\n' "\$*" >> "${TMP}/calls.log"
 state="\$(cat "${TMP}/state")"
 case "\$1 \$2" in
     "window list") echo '{"result":{"windows":[{"id":"win-1","active":true,"open":true}]}}' ;;
-    "tree --json") cat "${FIX}/tree-split-codex.json" ;;
+    "tree --json") cat "${TMP}/tree.json" ;;
     "surface cursor") [ ! -f "${TMP}/cursor-unavailable" ] || exit 9; echo 2 ;;
     "session text")
         case "\$state" in
@@ -57,7 +59,7 @@ EOF
 send_file() { # send_file <message-file> [extra args]
     local file="$1"
     shift
-    run python3 "${PASTE}" --to codex --stdin "$@" < "${file}"
+    run python3 "${PASTE}" --to peer --stdin "$@" < "${file}"
 }
 
 @test "paste: a multi-line body is pasted with the label, submitted once, and the clipboard is restored" {
@@ -65,7 +67,7 @@ send_file() { # send_file <message-file> [extra args]
     send_file "${TMP}/msg"
     assert_status 0
     assert_contains "${output}" '"lines": 5'
-    [ "$(head -1 "${TMP}/clip-first-set")" = "Chat from Claude: 🎯 the guard is blind across bids" ]
+    [ "$(head -1 "${TMP}/clip-first-set")" = "Chat from claude (left): 🎯 the guard is blind across bids" ]
     [ "$(tail -1 "${TMP}/clip-first-set")" = "❓ does a retry create a second bid?" ]
     assert_contains "$(cat "${TMP}/calls.log")" "session paste --pane right --target ${SID}"
     [ "$(wc -l < "${TMP}/typed.log")" -eq 1 ]
@@ -73,10 +75,10 @@ send_file() { # send_file <message-file> [extra args]
 }
 
 @test "paste: an existing label is not doubled and trailing blank lines are dropped" {
-    printf 'Chat from Claude: 🎯 one line\n\n\n' > "${TMP}/msg"
+    printf 'Chat from claude (left): 🎯 one line\n\n\n' > "${TMP}/msg"
     send_file "${TMP}/msg"
     assert_status 0
-    [ "$(cat "${TMP}/clip-first-set")" = "Chat from Claude: 🎯 one line" ]
+    [ "$(cat "${TMP}/clip-first-set")" = "Chat from claude (left): 🎯 one line" ]
 }
 
 @test "paste: existing draft text does not block paste or submit" {
@@ -90,11 +92,11 @@ send_file() { # send_file <message-file> [extra args]
 }
 
 composer_matrix() {
-    local target="$1" prompt pane state after expected_label
+    local target="$1" prompt pane sender state after expected_label
     if [ "$target" = claude ]; then
-        prompt='❯'; pane=left; expected_label='Chat from Codex:'
+        prompt='❯'; pane=left; sender=right; expected_label='Chat from codex (right):'
     else
-        prompt='›'; pane=right; expected_label='Chat from Claude:'
+        prompt='›'; pane=right; sender=left; expected_label='Chat from claude (left):'
     fi
     for state in empty suggestion startup_hint ide_context draft multiline queued unknown; do
         case "$state" in
@@ -119,7 +121,7 @@ composer_matrix() {
                 printf '%s another draft or suggestion\n' "$prompt" > "${TMP}/after-submit"
             fi
             printf '🎯 occupancy matrix %s %s %s\n' "$target" "$state" "$after" > "${TMP}/msg"
-            run python3 "${PASTE}" --to "$target" --stdin < "${TMP}/msg"
+            AGTERM_PANE="$sender" run python3 "${PASTE}" --to peer --stdin < "${TMP}/msg"
             assert_status 0
             assert_contains "$(cat "${TMP}/clip-last-set")" "$expected_label"
             assert_contains "$(cat "${TMP}/calls.log")" "session paste --pane ${pane} --target ${SID}"
@@ -211,10 +213,10 @@ seed_codex_ask() { # seed_codex_ask <disposition> <due> <reason>
     send_file "${TMP}/msg" --slug seatos
     assert_status 0
     pasted="$(cat "${TMP}/clip-first-set")"
-    assert_contains "${pasted}" "❓ #claude-001 does a retry create a second bid?"
-    assert_contains "${pasted}" "❓ #claude-002 is the 409 retried at all?"
-    assert_contains "${output}" '"asks": ["#claude-001", "#claude-002"]'
-    assert_contains "$(cat "${TMP}/${LEDGER}")" $'claude-001\tclaude\t'
+    assert_contains "${pasted}" "❓ #left-001 does a retry create a second bid?"
+    assert_contains "${pasted}" "❓ #left-002 is the 409 retried at all?"
+    assert_contains "${output}" '"asks": ["#left-001", "#left-002"]'
+    assert_contains "$(cat "${TMP}/${LEDGER}")" $'left-001\tleft\t'
     assert_contains "$(cat "${TMP}/${LEDGER}")" $'\t\t\t\tdoes a retry create a second bid?'
     assert_not_contains "${output}" "no --slug"
 }
@@ -244,7 +246,7 @@ seed_codex_ask() { # seed_codex_ask <disposition> <due> <reason>
     send_file "${TMP}/msg" --slug seatos
     assert_status 0
     assert_contains "${output}" '"disposed": ["#codex-001"]'
-    assert_contains "$(cat "${TMP}/${LEDGER}")" $'codex-001\tcodex\t2026-09-10T08:00:00Z\tanswered\t\tno, the refund path opens a new bid\t'
+    assert_contains "$(cat "${TMP}/${LEDGER}")" $'codex-001\tright\t2026-09-10T08:00:00Z\tanswered\t\tno, the refund path opens a new bid\t'
 }
 
 @test "ledger: deferred keeps the ask open with a due time, and the next send is not refused" {
@@ -266,7 +268,7 @@ seed_codex_ask() { # seed_codex_ask <disposition> <due> <reason>
     printf '🎯 next claim\n' > "${TMP}/msg"
     send_file "${TMP}/msg" --slug seatos
     assert_status 0
-    [ "$(head -1 "${TMP}/clip-first-set")" = "Chat from Claude: overdue: #codex-001 deferred(after the fixture" ]
+    [ "$(head -1 "${TMP}/clip-first-set")" = "Chat from claude (left): overdue: #codex-001 deferred(after the fixture" ]
     [ "$(sed -n 2p "${TMP}/clip-first-set")" = "   run): does the refund path reuse the bid?" ]
     [ "$(sed -n 4p "${TMP}/clip-first-set")" = "🎯 next claim" ]
 }
@@ -281,4 +283,77 @@ seed_codex_ask() { # seed_codex_ask <disposition> <due> <reason>
     assert_status 1
     assert_contains "${output}" "message file restored: peer-chat-codex-a91f.txt"
     [ "$(cat "${spool}/peer-chat-codex-a91f.txt")" = "🎯 the guard is blind across bids" ]
+}
+
+# ------------------------------------------------------------- symmetry --
+
+@test "pair: claude+claude, left sends to right with the Claude protocol and its own label" {
+    cp "${FIX}/tree-pair-claude-claude.json" "${TMP}/tree.json"
+    printf '❯ \n' > "${TMP}/composer"
+    printf '🎯 same harness on both sides\n' > "${TMP}/msg"
+    send_file "${TMP}/msg"
+    assert_status 0
+    [ "$(cat "${TMP}/clip-first-set")" = "Chat from claude (left): 🎯 same harness on both sides" ]
+    assert_contains "$(cat "${TMP}/calls.log")" "session paste --pane right --target ${SID}"
+}
+
+@test "pair: codex+codex, right sends to left with the Codex protocol" {
+    cp "${FIX}/tree-pair-codex-codex.json" "${TMP}/tree.json"
+    printf '🎯 codex to codex\n' > "${TMP}/msg"
+    AGTERM_PANE=right send_file "${TMP}/msg"
+    assert_status 0
+    [ "$(cat "${TMP}/clip-first-set")" = "Chat from codex (right): 🎯 codex to codex" ]
+    assert_contains "$(cat "${TMP}/calls.log")" "session paste --pane left --target ${SID}"
+}
+
+@test "pair: PEER_CHAT_NAME names the sender in the label" {
+    printf '🎯 named\n' > "${TMP}/msg"
+    PEER_CHAT_NAME="claude opus" send_file "${TMP}/msg"
+    assert_status 0
+    [ "$(cat "${TMP}/clip-first-set")" = "Chat from claude opus: 🎯 named" ]
+}
+
+@test "pair: legacy --to claude refuses when both panes run claude, before any paste" {
+    cp "${FIX}/tree-pair-claude-claude.json" "${TMP}/tree.json"
+    printf '🎯 x\n' > "${TMP}/msg"
+    run python3 "${PASTE}" --to claude --stdin < "${TMP}/msg"
+    assert_status 1
+    assert_contains "${output}" "2 panes run claude"
+    assert_not_contains "$(cat "${TMP}/calls.log")" "session paste"
+    [ "$(cat "${TMP}/clip")" = "user clipboard" ]
+}
+
+@test "pair: --to the sender's own pane is refused" {
+    printf '🎯 x\n' > "${TMP}/msg"
+    run python3 "${PASTE}" --to left --stdin < "${TMP}/msg"
+    assert_status 1
+    assert_contains "${output}" "resolves to this pane (left)"
+    assert_not_contains "$(cat "${TMP}/calls.log")" "session paste"
+}
+
+@test "pair: a peer pane running no known harness is refused before any paste" {
+    cp "${FIX}/tree-split-busy.json" "${TMP}/tree.json"
+    printf '🎯 x\n' > "${TMP}/msg"
+    send_file "${TMP}/msg"
+    assert_status 1
+    assert_contains "${output}" "the right pane runs no known peer"
+    assert_not_contains "$(cat "${TMP}/calls.log")" "session paste"
+}
+
+@test "pair: a sender outside a left or right pane is refused" {
+    printf '🎯 x\n' > "${TMP}/msg"
+    AGTERM_PANE=scratch send_file "${TMP}/msg"
+    assert_status 1
+    assert_contains "${output}" "not left or right"
+}
+
+@test "ledger: new ids continue after legacy #claude-NNN asks, which now belong to the left pane" {
+    mkdir -p "${TMP}/tmp/peer-chat/seatos"
+    printf 'id\tasked_by\tsent_at\tdisposition\tdue\treason\tquestion\n' > "${TMP}/${LEDGER}"
+    printf 'claude-002\tclaude\t2026-09-10T08:00:00Z\tanswered\t\tyes\tolder ask\n' >> "${TMP}/${LEDGER}"
+    printf '🔎 Processor.php:23\n\n❓ next question\n' > "${TMP}/msg"
+    send_file "${TMP}/msg" --slug seatos
+    assert_status 0
+    assert_contains "$(cat "${TMP}/clip-first-set")" "❓ #left-003 next question"
+    assert_contains "$(cat "${TMP}/${LEDGER}")" $'claude-002\tleft\t'
 }

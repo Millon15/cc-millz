@@ -5,15 +5,15 @@ peer-chat.py types the body as keystrokes, and a typed newline submits, so it co
 message to one line. This companion keeps the line breaks: the body goes in through a bracketed
 paste (`agtermctl session paste`, the system clipboard, saved and restored around the call), which
 both TUIs insert as multi-line composer text without submitting. It reuses peer-chat.py's own
-target resolution by loading the installed script as a module.
+peer resolution by loading the installed script as a module.
 
-    peer-chat-paste.py --to codex --stdin --slug <topic> < message.txt
-    peer-chat-paste.py --to claude --message-file peer-chat-codex-a91f.txt --slug <topic>
+    peer-chat-paste.py --to peer --stdin --slug <topic> < message.txt
+    peer-chat-paste.py --to peer --message-file peer-chat-right-a91f.txt --slug <topic>
 
 --message-file is peer-chat.py's own spool contract: the name a `peer-chat.py --prepare-message`
 call printed, consumed on read.
 
-Guards, in order: the target pane runs the expected agent; every new ask from the peer carries
+Guards, in order: the target pane runs a known peer harness; every new ask from the peer carries
 a disposition; after the paste the pane shows the message's last line (or the TUI's collapsed-paste
 marker). Composer occupancy checks before paste and after submit are intentionally disabled for
 both agents: suggestions, existing drafts, and cursor state do not block delivery. Existing text
@@ -21,9 +21,10 @@ is not cleared before pasting. Success reports that paste was observed and the s
 sent, not that the target accepted the message. Exit 0 sent, 1 refused or failed, 2 usage.
 
 The ask ledger, `tmp/peer-chat/<slug>/asks.tsv` under the repo root, is the script's own state:
-every `❓` line gets a topic-scoped id (`#claude-004`), and the peer's next send must carry
-`#claude-004 answered`, `#claude-004 deferred(<when>)` or `#claude-004 declined(<why>)` for each
-new ask, or it is refused. A deferral past PEER_CHAT_DEFER_MINUTES is prepended to the deferrer's
+every `❓` line gets a topic-scoped id named after the asker's pane (`#left-004`), and the peer's
+next send must carry `#left-004 answered`, `#left-004 deferred(<when>)` or `#left-004
+declined(<why>)` for each new ask, or it is refused. Ledgers written before the panes became the
+identity keep their `#claude-NNN` / `#codex-NNN` ids, read as asked by left / right. A deferral past PEER_CHAT_DEFER_MINUTES is prepended to the deferrer's
 next send as `overdue: #id`. There is no length cap: prose lines are wrapped at PEER_CHAT_WRAP
 columns on word boundaries so the pane never breaks a word, and a token with no spaces stays whole.
 """
@@ -56,10 +57,11 @@ COLLAPSED_PASTE_MARKERS = ("[Pasted Content", "[Pasted text")
 CONTINUATION_INDENT = "   "
 ASK_GLYPH = "❓"
 EVIDENCE_GLYPH = "🔎"
-AGENTS = ("claude", "codex")
-ASK_ID_RE = re.compile(r"#(claude|codex)-(\d{3})")
+TARGETS = ("peer", "left", "right", "claude", "codex")
+LEGACY_OWNER = {"claude": "left", "codex": "right"}
+ASK_ID_RE = re.compile(r"#(left|right|claude|codex)-(\d{3})")
 DISPOSITION_RE = re.compile(
-    r"#(?P<id>(?:claude|codex)-\d{3})\s+(?P<kind>answered|deferred|declined)\b"
+    r"#(?P<id>(?:left|right|claude|codex)-\d{3})\s+(?P<kind>answered|deferred|declined)\b"
     r"[:(]?\s*(?P<reason>[^)]*?)\)?\s*$"
 )
 LEDGER_COLUMNS = (
@@ -92,7 +94,8 @@ class Ask:
     def from_row(cls, row: str) -> "Ask":
         cells = row.split("\t")
         cells += [""] * (len(LEDGER_COLUMNS) - len(cells))
-        return cls(*cells[: len(LEDGER_COLUMNS)])
+        ask = cls(*cells[: len(LEDGER_COLUMNS)])
+        return replace(ask, asked_by=LEGACY_OWNER.get(ask.asked_by, ask.asked_by))
 
     def row(self) -> str:
         return "\t".join(getattr(self, column) for column in LEDGER_COLUMNS)
@@ -121,8 +124,8 @@ def stamp(moment: datetime) -> str:
     return moment.strftime("%Y-%m-%dT%H:%M:%SZ")
 
 
-def peer_of(agent: str) -> str:
-    return "codex" if agent == "claude" else "claude"
+def peer_of(pane: str) -> str:
+    return "right" if pane == "left" else "left"
 
 
 # ------------------------------------------------------------------ ledger --
@@ -218,7 +221,8 @@ def load_transport() -> dict[str, Any]:
     path = os.environ.get("PEER_CHAT_TRANSPORT") or shutil.which("peer-chat.py")
     if not path:
         raise RuntimeError("peer-chat.py not on PATH; run peer-chat-install.sh first")
-    return runpy.run_path(path, run_name="peer_chat_transport")
+    adapter = runpy.run_path(path, run_name="peer_chat_transport")
+    return {**vars(adapter["engine"]), **adapter}
 
 
 def clean_lines(profile: Any, raw: str) -> list[str]:
@@ -445,8 +449,10 @@ def report(message: str, plan: Plan) -> None:
 
 
 def send(t: dict[str, Any], args: argparse.Namespace, body: str) -> int:
-    profile = t["target_profile"](args.to, args.target_command, False)
-    window, sid = t["resolve_target"](args.session, args.window, profile)
+    peer = t["resolve_peer"](
+        args.to, args.session, args.window, args.target_command, False
+    )
+    profile, window, sid, sender = peer.profile, peer.window, peer.session, peer.sender
     # Occupancy preflight disabled by user request for both agents (2026-09-13).
     # if not composer_empty_now(t, sid, profile, window):
     #     print(
@@ -454,7 +460,6 @@ def send(t: dict[str, Any], args: argparse.Namespace, body: str) -> int:
     #         file=sys.stderr,
     #     )
     #     return 1
-    sender = peer_of(profile.agent)
     ledger = Ledger.for_slug(args.slug) if args.slug else None
     moment = now_utc()
     plan = plan_body(clean_lines(profile, body), sender, ledger, moment)
@@ -478,7 +483,7 @@ def restore_message_file(t: dict[str, Any], name: str, body: str) -> None:
 
 def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser()
-    parser.add_argument("--to", required=True, choices=AGENTS)
+    parser.add_argument("--to", choices=TARGETS, default="peer")
     parser.add_argument("--session")
     parser.add_argument("--window")
     parser.add_argument("--target-command")

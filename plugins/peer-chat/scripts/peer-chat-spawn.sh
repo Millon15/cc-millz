@@ -1,291 +1,316 @@
 #!/usr/bin/env bash
-# peer-chat-spawn — make sure Codex is running in the RIGHT pane of this agterm session.
-#
-#   peer-chat-spawn.sh            # open the split if needed, start codex, wait until it runs
-#   peer-chat-spawn.sh --restart  # quit the codex already there, then start a fresh one
-#   peer-chat-spawn.sh --explain  # print the resolved config as JSON, change nothing
-#
-# peer-chat.py hard-codes the layout: Claude Code in the main (left) pane, Codex in the split
-# (right) pane, both in ONE session. Upstream leaves starting Codex to the human; this script is the
-# one deliberate departure, so Claude can bring in a peer on its own. The ONLY things it ever types
-# are the codex launch line, into a shell prompt it has watched draw in a pane that was empty, and
-# on --restart the one `/quit` line that ends the codex already running there, so a Codex started
-# before a skill update can pick the update up.
-#
-# Codex strips AGTERM_SESSION_ID from its tool subprocesses, so the launch line re-injects the
-# pane's session id through shell_environment_policy; without it peer-chat.py refuses a send
-# whenever two sessions share the checkout.
-#
-# Exit codes: 0 codex runs in the right pane (already, or started here) — stdout carries one JSON
-# line {"state":"already"|"started"|"restarted","session":ID}. 1 codex did not appear within
-# start_timeout, or did not quit within it on --restart.
-# 2 unreadable .peer-chat.json or bad usage. 3 a required tool is missing. 4 wrong place: outside
-# agterm, this pane is not the main pane, or its foreground is not claude.
-set -u
+exec python3 - "$0" "$@" <<'PY'
+import argparse
+from dataclasses import dataclass
+import json
+import os
+from pathlib import Path
+import re
+import shlex
+import shutil
+import subprocess
+import sys
+import time
 
-PLUGIN="peer-chat"
-DEFAULT_CODEX_COMMAND="codex"
-DEFAULT_CLAUDE_COMMAND="claude"
-DEFAULT_START_TIMEOUT=30
-SHELL_READY_TIMEOUT=5
-QUIT_SETTLE_TIMEOUT="${PEER_CHAT_QUIT_SETTLE:-3}"
 
-die() {
-	printf 'peer-chat-spawn: %s\n' "$1" >&2
-	exit "$2"
-}
+class Failure(Exception):
+    def __init__(self, message, status=1):
+        super().__init__(message)
+        self.status = status
 
-have() { command -v "$1" >/dev/null 2>&1; }
 
-# ---------------------------------------------------------------- config --
+@dataclass(frozen=True)
+class Config:
+    profile_file: str | None
+    values: dict
+    sources: dict
 
-profile_root() {
-	git rev-parse --show-toplevel 2>/dev/null || pwd
-}
 
-load_profile() {
-	PROFILE_FILE=""
-	PROFILE_JSON="{}"
-	local candidate
-	candidate="$(profile_root)/.${PLUGIN}.json"
-	[ -f "$candidate" ] || return 0
-	PROFILE_JSON="$(jq -c . "$candidate" 2>/dev/null)" || die "unparseable ${candidate}" 2
-	PROFILE_FILE="$candidate"
-}
+def arguments():
+    parser = argparse.ArgumentParser(description='Start a peer in the other agterm pane.')
+    parser.add_argument('peer', nargs='?', help='claude[:model] or codex[:model]')
+    parser.add_argument('--harness', choices=('claude', 'codex'))
+    parser.add_argument('--model')
+    parser.add_argument('--restart', action='store_true')
+    parser.add_argument('--explain', action='store_true')
+    args = parser.parse_args(sys.argv[2:])
+    if args.peer:
+        harness, separator, model = args.peer.partition(':')
+        if harness not in ('claude', 'codex') or (separator and not model):
+            parser.error('peer must be claude[:model] or codex[:model]')
+        if args.harness and args.harness != harness:
+            parser.error('positional peer conflicts with --harness')
+        if args.model and separator and args.model != model:
+            parser.error('positional peer conflicts with --model')
+        args.harness = harness
+        args.model = args.model if args.model is not None else (model if separator else None)
+    return args
 
-# resolve <key> <env-var> <default>: env wins, then the profile, then the default. Value and source
-# come back joined by an ASCII unit separator, since tab is IFS whitespace and an empty value would
-# collapse into its source on read.
-SEP=$'\x1f'
-resolve() {
-	local key="$1" env_name="$2" fallback="$3" env_value profile_value
-	env_value="${!env_name:-}"
-	if [ -n "$env_value" ]; then
-		printf '%s%sdetected:env:%s\n' "$env_value" "$SEP" "$env_name"
-		return
-	fi
-	profile_value="$(printf '%s' "$PROFILE_JSON" | jq -r --arg k "$key" '.[$k] // empty')"
-	if [ -n "$profile_value" ]; then
-		printf '%s%sprofile\n' "$profile_value" "$SEP"
-		return
-	fi
-	printf '%s%sdefault\n' "$fallback" "$SEP"
-}
 
-resolve_all() {
-	load_profile
-	IFS="$SEP" read -r CODEX_COMMAND CODEX_COMMAND_SRC <<<"$(resolve codex_command PEER_CHAT_CODEX_COMMAND "$DEFAULT_CODEX_COMMAND")"
-	IFS="$SEP" read -r CODEX_ARGS CODEX_ARGS_SRC <<<"$(resolve codex_args PEER_CHAT_CODEX_ARGS "")"
-	IFS="$SEP" read -r CLAUDE_COMMAND CLAUDE_COMMAND_SRC <<<"$(resolve claude_command PEER_CHAT_CLAUDE_COMMAND "$DEFAULT_CLAUDE_COMMAND")"
-	IFS="$SEP" read -r START_TIMEOUT START_TIMEOUT_SRC <<<"$(resolve start_timeout PEER_CHAT_START_TIMEOUT "$DEFAULT_START_TIMEOUT")"
-	case "$START_TIMEOUT" in
-	'' | *[!0-9]*) die "start_timeout must be a whole number of seconds, got '${START_TIMEOUT}'" 2 ;;
-	esac
-}
+def read_profile():
+    probe = subprocess.run(['git', 'rev-parse', '--show-toplevel'], capture_output=True, text=True)
+    root = Path(probe.stdout.strip()) if probe.returncode == 0 else Path.cwd()
+    path = root / '.peer-chat.json'
+    if not path.exists():
+        return None, {}
+    try:
+        data = json.loads(path.read_text())
+        if not isinstance(data, dict):
+            raise ValueError('expected an object')
+        return str(path), data
+    except (OSError, ValueError) as error:
+        raise Failure(f'unparseable {path}: {error}', 2) from error
 
-explain() {
-	resolve_all
-	jq -n \
-		--arg plugin "$PLUGIN" \
-		--arg profile_file "$PROFILE_FILE" \
-		--arg codex_command "$CODEX_COMMAND" --arg codex_command_src "$CODEX_COMMAND_SRC" \
-		--arg codex_args "$CODEX_ARGS" --arg codex_args_src "$CODEX_ARGS_SRC" \
-		--arg claude_command "$CLAUDE_COMMAND" --arg claude_command_src "$CLAUDE_COMMAND_SRC" \
-		--argjson start_timeout "$START_TIMEOUT" --arg start_timeout_src "$START_TIMEOUT_SRC" \
-		'{
-		  plugin: $plugin,
-		  profile_file: (if $profile_file == "" then null else $profile_file end),
-		  values: {
-		    codex_command: $codex_command,
-		    codex_args: $codex_args,
-		    claude_command: $claude_command,
-		    start_timeout: $start_timeout
-		  },
-		  sources: {
-		    codex_command: $codex_command_src,
-		    codex_args: $codex_args_src,
-		    claude_command: $claude_command_src,
-		    start_timeout: $start_timeout_src
-		  }
-		}'
-}
 
-# ------------------------------------------------------------------ agterm --
+def resolve_value(profile, key, env, default, cli=None):
+    if cli is not None:
+        return cli, f'detected:cli:{key}'
+    if os.environ.get(env):
+        return os.environ[env], f'detected:env:{env}'
+    if key in profile:
+        return profile[key], 'profile'
+    return default, 'default'
 
-session_node() {
-	agtermctl tree --json | jq -c --arg s "$AGTERM_SESSION_ID" \
-		'.. | objects | select(.id? == $s and (has("foreground") or has("splitForeground") or has("cwd")))' |
-		head -n 1
-}
 
-# pane_runs <field> <command>: the same match peer-chat.py applies — the bare command name as a
-# whole argv word, or as the last path component of one.
-pane_runs() {
-	local field="$1" command="$2"
-	session_node | jq -e --arg f "$field" --arg c "$command" \
-		'(.[$f] // []) | map(tostring) | any(test("(^|[/\\s])" + $c + "($|\\s)"))' \
-		>/dev/null 2>&1
-}
+def resolve_config(args):
+    path, profile = read_profile()
+    values, sources = {}, {}
+    specs = [('peer_harness', 'PEER_CHAT_PEER_HARNESS', 'codex', args.harness)]
+    specs += [(f'{name}_command', f'PEER_CHAT_{name.upper()}_COMMAND', name, None)
+              for name in ('claude', 'codex')]
+    specs += [('peer_args', 'PEER_CHAT_PEER_ARGS', [], None),
+              ('start_timeout', 'PEER_CHAT_START_TIMEOUT', 30, None)]
+    for key, env, default, cli in specs:
+        values[key], sources[key] = resolve_value(profile, key, env, default, cli)
+    default_model = 'gpt-6-astra' if values['peer_harness'] == 'codex' else None
+    values['peer_model'], sources['peer_model'] = resolve_value(
+        profile, 'peer_model', 'PEER_CHAT_PEER_MODEL', default_model, args.model)
+    if sources['peer_args'].startswith('detected:env:'):
+        try:
+            values['peer_args'] = json.loads(values['peer_args'])
+        except ValueError as error:
+            raise Failure('PEER_CHAT_PEER_ARGS must be a JSON string array', 2) from error
+    validate_config(values)
+    values['start_timeout'] = int(values['start_timeout'])
+    return Config(path, values, sources)
 
-has_split() {
-	session_node | jq -e '.hasSplit == true' >/dev/null 2>&1
-}
 
-split_visible() {
-	session_node | jq -e '.split == true' >/dev/null 2>&1
-}
+def valid_text(value):
+    return isinstance(value, str) and bool(value) and not any(ord(c) < 32 for c in value)
 
-split_busy() {
-	session_node | jq -e '(.splitForeground // []) | length > 0' >/dev/null 2>&1
-}
 
-require_place() {
-	[ "${AGTERM_ENABLED:-}" = "1" ] || die "not inside agterm (AGTERM_ENABLED unset)" 4
-	[ -n "${AGTERM_SESSION_ID:-}" ] || die "no AGTERM_SESSION_ID: the quick terminal has no session" 4
-	case "${AGTERM_PANE:-left}" in
-	left) ;;
-	*) die "this shell is in the '${AGTERM_PANE}' pane; peer-chat needs Claude in the main (left) pane" 4 ;;
-	esac
-	pane_runs foreground "$CLAUDE_COMMAND" ||
-		die "the main pane's foreground is not '${CLAUDE_COMMAND}'; set PEER_CHAT_CLAUDE_COMMAND for a wrapper" 4
-}
+def validate_config(values):
+    if values['peer_harness'] not in ('claude', 'codex'):
+        raise Failure('peer_harness must be claude or codex', 2)
+    model = values['peer_model']
+    if model is not None and (not valid_text(model) or model.startswith('-')):
+        raise Failure('peer_model must be a nonempty model name', 2)
+    argv = values['peer_args']
+    if not isinstance(argv, list) or not all(isinstance(v, str) and not any(ord(c) < 32 for c in v) for v in argv):
+        raise Failure('peer_args must be an array of strings without control characters', 2)
+    if any(v in ('--model', '-m') or v.startswith('--model=') for v in argv):
+        raise Failure('set peer_model instead of passing --model in peer_args', 2)
+    timeout = values['start_timeout']
+    if isinstance(timeout, bool) or not str(timeout).isdigit() or int(timeout) < 1:
+        raise Failure('start_timeout must be a positive whole number of seconds', 2)
+    for harness in ('claude', 'codex'):
+        command = values[f'{harness}_command']
+        if not valid_text(command) or any(c.isspace() for c in command):
+            raise Failure(f'{harness}_command must be one executable name or path', 2)
+    if Path(values['claude_command']).name == Path(values['codex_command']).name:
+        raise Failure('claude_command and codex_command must identify different executables', 2)
 
-require_tools() {
-	have agtermctl || die "agtermctl not on PATH — agterm ▸ Help ▸ Install Command Line Tool…" 3
-	have jq || die "jq not found (brew install jq)" 3
-	have "$CODEX_COMMAND" || die "'${CODEX_COMMAND}' not on PATH — install the codex CLI or set PEER_CHAT_CODEX_COMMAND" 3
-	have peer-chat.py || die "peer-chat.py not on PATH — run peer-chat-install.sh first" 3
-}
 
-report() {
-	jq -n -c --arg state "$1" --arg session "$AGTERM_SESSION_ID" '{state: $state, session: $session}'
-}
+def walk(value):
+    if isinstance(value, dict):
+        yield value
+        for child in value.values():
+            yield from walk(child)
+    elif isinstance(value, list):
+        for child in value:
+            yield from walk(child)
 
-open_split() {
-	agtermctl session split on --target "$AGTERM_SESSION_ID" >/dev/null || die "session split failed" 1
-}
 
-wait_for_shell_prompt() {
-	local deadline=$((SECONDS + SHELL_READY_TIMEOUT))
-	while [ "$SECONDS" -lt "$deadline" ]; do
-		if [ -n "$(agtermctl session text --pane right --target "$AGTERM_SESSION_ID" 2>/dev/null | tr -d '[:space:]')" ]; then
-			return 0
-		fi
-		sleep 0.2
-	done
-	die "the split pane drew no shell prompt within ${SHELL_READY_TIMEOUT}s" 1
-}
+class Terminal:
+    def __init__(self, config):
+        self.config = config.values
+        self.session = os.environ.get('AGTERM_SESSION_ID', '')
+        self.window = os.environ.get('AGTERM_WINDOW_ID', '')
+        self.own_pane = os.environ.get('AGTERM_PANE', '')
+        if os.environ.get('AGTERM_ENABLED') != '1':
+            raise Failure('not inside agterm (AGTERM_ENABLED unset)', 4)
+        if not self.session or self.own_pane not in ('left', 'right'):
+            raise Failure('AGTERM_SESSION_ID and AGTERM_PANE=left|right are required', 4)
+        self.peer_pane = 'right' if self.own_pane == 'left' else 'left'
 
-launch_line() {
-	printf '%s -c '"'"'shell_environment_policy.set.AGTERM_SESSION_ID="%s"'"'"'' "$CODEX_COMMAND" "$AGTERM_SESSION_ID"
-	[ -n "$CODEX_ARGS" ] && printf ' %s' "$CODEX_ARGS"
-	printf '\n'
-}
+    def ctl(self, *args, text=None):
+        argv = ['agtermctl', *args]
+        if self.window:
+            argv += ['--window', self.window]
+        result = subprocess.run(argv, input=text, capture_output=True, text=True)
+        if result.returncode:
+            raise Failure(f'agtermctl {args[0]} failed: {result.stderr.strip()}')
+        return result.stdout
 
-type_launch_line() {
-	launch_line | agtermctl session type --stdin --pane right --target "$AGTERM_SESSION_ID" >/dev/null ||
-		die "typing the launch line failed" 1
-	agtermctl session focus left --target "$AGTERM_SESSION_ID" >/dev/null 2>&1 || true
-}
+    def node(self):
+        nodes = [node for node in walk(json.loads(self.ctl('tree', '--json')))
+                 if str(node.get('id', '')).lower() == self.session.lower()]
+        if len(nodes) != 1:
+            raise Failure(f'expected one agterm session {self.session}, found {len(nodes)}', 4)
+        return nodes[0]
 
-wait_for_codex_gone() {
-	local deadline=$((SECONDS + START_TIMEOUT))
-	while [ "$SECONDS" -lt "$deadline" ]; do
-		pane_runs splitForeground "$CODEX_COMMAND" || return 0
-		sleep 0.5
-	done
-	die "'${CODEX_COMMAND}' is still the right pane's foreground ${START_TIMEOUT}s after /quit; read it with: agtermctl session text --pane right --target ${AGTERM_SESSION_ID}" 1
-}
+    def foreground(self, node, pane):
+        return node.get('foreground' if pane == 'left' else 'splitForeground', [])
 
-right_pane_text() {
-	agtermctl session text --pane right --target "$AGTERM_SESSION_ID" 2>/dev/null
-}
+    def harness(self, node, pane):
+        foreground = self.foreground(node, pane)
+        if not isinstance(foreground, list):
+            raise Failure(f'invalid foreground for {pane} pane', 4)
+        matches = [name for name in ('claude', 'codex') if any(
+            re.search(r'(?:^|[/\s])' + re.escape(Path(self.config[f'{name}_command']).name) + r'(?:$|\s)', str(part))
+            for part in foreground)]
+        if len(matches) > 1:
+            raise Failure(f'ambiguous harness in {pane} pane', 4)
+        return matches[0] if matches else None
 
-# The composer holds "/quit" and nothing else: a previous restart typed it and its Return was lost.
-composer_shows_quit() {
-	right_pane_text | grep -qE '›[[:space:]]*/quit[[:space:]]*$'
-}
+    def validate_caller(self):
+        node = self.node()
+        if self.own_pane == 'right' and not node.get('hasSplit'):
+            raise Failure('the caller right pane no longer exists', 4)
+        if not self.harness(node, self.own_pane):
+            raise Failure(f'the caller {self.own_pane} pane is not a known harness', 4)
 
-type_right() {
-	printf '%s' "$1" | agtermctl session type --stdin --pane right --target "$AGTERM_SESSION_ID" >/dev/null
-}
+    def text(self):
+        return self.ctl('session', 'text', '--pane', self.peer_pane, '--target', self.session)
 
-wait_for_quit_visible() {
-	local deadline=$((SECONDS + QUIT_SETTLE_TIMEOUT))
-	while [ "$SECONDS" -lt "$deadline" ]; do
-		composer_shows_quit && return 0
-		sleep 0.2
-	done
-	return 0
-}
+    def type(self, text):
+        self.ctl('session', 'type', '--stdin', '--pane', self.peer_pane, '--target', self.session, text=text)
 
-# Codex opens its slash-command popup on "/quit"; a Return typed in the same burst is swallowed by
-# the popup, so the text and the Return are two separate keystroke batches with a settle between.
-quit_codex() {
-	composer_shows_quit || type_right '/quit' || die "typing /quit failed" 1
-	wait_for_quit_visible
-	type_right $'\n' || die "typing Return after /quit failed" 1
-	wait_for_codex_gone
-}
+    def show_split(self):
+        node = self.node()
+        if not node.get('split'):
+            self.ctl('session', 'split', 'on', '--target', self.session)
 
-wait_for_codex() {
-	local deadline=$((SECONDS + START_TIMEOUT))
-	while [ "$SECONDS" -lt "$deadline" ]; do
-		pane_runs splitForeground "$CODEX_COMMAND" && return 0
-		sleep 0.5
-	done
-	die "'${CODEX_COMMAND}' did not appear in the right pane within ${START_TIMEOUT}s; read it with: agtermctl session text --pane right --target ${AGTERM_SESSION_ID}" 1
-}
+    def wait(self, predicate, timeout, failure):
+        deadline = time.monotonic() + timeout
+        while time.monotonic() < deadline:
+            if predicate():
+                return
+            time.sleep(0.1)
+        hint = f'agtermctl session text --pane {self.peer_pane} --target {self.session}'
+        raise Failure(f'{failure}; read it with: {hint}')
 
-restart_codex_pane() {
-	if ! has_split || ! pane_runs splitForeground "$CODEX_COMMAND"; then
-		ensure_codex_pane
-		return
-	fi
-	split_visible || open_split
-	quit_codex
-	wait_for_shell_prompt
-	type_launch_line
-	wait_for_codex
-	report restarted
-}
+    def require_shell(self):
+        if self.foreground(self.node(), self.peer_pane):
+            raise Failure(f'the {self.peer_pane} pane became busy; nothing launched')
 
-ensure_codex_pane() {
-	if has_split && pane_runs splitForeground "$CODEX_COMMAND"; then
-		split_visible || open_split
-		report already
-		return
-	fi
-	if has_split && split_busy; then
-		die "the right pane is busy running something that is not '${CODEX_COMMAND}'; close it or move it first" 1
-	fi
-	split_visible || open_split
-	wait_for_shell_prompt
-	type_launch_line
-	wait_for_codex
-	report started
-}
+    def quit(self, harness):
+        command = '/quit' if harness == 'codex' else '/exit'
+        pattern = r'(?m)^\s*[›»❯]\s*' + re.escape(command) + r'\s*$'
+        visible = lambda: bool(re.search(pattern, self.text()))
+        if not visible():
+            self.type(command)
+        self.wait(visible, float(os.environ.get('PEER_CHAT_QUIT_SETTLE', '3')),
+                  f'{command} did not appear; no Return sent')
+        if self.harness(self.node(), self.peer_pane) != harness:
+            raise Failure('target harness changed before restart Return')
+        self.type('\n')
+        self.wait(lambda: not self.foreground(self.node(), self.peer_pane), self.config['start_timeout'],
+                  f'the {self.peer_pane} pane did not return to a shell after {command}')
 
-main() {
-	case "${1:-}" in
-	--explain)
-		have jq || die "jq not found — required for --explain (brew install jq)" 3
-		explain
-		;;
-	'')
-		resolve_all
-		require_tools
-		require_place
-		ensure_codex_pane
-		;;
-	--restart)
-		resolve_all
-		require_tools
-		require_place
-		restart_codex_pane
-		;;
-	*) die "usage: peer-chat-spawn.sh [--restart|--explain]" 2 ;;
-	esac
-}
 
-main "$@"
+def claude_plugin_args(plugin_root):
+    registry = Path(os.environ.get('CLAUDE_CONFIG_DIR', str(Path.home() / '.claude'))) / 'plugins/installed_plugins.json'
+    if not registry.exists():
+        return ['--plugin-dir', str(plugin_root)]
+    try:
+        records = json.loads(registry.read_text()).get('plugins', {}).get('peer-chat@cc-millz', [])
+        usable = [record for record in records if record.get('scope') == 'user'
+                  and record.get('installPath') and Path(record['installPath']).is_dir()]
+        if not usable:
+            return ['--plugin-dir', str(plugin_root)]
+        version = json.loads((plugin_root / '.claude-plugin/plugin.json').read_text())['version']
+        if usable[0].get('version') != version:
+            print(f"peer-chat-spawn: warning: Claude user peer-chat {usable[0].get('version')} differs from launcher {version}", file=sys.stderr)
+        return []
+    except (OSError, ValueError, TypeError, AttributeError) as error:
+        raise Failure(f'cannot verify Claude peer-chat install: {error}', 2) from error
+
+
+def launch_argv(config, terminal, plugin_root):
+    values = config.values
+    harness, model = values['peer_harness'], values['peer_model']
+    context = {'AGTERM_ENABLED': '1', 'AGTERM_SESSION_ID': terminal.session, 'AGTERM_WINDOW_ID': terminal.window,
+               'AGTERM_PANE': terminal.peer_pane,
+               'PEER_CHAT_NAME': ' '.join(value for value in (harness, model) if value),
+               'PEER_CHAT_CLAUDE_COMMAND': values['claude_command'],
+               'PEER_CHAT_CODEX_COMMAND': values['codex_command']}
+    argv = [values[f'{harness}_command'], *values['peer_args']]
+    if model:
+        argv += ['--model', model]
+    if harness == 'claude':
+        return ['env', *(f'{key}={value}' for key, value in context.items()), *argv, *claude_plugin_args(plugin_root)]
+    for key, value in context.items():
+        argv += ['-c', f'shell_environment_policy.set.{key}={json.dumps(value)}']
+    return argv
+
+
+def require_tools(config):
+    for tool in ('agtermctl', 'peer-chat.py', config.values[f"{config.values['peer_harness']}_command"]):
+        if not shutil.which(tool):
+            raise Failure(f'{tool} not on PATH; run peer-chat-install.sh or install the selected harness', 3)
+
+
+def spawn(config, args, plugin_root):
+    require_tools(config)
+    terminal = Terminal(config)
+    terminal.validate_caller()
+    node = terminal.node()
+    running = terminal.harness(node, terminal.peer_pane)
+    if terminal.foreground(node, terminal.peer_pane) and not running:
+        raise Failure(f'the {terminal.peer_pane} pane is busy with an unknown program')
+    wanted = config.values['peer_harness']
+    if running and not args.restart:
+        if running != wanted:
+            raise Failure(f'the peer runs {running}; use --restart to replace it with {wanted}')
+        terminal.show_split()
+        return report('already', terminal, config, False)
+    argv = launch_argv(config, terminal, plugin_root)
+    terminal.show_split()
+    if running:
+        terminal.quit(running)
+    terminal.wait(lambda: bool(terminal.text().strip()), 5, 'the peer shell drew no prompt')
+    terminal.require_shell()
+    terminal.type(shlex.join(argv) + '\n')
+    terminal.wait(lambda: terminal.harness(terminal.node(), terminal.peer_pane) == wanted,
+                  config.values['start_timeout'], f'{wanted} did not appear in the {terminal.peer_pane} pane')
+    terminal.ctl('session', 'focus', terminal.own_pane, '--target', terminal.session)
+    return report('restarted' if running else 'started', terminal, config, True)
+
+
+def report(state, terminal, config, launched):
+    return {'state': state, 'session': terminal.session, 'pane': terminal.peer_pane,
+            'harness': config.values['peer_harness'], 'requested_model': config.values['peer_model'],
+            'launched': launched}
+
+
+def main():
+    args = arguments()
+    config = resolve_config(args)
+    if args.explain:
+        result = {'plugin': 'peer-chat', 'profile_file': config.profile_file,
+                  'values': config.values, 'sources': config.sources}
+    else:
+        result = spawn(config, args, Path(sys.argv[1]).resolve().parent.parent)
+    print(json.dumps(result, separators=(',', ':')))
+
+
+try:
+    main()
+except Failure as error:
+    print(f'peer-chat-spawn: {error}', file=sys.stderr)
+    sys.exit(error.status)
+except (OSError, ValueError) as error:
+    print(f'peer-chat-spawn: {error}', file=sys.stderr)
+    sys.exit(1)
+PY

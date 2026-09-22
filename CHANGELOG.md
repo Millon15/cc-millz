@@ -1,5 +1,28 @@
 # Changelog
 
+## peer-chat v0.5.0 - 2026-09-22
+
+### Changed
+
+- Peers are equal and interchangeable. One `skills/peer-chat/SKILL.md` serves Claude Code and Codex
+  alike; `codex/SKILL.md` is gone, and the Codex manifest now exports the shared body. A pair can be
+  Claude + Codex, two Claudes or two Codexes, each on any model.
+- A participant is a pane slot. `peer-chat.py` is now a local adapter over the vendored engine,
+  which moved to `scripts/vendor/peer-chat.py` byte for byte: it addresses the other pane with
+  `--to peer` (the default), picks the recipient's composer protocol from the harness running
+  there, and labels the sender `Chat from <PEER_CHAT_NAME or harness (pane)>:`. `--to claude|codex`
+  still works when exactly one pane runs that harness.
+- Ask ids name the asker's pane (`#left-004`). Existing ledgers keep their `#claude-NNN` /
+  `#codex-NNN` ids, read as asked by the left / right pane, and new ids continue their numbering.
+- No fixed roles: the skill's "Organizing the work" replaces the sole-writer default. Peers agree
+  who owns which files or worktree, disjoint owners are fine, and overlapping writes need an
+  explicit release and acceptance.
+- The installer copies the adapter, the engine (`peer-chat-engine.py`) and the paste sender onto
+  PATH, writes `--to peer` approval rules, and retires the standalone
+  `~/.codex/skills/peer-chat/SKILL.md` it wrote before once Codex has the plugin installed.
+- `UPSTREAM.md` pins the sha256 of both verbatim files, and `tests/test-peer-chat-upstream.bats`
+  checks the pins.
+
 ## statusline v0.2.1 - 2026-09-22
 
 ### Fixed

@@ -4,19 +4,22 @@
 #   peer-chat-install.sh          # install or refresh everything, print what changed
 #   peer-chat-install.sh --check  # report only; exit 0 when every piece is in place, 1 otherwise
 #
-# Three pieces, because the two agents resolve files differently:
-#   1. peer-chat.py on PATH — both skills invoke it as a bare command. Copied, not symlinked: a
-#      symlink into the plugin cache dies on the next plugin version bump.
-#   2. ~/.codex/skills/peer-chat/SKILL.md — Codex reads skills from its own home, never from a
-#      Claude plugin.
-#   3. two prefix_rule lines in ~/.codex/rules/default.rules — without them every Codex send stops
+# Three pieces, the same for every harness:
+#   1. peer-chat.py, its engine peer-chat-engine.py and peer-chat-paste.py on PATH — the skill
+#      invokes them as bare commands. Copied, not symlinked: a symlink into the plugin cache dies on
+#      the next plugin version bump.
+#   2. the skill: Claude Code and Codex both load skills/peer-chat/SKILL.md from their plugin copy.
+#      A standalone copy in ~/.codex/skills/peer-chat/ serves a Codex whose plugin is missing,
+#      disabled or cached at an older body. Once config.toml enables the plugin and its cache holds
+#      this exact body, a standalone copy this script wrote is renamed to SKILL.md.retired.
+#   3. three prefix_rule lines in ~/.codex/rules/default.rules — without them every Codex send stops
 #      for approval.
-# The Claude side needs nothing here: the skill ships in the plugin and Claude Code loads it.
 #
 # Re-run after a plugin update; --check is what the skill runs as its preflight. The installed
-# version is stamped in ~/.codex/skills/peer-chat/.version, and a copy of this script from an OLDER
-# plugin never overwrites a newer install: a Claude session still holding last week's skill in
-# context would otherwise "refresh" the files back to its own version on every preflight.
+# version is stamped in ~/.codex/skills/peer-chat/.version, kept there so older installers still
+# see it, and a copy of this script from an OLDER plugin never overwrites a newer install: a
+# session still holding last week's skill in context would otherwise "refresh" the files back to
+# its own version on every preflight.
 set -u
 
 HERE="$(cd "$(dirname "$0")" && pwd)"
@@ -27,11 +30,12 @@ SKILL_DIR="$CODEX_HOME/skills/peer-chat"
 RULES_FILE="$CODEX_HOME/rules/default.rules"
 
 SRC_SCRIPT="$PLUGIN_ROOT/scripts/peer-chat.py"
+SRC_ENGINE="$PLUGIN_ROOT/scripts/vendor/peer-chat.py"
 SRC_PASTE="$PLUGIN_ROOT/scripts/peer-chat-paste.py"
-SRC_SKILL="$PLUGIN_ROOT/codex/SKILL.md"
+SRC_SKILL="$PLUGIN_ROOT/skills/peer-chat/SKILL.md"
 RULE_PREPARE='prefix_rule(pattern=["peer-chat.py", "--prepare-message"], decision="allow")'
-RULE_SEND='prefix_rule(pattern=["peer-chat.py", "--to", "claude", "--message-file"], decision="allow")'
-RULE_PASTE='prefix_rule(pattern=["peer-chat-paste.py", "--to", "claude", "--message-file"], decision="allow")'
+RULE_SEND='prefix_rule(pattern=["peer-chat.py", "--to", "peer", "--message-file"], decision="allow")'
+RULE_PASTE='prefix_rule(pattern=["peer-chat-paste.py", "--to", "peer", "--message-file"], decision="allow")'
 MANIFEST="$PLUGIN_ROOT/.claude-plugin/plugin.json"
 STAMP="$SKILL_DIR/.version"
 
@@ -69,64 +73,127 @@ refuse_downgrade() {
 	return 0
 }
 
+# bin_copies: one "<name on PATH><TAB><source>" line per file the skill calls by bare name.
+bin_copies() {
+	printf '%s\t%s\n' \
+		peer-chat.py "$SRC_SCRIPT" \
+		peer-chat-engine.py "$SRC_ENGINE" \
+		peer-chat-paste.py "$SRC_PASTE"
+}
+
+# codex_plugin_enabled: config.toml has a [plugins."peer-chat@<marketplace>"] table with enabled = true.
+codex_plugin_enabled() {
+	[ -f "$CODEX_HOME/config.toml" ] || return 1
+	awk '
+		/^\[/ { in_plugin = ($0 ~ /^\[plugins\."peer-chat@[^"]+"\]/); next }
+		in_plugin && /^[[:space:]]*enabled[[:space:]]*=[[:space:]]*true/ { found = 1 }
+		END { exit !found }
+	' "$CODEX_HOME/config.toml"
+}
+
+# codex_cache_has_skill: a cached plugin copy carries this exact skill body, not an older one.
+codex_cache_has_skill() {
+	local cached
+	for cached in "$CODEX_HOME"/plugins/cache/*/peer-chat/*/skills/peer-chat/SKILL.md; do
+		same_file "$SRC_SKILL" "$cached" && return 0
+	done
+	return 1
+}
+
+# codex_plugin_skill: Codex loads this skill body from its enabled plugin, so a standalone copy is a duplicate.
+codex_plugin_skill() { codex_plugin_enabled && codex_cache_has_skill; }
+
 # ------------------------------------------------------------------ check --
 
-check() {
-	local missing=0
-	refuse_downgrade && return 0
-	if same_file "$SRC_SCRIPT" "$BIN_DIR/peer-chat.py" && [ -x "$BIN_DIR/peer-chat.py" ]; then
-		say "ok   $BIN_DIR/peer-chat.py"
-	else
-		say "MISSING or stale  $BIN_DIR/peer-chat.py"
-		missing=1
+check_bin() {
+	if same_file "$2" "$BIN_DIR/$1" && [ -x "$BIN_DIR/$1" ]; then
+		say "ok   $BIN_DIR/$1"
+		return 0
 	fi
-	if same_file "$SRC_PASTE" "$BIN_DIR/peer-chat-paste.py" && [ -x "$BIN_DIR/peer-chat-paste.py" ]; then
-		say "ok   $BIN_DIR/peer-chat-paste.py"
-	else
-		say "MISSING or stale  $BIN_DIR/peer-chat-paste.py"
-		missing=1
+	say "MISSING or stale  $BIN_DIR/$1"
+	return 1
+}
+
+check_codex_skill() {
+	if codex_plugin_skill && [ ! -f "$SKILL_DIR/SKILL.md" ]; then
+		say "ok   Codex loads the skill from its peer-chat plugin"
+		return 0
 	fi
-	on_path "$BIN_DIR" || {
-		say "WARN $BIN_DIR is not on PATH; both skills call peer-chat.py by bare name"
-		missing=1
-	}
+	if codex_plugin_skill; then
+		say "STALE  $SKILL_DIR/SKILL.md duplicates the skill the Codex plugin ships"
+		return 1
+	fi
 	if same_file "$SRC_SKILL" "$SKILL_DIR/SKILL.md"; then
 		say "ok   $SKILL_DIR/SKILL.md"
-	else
-		say "MISSING or stale  $SKILL_DIR/SKILL.md"
-		missing=1
+		return 0
 	fi
+	say "MISSING or stale  $SKILL_DIR/SKILL.md"
+	return 1
+}
+
+check_rules() {
 	if has_rule "$RULE_PREPARE" && has_rule "$RULE_SEND" && has_rule "$RULE_PASTE"; then
 		say "ok   $RULES_FILE carries the three peer-chat rules"
-	else
-		say "MISSING  peer-chat rules in $RULES_FILE"
-		missing=1
+		return 0
 	fi
+	say "MISSING  peer-chat rules in $RULES_FILE"
+	return 1
+}
+
+check() {
+	local missing=0 name src
+	refuse_downgrade && return 0
+	while IFS=$'\t' read -r name src; do
+		check_bin "$name" "$src" || missing=1
+	done < <(bin_copies)
+	on_path "$BIN_DIR" || {
+		say "WARN $BIN_DIR is not on PATH; the skill calls peer-chat.py by bare name"
+		missing=1
+	}
+	check_codex_skill || missing=1
+	check_rules || missing=1
 	return "$missing"
 }
 
 # ---------------------------------------------------------------- install --
 
-install_script() {
+install_bin() {
+	if same_file "$2" "$BIN_DIR/$1"; then
+		say "unchanged $BIN_DIR/$1"
+	else
+		cat "$2" >"$BIN_DIR/$1" || die "cannot write $BIN_DIR/$1" 1
+		say "wrote     $BIN_DIR/$1"
+	fi
+	chmod +x "$BIN_DIR/$1"
+}
+
+install_scripts() {
+	local name src
 	mkdir -p "$BIN_DIR" || die "cannot create $BIN_DIR" 1
-	if same_file "$SRC_SCRIPT" "$BIN_DIR/peer-chat.py"; then
-		say "unchanged $BIN_DIR/peer-chat.py"
-	else
-		cat "$SRC_SCRIPT" >"$BIN_DIR/peer-chat.py" || die "cannot write $BIN_DIR/peer-chat.py" 1
-		say "wrote     $BIN_DIR/peer-chat.py"
+	while IFS=$'\t' read -r name src; do
+		install_bin "$name" "$src"
+	done < <(bin_copies)
+	on_path "$BIN_DIR" || say "WARN      add $BIN_DIR to PATH; the skill calls peer-chat.py by bare name"
+}
+
+retire_standalone_skill() {
+	if [ ! -f "$SKILL_DIR/SKILL.md" ]; then
+		say "ok        Codex loads the skill from its peer-chat plugin"
+		return
 	fi
-	chmod +x "$BIN_DIR/peer-chat.py"
-	if same_file "$SRC_PASTE" "$BIN_DIR/peer-chat-paste.py"; then
-		say "unchanged $BIN_DIR/peer-chat-paste.py"
-	else
-		cat "$SRC_PASTE" >"$BIN_DIR/peer-chat-paste.py" || die "cannot write $BIN_DIR/peer-chat-paste.py" 1
-		say "wrote     $BIN_DIR/peer-chat-paste.py"
+	if [ ! -f "$STAMP" ]; then
+		say "WARN      $SKILL_DIR/SKILL.md was not written by this installer; left beside the plugin's skill"
+		return
 	fi
-	chmod +x "$BIN_DIR/peer-chat-paste.py"
-	on_path "$BIN_DIR" || say "WARN      add $BIN_DIR to PATH; both skills call peer-chat.py by bare name"
+	mv -f "$SKILL_DIR/SKILL.md" "$SKILL_DIR/SKILL.md.retired" || die "cannot retire $SKILL_DIR/SKILL.md" 1
+	say "retired   $SKILL_DIR/SKILL.md to SKILL.md.retired; Codex loads the skill from its peer-chat plugin"
 }
 
 install_codex_skill() {
+	if codex_plugin_skill; then
+		retire_standalone_skill
+		return
+	fi
 	mkdir -p "$SKILL_DIR" || die "cannot create $SKILL_DIR" 1
 	if same_file "$SRC_SKILL" "$SKILL_DIR/SKILL.md"; then
 		say "unchanged $SKILL_DIR/SKILL.md"
@@ -154,19 +221,21 @@ install_codex_rules() {
 }
 
 write_stamp() {
+	mkdir -p "$SKILL_DIR" || die "cannot create $SKILL_DIR" 1
 	printf '%s\n' "$(plugin_version)" >"$STAMP" || die "cannot write $STAMP" 1
 }
 
 install_all() {
-	[ -f "$SRC_SCRIPT" ] || die "missing $SRC_SCRIPT; is this script inside the plugin?" 2
-	[ -f "$SRC_SKILL" ] || die "missing $SRC_SKILL; is this script inside the plugin?" 2
-	[ -f "$SRC_PASTE" ] || die "missing $SRC_PASTE; is this script inside the plugin?" 2
+	local source
+	for source in "$SRC_SCRIPT" "$SRC_ENGINE" "$SRC_PASTE" "$SRC_SKILL"; do
+		[ -f "$source" ] || die "missing $source; is this script inside the plugin?" 2
+	done
 	refuse_downgrade && return 0
-	install_script
+	install_scripts
 	install_codex_skill
 	install_codex_rules
 	write_stamp
-	say "done. Start Codex in the right pane with the session id injected, or let peer-chat-spawn.sh do it."
+	say "done. peer-chat-spawn.sh opens the peer pane; either side sends with peer-chat-paste.py --to peer."
 }
 
 main() {
