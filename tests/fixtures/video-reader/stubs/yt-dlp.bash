@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 #
-# tests/fixtures/short-video-reader/stubs/yt-dlp.bash
+# tests/fixtures/video-reader/stubs/yt-dlp.bash
 #
 # BEHAVIOURAL stub. After the download the reader looks for THREE things the
 # real tool leaves behind, and an `exit 0` stub leaves none of them:
@@ -64,7 +64,7 @@ cat >"${dir}/${id}.info.json" <<JSON
 }
 JSON
 
-printf 'short-video-reader fixture artifact — not a real media file\n' >"${dir}/${id}.mp4"
+printf 'video-reader fixture artifact — not a real media file\n' >"${dir}/${id}.mp4"
 
 if [ "${want_subs}" = "1" ]; then
 	cat >"${dir}/${id}.en.srt" <<'SRT'

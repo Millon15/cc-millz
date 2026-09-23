@@ -1,11 +1,11 @@
-# tests/helpers/short-video-fixtures.bash — fixture BUILDERS for the video suites.
+# tests/helpers/video-reader-fixtures.bash — fixture BUILDERS for the video suites.
 #
 # Source it AFTER common.bash, from a suite's setup():
 #
 #     setup() {
 #         REPO_ROOT="$(cd "${BATS_TEST_DIRNAME}/.." && pwd)"
 #         source "${REPO_ROOT}/tests/helpers/common.bash"
-#         source "${REPO_ROOT}/tests/helpers/short-video-fixtures.bash"
+#         source "${REPO_ROOT}/tests/helpers/video-reader-fixtures.bash"
 #         setup_tmp
 #         svr_home                    # UNSUBSTITUTED — see below
 #         seed_base_utils
@@ -26,7 +26,7 @@
 #   1. Nothing is committed as a directory SHAPE. Git tracks files, so a
 #      committed `bare/` or `profile/nested/deeper/` simply would not exist in a
 #      fresh checkout and its case would error there while passing locally. The
-#      fixture ships FILES under tests/fixtures/short-video-reader/ and these
+#      fixture ships FILES under tests/fixtures/video-reader/ and these
 #      builders assemble the trees at setup time.
 #
 #   2. Every tree is built under a REDIRECTED HOME at $TMP/home. A tree built
@@ -45,15 +45,15 @@
 #
 # Requires common.bash for $TMP, $STUB_BIN, `stub`/`unstub` and make_git_repo.
 
-SVR_FIXTURES="$(cd "$(dirname "${BASH_SOURCE[0]}")/../fixtures/short-video-reader" && pwd)"
+SVR_FIXTURES="$(cd "$(dirname "${BASH_SOURCE[0]}")/../fixtures/video-reader" && pwd)"
 
 # The profile file the reader walks up looking for, and the ownership marker —
 # its name and the magic string inside it — that proves a run directory belongs
 # to the reader. Named once, here, so a suite asserting any of them never spells
 # it out a second time.
-SVR_PROFILE_NAME=".short-video-reader.json"
-SVR_RUN_MARKER=".short-video-reader-run"
-SVR_RUN_MAGIC="short-video-reader/run/v1"
+SVR_PROFILE_NAME=".video-reader.json"
+SVR_RUN_MARKER=".video-reader-run"
+SVR_RUN_MAGIC="video-reader/run/v1"
 
 # The POSIX utilities the reader legitimately shells out to. `bash` is on the
 # list because the stubs carry a `#!/usr/bin/env bash` shebang and env resolves
@@ -199,7 +199,7 @@ write_profile() {
 
 # make_profile_fixture [name] — the `profile` rung, and the walk-up with it.
 #
-#   <root>/.short-video-reader.json    the committed template, workdir RELATIVE
+#   <root>/.video-reader.json    the committed template, workdir RELATIVE
 #   <root>/nested/deeper/              somewhere to stand two levels down
 #
 # The workdir is relative on purpose: it is what makes the relative-anchor case
@@ -218,7 +218,7 @@ make_profile_fixture() {
 # make_nested_git_fixture [name] — the same tree with an initialised repository
 # planted BETWEEN the profile and the nested directory:
 #
-#   <root>/.short-video-reader.json
+#   <root>/.video-reader.json
 #   <root>/nested/.git/                a toplevel the walk-up must pass THROUGH
 #   <root>/nested/deeper/
 #
@@ -274,7 +274,7 @@ make_whisper_home() {
 	svr_require_home || return 1
 	dir="${HOME}/Library/Application Support/whisper"
 	mkdir -p "${dir}"
-	printf 'short-video-reader fixture — not a real GGML model\n' >"${dir}/ggml-base.bin"
+	printf 'video-reader fixture — not a real GGML model\n' >"${dir}/ggml-base.bin"
 	printf '%s\n' "${dir}/ggml-base.bin"
 }
 

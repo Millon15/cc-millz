@@ -1,15 +1,15 @@
 #!/bin/bash
 #
-# short-video-read.sh — acquire ONE short video (URL or local file) and derive
+# video-read.sh — acquire ONE short video (URL or local file) and derive
 # an inspectable artifact set: provenance, stream inventory, captions, sampled
 # frames, contact sheets, and audio ONLY when a free local STT route exists.
 #
 # Usage:
-#   short-video-read.sh <url|file> [flags]
-#   short-video-read.sh --probe                  # capability report, no work
-#   short-video-read.sh --explain                # resolved config as JSON, no work
-#   short-video-read.sh --zoom <run-dir> <sec> [crop]  # one close-up frame
-#   short-video-read.sh --remove-tmp <run-dir>        # delete ONE marked run dir
+#   video-read.sh <url|file> [flags]
+#   video-read.sh --probe                  # capability report, no work
+#   video-read.sh --explain                # resolved config as JSON, no work
+#   video-read.sh --zoom <run-dir> <sec> [crop]  # one close-up frame
+#   video-read.sh --remove-tmp <run-dir>        # delete ONE marked run dir
 #
 # Flags: --slug NAME · --max-duration SEC (600) · --max-size MB (250)
 #        --max-height PX (720) · --interval SEC (auto 2-5) · --scene N (0.30)
@@ -20,17 +20,17 @@
 
 set -uo pipefail
 
-PLUGIN="short-video-reader"
-PROFILE_NAME=".short-video-reader.json"
+PLUGIN="video-reader"
+PROFILE_NAME=".video-reader.json"
 
 # The ownership token. RUN_MARKER is written into a run directory at the moment
 # this script creates it — before any acquisition, so a run killed halfway is
 # still recognisably ours — and RUN_MAGIC is what makes the name mean something.
 # Nothing else is ownership: report.json is a name several test reporters write,
 # and "sits under the resolved base" is a claim the CALLER supplies, since the
-# base is whatever SHORT_VIDEO_DIR or a profile said it was.
-RUN_MARKER=".short-video-reader-run"
-RUN_MAGIC="short-video-reader/run/v1"
+# base is whatever VIDEO_READER_DIR or a profile said it was.
+RUN_MARKER=".video-reader-run"
+RUN_MAGIC="video-reader/run/v1"
 
 # Set by resolve_config(), which is the ONLY definition of any of them.
 BASE_DIR=""
@@ -55,7 +55,7 @@ MAX_INTERVAL_FRAMES=60
 INPUT=""
 
 die() {
-	echo "short-video-read: $1" >&2
+	echo "video-read: $1" >&2
 	exit "${2:-1}"
 }
 have() { command -v "$1" >/dev/null 2>&1; }
@@ -83,7 +83,7 @@ usage() {
 # ---------------------------------------------------------------- resolution
 
 # find_profile — the walk-up. From the current directory upward it looks for ONE
-# file, .short-video-reader.json, and halts at $HOME or the filesystem root,
+# file, .video-reader.json, and halts at $HOME or the filesystem root,
 # whichever comes first. No repository boundary participates: in a monorepo whose
 # sub-directories are independent checkouts, stopping at a .git toplevel makes a
 # profile committed at the top unreachable from exactly the directories the
@@ -134,8 +134,8 @@ profile_value() {
 # resolve_config — the ONLY definition of the scratch base and of the caps.
 # Three rungs, in this order:
 #
-#   SHORT_VIDEO_DIR           detected:env   relative anchors to $PWD
-#   .short-video-reader.json  profile        relative anchors to the profile dir
+#   VIDEO_READER_DIR           detected:env   relative anchors to $PWD
+#   .video-reader.json  profile        relative anchors to the profile dir
 #   the OS temp dir           default        namespaced, never the temp dir bare
 #
 # The environment leads on purpose: a project that commits a profile must still
@@ -151,8 +151,8 @@ resolve_config() {
 	fi
 
 	local workdir
-	if [[ -n "${SHORT_VIDEO_DIR:-}" ]]; then
-		BASE_DIR="$(abs_against "$(pwd -P)" "$SHORT_VIDEO_DIR")"
+	if [[ -n "${VIDEO_READER_DIR:-}" ]]; then
+		BASE_DIR="$(abs_against "$(pwd -P)" "$VIDEO_READER_DIR")"
 		BASE_SOURCE="detected:env"
 	elif workdir="$(profile_value workdir)"; then
 		BASE_DIR="$(abs_against "$(cd "$(dirname "$PROFILE_FILE")" && pwd -P)" "$workdir")"
@@ -180,7 +180,7 @@ resolve_config() {
 check_base_sanity() {
 	local phys home_p
 	[[ -n "$BASE_DIR" ]] ||
-		die "the $BASE_SOURCE rung resolved an empty scratch base — set SHORT_VIDEO_DIR, or a workdir in $PROFILE_NAME, to a directory this tool may create and delete run directories in" 2
+		die "the $BASE_SOURCE rung resolved an empty scratch base — set VIDEO_READER_DIR, or a workdir in $PROFILE_NAME, to a directory this tool may create and delete run directories in" 2
 
 	phys="$(cd "$BASE_DIR" 2>/dev/null && pwd -P)" || phys="$BASE_DIR"
 
@@ -290,8 +290,8 @@ ggml_rank() {
 # the base nor the cache file, and this is the only write on that path.
 find_ggml_model() {
 	local no_cache="${1:-}" cache="$BASE_DIR/.ggml-model-path"
-	[[ -n "${SHORT_VIDEO_WHISPER_MODEL:-}" && -f "${SHORT_VIDEO_WHISPER_MODEL:-}" ]] && {
-		printf '%s\n' "$SHORT_VIDEO_WHISPER_MODEL"
+	[[ -n "${VIDEO_READER_WHISPER_MODEL:-}" && -f "${VIDEO_READER_WHISPER_MODEL:-}" ]] && {
+		printf '%s\n' "$VIDEO_READER_WHISPER_MODEL"
 		return 0
 	}
 
@@ -493,7 +493,7 @@ claim_run_dir() {
 # resolved. Neither implies the other. Ownership alone would delete a run
 # directory left behind under a base the caller has since moved away from;
 # containment alone is the test this replaces, and it deletes ANY descendant of
-# whatever path the caller put in SHORT_VIDEO_DIR — a jest output directory
+# whatever path the caller put in VIDEO_READER_DIR — a jest output directory
 # holding a report.json included.
 remove_tmp() {
 	local abs base

@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 #
-# tests/fixtures/short-video-reader/stubs/ffprobe.bash
+# tests/fixtures/video-reader/stubs/ffprobe.bash
 #
 # BEHAVIOURAL stub. The reader calls ffprobe exactly once:
 #

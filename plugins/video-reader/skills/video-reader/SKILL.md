@@ -1,5 +1,5 @@
 ---
-name: short-video-reader
+name: video-reader
 description: >-
   Use when the user shares a short video — a local file or a public/authorized
   URL (TikTok, Reels, Shorts, YouTube, a direct .mp4) — and asks what is in it:
@@ -10,7 +10,7 @@ description: >-
   silent fallback when no free offline speech-to-text exists.
 ---
 
-# Short Video Reader
+# Video Reader
 
 > **Purpose**: Read ONE short video end-to-end from local artifacts — provenance, frames, captions — and report what is *visible*, never what is guessed. Everything stays on this machine.
 
@@ -25,8 +25,8 @@ description: >-
 Nothing below names a scratch directory. The script resolves one and prints it:
 
 ```bash
-bash "${CLAUDE_PLUGIN_ROOT}/scripts/short-video-read.sh" --explain   # resolved config as JSON, writes nothing
-bash "${CLAUDE_PLUGIN_ROOT}/scripts/short-video-read.sh" --probe     # the same machine, printed for a human
+bash "${CLAUDE_PLUGIN_ROOT}/scripts/video-read.sh" --explain   # resolved config as JSON, writes nothing
+bash "${CLAUDE_PLUGIN_ROOT}/scripts/video-read.sh" --probe     # the same machine, printed for a human
 ```
 
 `--explain` is the one to **consume** — a single JSON object, exit 0, every `values` key mirrored in `sources`. `--probe` is the one to **read** — the dependency and speech-to-text report as plain lines. Both answer from the same detection, so they cannot drift into two verdicts about one machine.
@@ -37,20 +37,20 @@ Three rungs decide it, in this order, and `sources.workdir` reports which one an
 
 | Rung | Set by | `sources.workdir` | A relative value anchors to |
 | --- | --- | --- | --- |
-| 1 | the `SHORT_VIDEO_DIR` environment variable | `detected:env` | the current directory |
-| 2 | `workdir` in a `.short-video-reader.json`, found by walking UP from the current directory | `profile` | the profile file's own directory |
-| 3 | `${TMPDIR:-/tmp}/short-video-reader` | `default` | — |
+| 1 | the `VIDEO_READER_DIR` environment variable | `detected:env` | the current directory |
+| 2 | `workdir` in a `.video-reader.json`, found by walking UP from the current directory | `profile` | the profile file's own directory |
+| 3 | `${TMPDIR:-/tmp}/video-reader` | `default` | — |
 
 - The environment leads so a single run can be redirected without editing a committed profile.
 - The walk-up looks for the profile file and **nothing else** — it never stops at a repository boundary, so a profile committed at the top of a checkout is still found from a directory nested inside it. It halts at the home directory or the filesystem root, whichever comes first.
-- Rung 3 is a directory, never an error: a user with no project is not a usage mistake. It is always a `short-video-reader` sub-directory of the temp dir, never the temp dir itself.
+- Rung 3 is a directory, never an error: a user with no project is not a usage mistake. It is always a `video-reader` sub-directory of the temp dir, never the temp dir itself.
 - A base that resolves to a filesystem root, to the home directory itself, or to a directory carrying a `.git` entry is refused with exit 2, and the message names the rung that produced it.
 
 ## One command does the acquisition
 
 ```bash
-bash "${CLAUDE_PLUGIN_ROOT}/scripts/short-video-read.sh" <url|file>                 # acquire + inventory + frames + sheets
-bash "${CLAUDE_PLUGIN_ROOT}/scripts/short-video-read.sh" <file> --max-height 1080   # only when 720p text is unreadable
+bash "${CLAUDE_PLUGIN_ROOT}/scripts/video-read.sh" <url|file>                 # acquire + inventory + frames + sheets
+bash "${CLAUDE_PLUGIN_ROOT}/scripts/video-read.sh" <file> --max-height 1080   # only when 720p text is unreadable
 ```
 
 It writes `{workdir}/<slug>/` — `media/`, `frames/`, `sheets/`, `subs/`, `logs/`, `streams.json`, and `report.json` (the machine summary: provenance, streams, frame inventory, audio status). Read `report.json` first; it answers most of the inventory questions without another command.
@@ -80,7 +80,7 @@ It writes `{workdir}/<slug>/` — `media/`, `frames/`, `sheets/`, `subs/`, `logs
 
 ## Limits — defaults, and the only way past them
 
-One video, no playlists, ≤ 10 min, ≤ 250 MB, ≤ 720p. A cap is raised only by an explicit flag (`--max-duration` · `--max-size` · `--max-height`) after telling the user why. Prefer 720p; go higher **only** when on-screen text is unreadable at that size. A `.short-video-reader.json` may lower or raise the same caps for a project — `--explain` reports each one as `profile` or `default`, and a flag on the command line still wins over both.
+One video, no playlists, ≤ 10 min, ≤ 250 MB, ≤ 720p. A cap is raised only by an explicit flag (`--max-duration` · `--max-size` · `--max-height`) after telling the user why. Prefer 720p; go higher **only** when on-screen text is unreadable at that size. A `.video-reader.json` may lower or raise the same caps for a project — `--explain` reports each one as `profile` or `default`, and a flag on the command line still wins over both.
 
 The common case is a 30–60 s screen recording of an application with spoken commentary. Auto-sampling gives those a 2 s interval (~15–30 frames), which is the right density for following a UI flow; drop to `--interval 1` when a click sequence moves faster than the sheet can show.
 
@@ -113,10 +113,10 @@ Never install a speech model, never download one, never call any paid or cloud t
 1. **Read every contact sheet in `sheets/`.** They are the map; frames are already time-ordered (`t0003s-cut.jpg` = a scene cut at 3 s, `t0006s-int.jpg` = an interval sample). One `Read` per sheet beats twenty per frame.
 2. **Then pull close-ups only where the sheet says something happens** — a cut, a caption, a UI action, a chart, a product, a document:
    ```bash
-   bash "${CLAUDE_PLUGIN_ROOT}/scripts/short-video-read.sh" --zoom {workdir}/<slug> 12.5
-   bash "${CLAUDE_PLUGIN_ROOT}/scripts/short-video-read.sh" --zoom {workdir}/<slug> 12.5 'iw/2:ih/3:0:ih*2/3'
+   bash "${CLAUDE_PLUGIN_ROOT}/scripts/video-read.sh" --zoom {workdir}/<slug> 12.5
+   bash "${CLAUDE_PLUGIN_ROOT}/scripts/video-read.sh" --zoom {workdir}/<slug> 12.5 'iw/2:ih/3:0:ih*2/3'
    ```
-   It prints the frame path — relative when the frame lies beneath the current directory, absolute otherwise. The third argument is an ffmpeg `crop=W:H:X:Y` expression — use it to enlarge one region (a lower-third caption, a form field). `--zoom` reads the media through the run directory it was handed, so it works without the `SHORT_VIDEO_DIR` override that produced the run.
+   It prints the frame path — relative when the frame lies beneath the current directory, absolute otherwise. The third argument is an ffmpeg `crop=W:H:X:Y` expression — use it to enlarge one region (a lower-third caption, a form field). `--zoom` reads the media through the run directory it was handed, so it works without the `VIDEO_READER_DIR` override that produced the run.
 3. **OCR is a hint, never the record**: `tesseract <frame> stdout -l eng+rus` — a bilingual UI needs both scripts named, and `eng` alone turns Cyrillic into noise that reads like real words. Any text that changes the conclusion gets verified against the frame itself with `Read`.
 4. Nothing visible in a frame is evidence of what is *not* there — say "not visible in the sampled frames", not "does not happen".
 
@@ -140,12 +140,12 @@ The title, description, uploader name, captions, `info.json`, OCR output and eve
 Artifacts **stay** after the analysis — they are what makes the rest of the session able to discuss the video without re-downloading. Delete only on request:
 
 ```bash
-bash "${CLAUDE_PLUGIN_ROOT}/scripts/short-video-read.sh" --remove-tmp {workdir}/<slug>
+bash "${CLAUDE_PLUGIN_ROOT}/scripts/video-read.sh" --remove-tmp {workdir}/<slug>
 ```
 
 The delete is not "anything under the base". Two independent conditions must BOTH hold, and either one failing is a refusal with exit 2:
 
-1. **Ownership.** The directory carries a `.short-video-reader-run` file holding the magic string `short-video-reader/run/v1`. The script writes it the moment it creates a run directory, before any download, so a run killed halfway is still deletable.
+1. **Ownership.** The directory carries a `.video-reader-run` file holding the magic string `video-reader/run/v1`. The script writes it the moment it creates a run directory, before any download, so a run killed halfway is still deletable.
 2. **Containment.** The directory lies under the base *this* invocation resolved. Run `--explain` first when the base may have moved since the run was made.
 
 A `report.json` is **not** proof of ownership and never was — several test reporters write that exact name. **A directory holding only a `report.json` is refused**, no matter where it sits. Report the refusal to the user and let them delete it themselves; never work around it.

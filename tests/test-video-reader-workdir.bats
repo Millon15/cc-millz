@@ -1,6 +1,6 @@
 #!/usr/bin/env bats
 #
-# tests/test-short-video-workdir.bats — the three-rung scratch-base ladder.
+# tests/test-video-reader-workdir.bats — the three-rung scratch-base ladder.
 #
 # Every rung case asserts BOTH halves: the source word through
 # assert_explain_source, and the resolved ABSOLUTE path through
@@ -12,8 +12,8 @@
 setup() {
 	REPO_ROOT="$(cd "${BATS_TEST_DIRNAME}/.." && pwd)"
 	source "${REPO_ROOT}/tests/helpers/common.bash"
-	source "${REPO_ROOT}/tests/helpers/short-video-fixtures.bash"
-	SVR="${REPO_ROOT}/plugins/short-video-reader/scripts/short-video-read.sh"
+	source "${REPO_ROOT}/tests/helpers/video-reader-fixtures.bash"
+	SVR="${REPO_ROOT}/plugins/video-reader/scripts/video-read.sh"
 
 	setup_tmp
 	svr_home
@@ -26,7 +26,7 @@ setup() {
 	mkdir -p "${TMPDIR}"
 	export TMPDIR
 
-	unset SHORT_VIDEO_DIR SHORT_VIDEO_WHISPER_MODEL
+	unset VIDEO_READER_DIR VIDEO_READER_WHISPER_MODEL
 }
 
 teardown() {
@@ -51,26 +51,26 @@ teardown() {
 	svr_run "${SVR}" --explain
 	assert_status 0
 	assert_explain_source "${output}" workdir profile
-	svr_assert_workdir "${output}" "$(svr_phys "${root}")/scratch/short-video"
-	[ "$(printf '%s' "${output}" | jq -r '.profile_file')" = "$(svr_phys "${root}")/.short-video-reader.json" ]
+	svr_assert_workdir "${output}" "$(svr_phys "${root}")/scratch/video-reader"
+	[ "$(printf '%s' "${output}" | jq -r '.profile_file')" = "$(svr_phys "${root}")/.video-reader.json" ]
 }
 
-@test "env rung: an absolute SHORT_VIDEO_DIR is used as given" {
+@test "env rung: an absolute VIDEO_READER_DIR is used as given" {
 	root="$(make_bare_fixture)"
 	base="${TMP}/env-base"
 	cd "${root}"
 
-	SHORT_VIDEO_DIR="${base}" svr_run "${SVR}" --explain
+	VIDEO_READER_DIR="${base}" svr_run "${SVR}" --explain
 	assert_status 0
 	assert_explain_source "${output}" workdir detected:env
 	svr_assert_workdir "${output}" "${base}"
 }
 
-@test "env rung: a relative SHORT_VIDEO_DIR anchors to \$PWD, not to a profile" {
+@test "env rung: a relative VIDEO_READER_DIR anchors to \$PWD, not to a profile" {
 	root="$(make_bare_fixture)"
 	cd "${root}"
 
-	SHORT_VIDEO_DIR="relative-scratch" svr_run "${SVR}" --explain
+	VIDEO_READER_DIR="relative-scratch" svr_run "${SVR}" --explain
 	assert_status 0
 	assert_explain_source "${output}" workdir detected:env
 	svr_assert_workdir "${output}" "$(svr_phys "${root}")/relative-scratch"
@@ -83,7 +83,7 @@ teardown() {
 	svr_run "${SVR}" --explain
 	assert_status 0
 	assert_explain_source "${output}" workdir default
-	svr_assert_workdir "${output}" "${TMPDIR}/short-video-reader"
+	svr_assert_workdir "${output}" "${TMPDIR}/video-reader"
 	[ "$(printf '%s' "${output}" | jq -r '.profile_file')" = "null" ]
 }
 
@@ -95,9 +95,9 @@ teardown() {
 	assert_status 0
 	workdir="$(printf '%s' "${output}" | jq -r '.values.workdir')"
 	case "${workdir}" in
-	*/short-video-reader) ;;
+	*/video-reader) ;;
 	*)
-		printf 'the default base does not end in short-video-reader: %s\n' "${workdir}" >&2
+		printf 'the default base does not end in video-reader: %s\n' "${workdir}" >&2
 		return 1
 		;;
 	esac
@@ -112,7 +112,7 @@ teardown() {
 	base="${TMP}/override-base"
 	cd "${root}"
 
-	SHORT_VIDEO_DIR="${base}" svr_run "${SVR}" --explain
+	VIDEO_READER_DIR="${base}" svr_run "${SVR}" --explain
 	assert_status 0
 	assert_explain_source "${output}" workdir detected:env
 	svr_assert_workdir "${output}" "${base}"
@@ -127,7 +127,7 @@ teardown() {
 	svr_run "${SVR}" --explain
 	assert_status 0
 	assert_explain_source "${output}" workdir profile
-	svr_assert_workdir "${output}" "$(svr_phys "${root}")/scratch/short-video"
+	svr_assert_workdir "${output}" "$(svr_phys "${root}")/scratch/video-reader"
 }
 
 @test "the walk-up passes THROUGH a repository toplevel rather than stopping at it" {
@@ -141,7 +141,7 @@ teardown() {
 	svr_run "${SVR}" --explain
 	assert_status 0
 	assert_explain_source "${output}" workdir profile
-	svr_assert_workdir "${output}" "$(svr_phys "${root}")/scratch/short-video"
+	svr_assert_workdir "${output}" "$(svr_phys "${root}")/scratch/video-reader"
 }
 
 @test "a relative workdir answers with ONE path from every cwd under the profile" {
@@ -162,7 +162,7 @@ teardown() {
 			"${from_root}" "${from_nested}" >&2
 		return 1
 	fi
-	[ "${from_root}" = "$(svr_phys "${root}")/scratch/short-video" ]
+	[ "${from_root}" = "$(svr_phys "${root}")/scratch/video-reader" ]
 }
 
 # ------------------------------------------------------------- the usage error
@@ -183,9 +183,9 @@ teardown() {
 	root="$(make_bare_fixture)"
 	base="${TMP}/moved-base"
 	video="${root}/clip.mp4"
-	printf 'short-video-reader fixture artifact — not a real media file\n' >"${video}"
+	printf 'video-reader fixture artifact — not a real media file\n' >"${video}"
 	cd "${root}"
-	export SHORT_VIDEO_DIR="${base}"
+	export VIDEO_READER_DIR="${base}"
 
 	svr_run "${SVR}" "${video}" --slug moved
 	assert_status 0

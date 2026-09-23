@@ -1,14 +1,14 @@
 #!/usr/bin/env bats
 #
-# tests/test-short-video-guard.bats — the delete guard and the ownership proof
+# tests/test-video-reader-guard.bats — the delete guard and the ownership proof
 # it rests on.
 #
 # The guard's job is not "delete carefully under the base". The base is whatever
-# SHORT_VIDEO_DIR or a committed profile said it was, so "under the base" is a
+# VIDEO_READER_DIR or a committed profile said it was, so "under the base" is a
 # claim the CALLER supplies — and a caller who points the reader at a directory
 # that already holds work gets that work deleted. Every case here is about the
 # second condition: the target must PROVE the reader created it, by carrying
-# .short-video-reader-run with the magic string inside.
+# .video-reader-run with the magic string inside.
 #
 # Two directions, and the suite covers both. As a delete target a stranger's
 # directory must be refused; as a RUN target it must be refused too, because
@@ -18,8 +18,8 @@
 setup() {
 	REPO_ROOT="$(cd "${BATS_TEST_DIRNAME}/.." && pwd)"
 	source "${REPO_ROOT}/tests/helpers/common.bash"
-	source "${REPO_ROOT}/tests/helpers/short-video-fixtures.bash"
-	SVR="${REPO_ROOT}/plugins/short-video-reader/scripts/short-video-read.sh"
+	source "${REPO_ROOT}/tests/helpers/video-reader-fixtures.bash"
+	SVR="${REPO_ROOT}/plugins/video-reader/scripts/video-read.sh"
 
 	setup_tmp
 	svr_home
@@ -33,7 +33,7 @@ setup() {
 	mkdir -p "${TMPDIR}"
 	export TMPDIR
 
-	unset SHORT_VIDEO_DIR SHORT_VIDEO_WHISPER_MODEL
+	unset VIDEO_READER_DIR VIDEO_READER_WHISPER_MODEL
 }
 
 teardown() {
@@ -47,7 +47,7 @@ teardown() {
 # keeps yt-dlp out of the picture: the guard has nothing to do with acquisition.
 make_clip() {
 	local f="${1}/clip.mp4"
-	printf 'short-video-reader fixture artifact — not a real media file\n' >"${f}"
+	printf 'video-reader fixture artifact — not a real media file\n' >"${f}"
 	printf '%s\n' "${f}"
 }
 
@@ -58,7 +58,7 @@ make_clip() {
 	clip="$(make_clip "${root}")"
 	base="${TMP}/owned-base"
 	cd "${root}"
-	export SHORT_VIDEO_DIR="${base}"
+	export VIDEO_READER_DIR="${base}"
 
 	svr_run "${SVR}" "${clip}" --slug owned
 	assert_status 0
@@ -81,7 +81,7 @@ make_clip() {
 	mkdir -p "${base}"
 	foreign="$(make_foreign_dir "${base}")"
 	cd "${root}"
-	export SHORT_VIDEO_DIR="${base}"
+	export VIDEO_READER_DIR="${base}"
 
 	svr_run "${SVR}" --remove-tmp "${foreign}"
 	assert_status 2
@@ -101,7 +101,7 @@ make_clip() {
 	clip="$(make_clip "${root}")"
 	base="${TMP}/rerun-base"
 	cd "${root}"
-	export SHORT_VIDEO_DIR="${base}"
+	export VIDEO_READER_DIR="${base}"
 
 	svr_run "${SVR}" "${clip}" --slug repeated
 	assert_status 0
@@ -124,7 +124,7 @@ make_clip() {
 	foreign="$(make_foreign_dir "${base}" collide)"
 	before="$(cat "${foreign}/report.json")"
 	cd "${root}"
-	export SHORT_VIDEO_DIR="${base}"
+	export VIDEO_READER_DIR="${base}"
 
 	svr_run "${SVR}" "${clip}" --slug collide
 	assert_status 2
@@ -146,7 +146,7 @@ make_clip() {
 	root="$(make_bare_fixture)"
 	cd "${root}"
 
-	SHORT_VIDEO_DIR="/" svr_run "${SVR}" --explain
+	VIDEO_READER_DIR="/" svr_run "${SVR}" --explain
 	assert_status 2
 	assert_contains "${output}" "detected:env"
 	assert_contains "${output}" "filesystem root"
@@ -157,7 +157,7 @@ make_clip() {
 	root="$(make_bare_fixture)"
 	cd "${root}"
 
-	SHORT_VIDEO_DIR="${HOME}" svr_run "${SVR}" --explain
+	VIDEO_READER_DIR="${HOME}" svr_run "${SVR}" --explain
 	assert_status 2
 	assert_contains "${output}" "detected:env"
 	assert_contains "${output}" "home directory"
@@ -183,7 +183,7 @@ make_clip() {
 	make_git_repo "${checkout}"
 	cd "${root}"
 
-	SHORT_VIDEO_DIR="${checkout}" svr_run "${SVR}" --explain
+	VIDEO_READER_DIR="${checkout}" svr_run "${SVR}" --explain
 	assert_status 2
 	assert_contains "${output}" "detected:env"
 	assert_contains "${output}" "repository checkout"
@@ -196,10 +196,10 @@ make_clip() {
 	clip="$(make_clip "${root}")"
 	# The OLD literal scratch location, which earlier versions of this tool
 	# hard-coded: a run made there is genuinely ours, marker and all.
-	old_base="${TMP}/oldtree/tmp/short-video"
+	old_base="${TMP}/oldtree/tmp/video-reader"
 	cd "${root}"
 
-	SHORT_VIDEO_DIR="${old_base}" svr_run "${SVR}" "${clip}" --slug legacy
+	VIDEO_READER_DIR="${old_base}" svr_run "${SVR}" "${clip}" --slug legacy
 	assert_status 0
 	legacy="${old_base}/legacy"
 	[ -f "${legacy}/${SVR_RUN_MARKER}" ]
@@ -207,7 +207,7 @@ make_clip() {
 	# A different base is resolved now. Ownership holds and containment does
 	# not, and the guard needs BOTH — so the legacy run survives.
 	base="${TMP}/current-base"
-	export SHORT_VIDEO_DIR="${base}"
+	export VIDEO_READER_DIR="${base}"
 	svr_run "${SVR}" --remove-tmp "${legacy}"
 	assert_status 2
 	assert_contains "${output}" "outside the resolved base"

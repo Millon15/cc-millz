@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 #
-# tests/fixtures/short-video-reader/stubs/ffmpeg.bash
+# tests/fixtures/video-reader/stubs/ffmpeg.bash
 #
 # BEHAVIOURAL stub. The reader invokes ffmpeg five different ways and then reads
 # what each invocation LEFT ON DISK, so a stub that only exits 0 makes every
@@ -66,7 +66,7 @@ esac
 mkdir -p "$(dirname "${out}")"
 
 write_placeholder() {
-	printf 'short-video-reader fixture artifact — not a real media file\n' >"$1"
+	printf 'video-reader fixture artifact — not a real media file\n' >"$1"
 }
 
 case "${out}" in

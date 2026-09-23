@@ -1,9 +1,9 @@
 #!/usr/bin/env bats
 #
-# tests/test-short-video-explain.bats — the --explain contract and the four
+# tests/test-video-reader-explain.bats — the --explain contract and the four
 # consumers that read the resolved base back out.
 #
-# The rung ladder itself is asserted next door, in test-short-video-workdir.bats.
+# The rung ladder itself is asserted next door, in test-video-reader-workdir.bats.
 # What this suite covers is everything the seam PROMISES beyond the rung: that an
 # inspection prints without writing, that the paths it and the run hand back can
 # actually be opened, that report.json describes directories that exist, and that
@@ -12,9 +12,9 @@
 setup() {
 	REPO_ROOT="$(cd "${BATS_TEST_DIRNAME}/.." && pwd)"
 	source "${REPO_ROOT}/tests/helpers/common.bash"
-	source "${REPO_ROOT}/tests/helpers/short-video-fixtures.bash"
-	SVR="${REPO_ROOT}/plugins/short-video-reader/scripts/short-video-read.sh"
-	SVR_SKILL="${REPO_ROOT}/plugins/short-video-reader/skills/short-video-reader/SKILL.md"
+	source "${REPO_ROOT}/tests/helpers/video-reader-fixtures.bash"
+	SVR="${REPO_ROOT}/plugins/video-reader/scripts/video-read.sh"
+	SVR_SKILL="${REPO_ROOT}/plugins/video-reader/skills/video-reader/SKILL.md"
 
 	setup_tmp
 	svr_home
@@ -25,7 +25,7 @@ setup() {
 	mkdir -p "${TMPDIR}"
 	export TMPDIR
 
-	unset SHORT_VIDEO_DIR SHORT_VIDEO_WHISPER_MODEL
+	unset VIDEO_READER_DIR VIDEO_READER_WHISPER_MODEL
 }
 
 teardown() {
@@ -49,7 +49,7 @@ teardown() {
 
 	svr_run "${SVR}" --explain
 	assert_status 0
-	[ "$(printf '%s' "${output}" | jq -r '.plugin')" = "short-video-reader" ]
+	[ "$(printf '%s' "${output}" | jq -r '.plugin')" = "video-reader" ]
 	assert_explain_complete "${output}"
 	assert_explain_source "${output}" workdir default
 	assert_explain_source "${output}" tools detected:path
@@ -83,7 +83,7 @@ teardown() {
 	[ -f "${model}" ]
 	base="${TMP}/inspection-base"
 	cd "${root}"
-	export SHORT_VIDEO_DIR="${base}"
+	export VIDEO_READER_DIR="${base}"
 
 	svr_run "${SVR}" --explain
 	assert_status 0
@@ -134,10 +134,10 @@ teardown() {
 @test "--zoom prints a path that opens from the cwd the command ran in" {
 	root="$(make_bare_fixture)"
 	video="${root}/clip.mp4"
-	printf 'short-video-reader fixture artifact — not a real media file\n' >"${video}"
+	printf 'video-reader fixture artifact — not a real media file\n' >"${video}"
 	cd "${root}"
 	# The base sits UNDER the cwd, so a caller-relative print is possible at all.
-	export SHORT_VIDEO_DIR="${root}/scratch"
+	export VIDEO_READER_DIR="${root}/scratch"
 
 	svr_run "${SVR}" "${video}" --slug zoomed
 	assert_status 0
@@ -157,14 +157,14 @@ teardown() {
 @test "--zoom finds the media WITHOUT the override that produced the run" {
 	root="$(make_bare_fixture)"
 	video="${root}/clip.mp4"
-	printf 'short-video-reader fixture artifact — not a real media file\n' >"${video}"
+	printf 'video-reader fixture artifact — not a real media file\n' >"${video}"
 	base="${TMP}/detached-base"
 	cd "${root}"
 
-	SHORT_VIDEO_DIR="${base}" svr_run "${SVR}" "${video}" --slug detached
+	VIDEO_READER_DIR="${base}" svr_run "${SVR}" "${video}" --slug detached
 	assert_status 0
 
-	unset SHORT_VIDEO_DIR
+	unset VIDEO_READER_DIR
 	svr_run "${SVR}" --zoom "${base}/detached" 2
 	assert_status 0
 	[ -r "${output}" ]
@@ -175,10 +175,10 @@ teardown() {
 @test "report.json describes directories that exist on disk" {
 	root="$(make_bare_fixture)"
 	video="${root}/clip.mp4"
-	printf 'short-video-reader fixture artifact — not a real media file\n' >"${video}"
+	printf 'video-reader fixture artifact — not a real media file\n' >"${video}"
 	base="${TMP}/report-base"
 	cd "${root}"
-	export SHORT_VIDEO_DIR="${base}"
+	export VIDEO_READER_DIR="${base}"
 
 	svr_run "${SVR}" "${video}" --slug reported
 	assert_status 0
@@ -205,7 +205,7 @@ teardown() {
 	body="$(cat "${SVR_SKILL}")"
 	# Company naming is the neutrality lint's job, not this suite's — naming one
 	# here would put the word in the repository the lint exists to keep clean.
-	for hit in 'bin/claude/' '.rulesync/' 'tmp/short-video/' '/Users/' '/home/'; do
+	for hit in 'bin/claude/' '.rulesync/' 'tmp/video-reader/' '/Users/' '/home/'; do
 		assert_not_contains "${body}" "${hit}"
 	done
 	# And the placeholder that replaced the monorepo path is actually present,
@@ -220,23 +220,23 @@ teardown() {
 	local line
 	while IFS= read -r line; do
 		case "${line}" in
-		*'${CLAUDE_PLUGIN_ROOT}/scripts/short-video-read.sh'*) ;;
+		*'${CLAUDE_PLUGIN_ROOT}/scripts/video-read.sh'*) ;;
 		*)
 			printf 'unprefixed script reference: %s\n' "${line}" >&2
 			return 1
 			;;
 		esac
-	done < <(grep -n 'scripts/short-video-read.sh' "${SVR_SKILL}")
+	done < <(grep -n 'scripts/video-read.sh' "${SVR_SKILL}")
 }
 
 @test "the body names the four recipes and both inspection flags" {
 	local body
 	body="$(cat "${SVR_SKILL}")"
-	assert_contains "${body}" '${CLAUDE_PLUGIN_ROOT}/scripts/short-video-read.sh" <url|file>'
-	assert_contains "${body}" '${CLAUDE_PLUGIN_ROOT}/scripts/short-video-read.sh" --probe'
-	assert_contains "${body}" '${CLAUDE_PLUGIN_ROOT}/scripts/short-video-read.sh" --explain'
-	assert_contains "${body}" '${CLAUDE_PLUGIN_ROOT}/scripts/short-video-read.sh" --zoom {workdir}/<slug>'
-	assert_contains "${body}" '${CLAUDE_PLUGIN_ROOT}/scripts/short-video-read.sh" --remove-tmp {workdir}/<slug>'
+	assert_contains "${body}" '${CLAUDE_PLUGIN_ROOT}/scripts/video-read.sh" <url|file>'
+	assert_contains "${body}" '${CLAUDE_PLUGIN_ROOT}/scripts/video-read.sh" --probe'
+	assert_contains "${body}" '${CLAUDE_PLUGIN_ROOT}/scripts/video-read.sh" --explain'
+	assert_contains "${body}" '${CLAUDE_PLUGIN_ROOT}/scripts/video-read.sh" --zoom {workdir}/<slug>'
+	assert_contains "${body}" '${CLAUDE_PLUGIN_ROOT}/scripts/video-read.sh" --remove-tmp {workdir}/<slug>'
 }
 
 @test "the body documents the three rungs with the source word each one reports" {
@@ -244,11 +244,11 @@ teardown() {
 	# and the three source words are the only vocabulary that says so.
 	local body
 	body="$(cat "${SVR_SKILL}")"
-	assert_contains "${body}" 'SHORT_VIDEO_DIR'
+	assert_contains "${body}" 'VIDEO_READER_DIR'
 	assert_contains "${body}" 'detected:env'
-	assert_contains "${body}" '.short-video-reader.json'
+	assert_contains "${body}" '.video-reader.json'
 	assert_contains "${body}" '`profile`'
-	assert_contains "${body}" '${TMPDIR:-/tmp}/short-video-reader'
+	assert_contains "${body}" '${TMPDIR:-/tmp}/video-reader'
 	assert_contains "${body}" '`default`'
 	assert_not_contains "${body}" 'detected:project-marker'
 }
@@ -302,7 +302,7 @@ teardown() {
 @test "a local-file run without ffmpeg exits 3 and names its install line" {
 	root="$(make_bare_fixture)"
 	video="${root}/clip.mp4"
-	printf 'short-video-reader fixture artifact — not a real media file\n' >"${video}"
+	printf 'video-reader fixture artifact — not a real media file\n' >"${video}"
 	cd "${root}"
 
 	unstub ffmpeg
@@ -314,7 +314,7 @@ teardown() {
 @test "a local-file run without ffprobe exits 3 and names its install line" {
 	root="$(make_bare_fixture)"
 	video="${root}/clip.mp4"
-	printf 'short-video-reader fixture artifact — not a real media file\n' >"${video}"
+	printf 'video-reader fixture artifact — not a real media file\n' >"${video}"
 	cd "${root}"
 
 	unstub ffprobe
@@ -326,7 +326,7 @@ teardown() {
 @test "a local-file run without jq exits 3 and names its install line" {
 	root="$(make_bare_fixture)"
 	video="${root}/clip.mp4"
-	printf 'short-video-reader fixture artifact — not a real media file\n' >"${video}"
+	printf 'video-reader fixture artifact — not a real media file\n' >"${video}"
 	cd "${root}"
 
 	unstub jq
@@ -338,7 +338,7 @@ teardown() {
 @test "a URL run without yt-dlp exits 3 — the check a local file never reaches" {
 	root="$(make_bare_fixture)"
 	video="${root}/clip.mp4"
-	printf 'short-video-reader fixture artifact — not a real media file\n' >"${video}"
+	printf 'video-reader fixture artifact — not a real media file\n' >"${video}"
 	cd "${root}"
 
 	unstub yt-dlp

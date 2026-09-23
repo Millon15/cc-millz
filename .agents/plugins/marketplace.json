@@ -93,10 +93,10 @@
       "category": "Developer Tools"
     },
     {
-      "name": "short-video-reader",
+      "name": "video-reader",
       "source": {
         "source": "local",
-        "path": "./plugins/short-video-reader"
+        "path": "./plugins/video-reader"
       },
       "policy": {
         "installation": "AVAILABLE"

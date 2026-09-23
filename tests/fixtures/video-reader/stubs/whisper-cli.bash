@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 #
-# tests/fixtures/short-video-reader/stubs/whisper-cli.bash
+# tests/fixtures/video-reader/stubs/whisper-cli.bash
 #
 # BEHAVIOURAL stub, with one honest asymmetry: the reader NEVER executes this
 # binary. It only asks whether the name is on PATH and pairs it with a GGML
