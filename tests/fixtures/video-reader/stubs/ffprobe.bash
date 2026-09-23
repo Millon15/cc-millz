@@ -39,7 +39,9 @@ emit_stream() {
 	sep=","
 }
 
-emit_stream "{\"index\":0,\"codec_type\":\"video\",\"codec_name\":\"h264\",\"width\":${width},\"height\":${height},\"r_frame_rate\":\"30/1\"}"
+if [ "${SVR_STUB_VIDEO_STREAMS:-1}" != 0 ]; then
+	emit_stream "{\"index\":0,\"codec_type\":\"video\",\"codec_name\":\"h264\",\"width\":${width},\"height\":${height},\"r_frame_rate\":\"30/1\"}"
+fi
 
 i=1
 while [ "${i}" -le "${audio}" ]; do

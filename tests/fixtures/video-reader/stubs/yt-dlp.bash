@@ -1,81 +1,76 @@
 #!/usr/bin/env bash
-#
-# tests/fixtures/video-reader/stubs/yt-dlp.bash
-#
-# BEHAVIOURAL stub. After the download the reader looks for THREE things the
-# real tool leaves behind, and an `exit 0` stub leaves none of them:
-#
-#   media/<id>.info.json   slurped into report.json as the provenance block
-#   media/<id>.<ext>       the first non-sidecar file, taken as the media
-#   media/<id>.*.srt       moved into subs/ and counted as captions
-#
-# With none of those present the reader dies with "yt-dlp produced no media
-# file", so every URL case would assert an acquisition failure instead of the
-# acquisition.
-#
-# The output directory comes from the -o template; the id and extension in that
-# template are ignored and a fixed id is used, so the artifact names are stable
-# enough to assert against.
-#
-#   SVR_STUB_YTDLP_FAIL=1   exit 1 after writing the log, for the failure-hint case
-#   SVR_STUB_YTDLP_SUBS=0   write no .srt, so a URL run reaches the STT rung
-#
-# The webpage_url below is under .invalid, the TLD RFC 2606 reserves as
-# guaranteed-nonresolvable: no fixture here names a real host.
-
+# Offline acquisition with separate metadata and download calls.
 set -euo pipefail
 
-id="${SVR_STUB_YTDLP_ID:-fixture-clip}"
-want_subs="${SVR_STUB_YTDLP_SUBS:-1}"
+if [ -n "${SVR_STUB_CALLS:-}" ]; then
+    jq -cn --arg tool yt-dlp --args '{tool:$tool,args:$ARGS.positional}' -- "$@" >>"${SVR_STUB_CALLS}"
+fi
+if [ "${SVR_STUB_YTDLP_FAIL:-0}" = 1 ]; then
+    printf 'ERROR: fixture acquisition failed\n' >&2
+    exit 1
+fi
+
+metadata() {
+    if [ -n "${SVR_STUB_INFO_FILE:-}" ]; then
+        cat "${SVR_STUB_INFO_FILE}"
+    else
+        jq -n --argjson duration "${SVR_STUB_DURATION:-12}" \
+            '{id:"fixture-clip",title:"Fixture clip",extractor:"fixture",language:"en",
+            webpage_url:"https://example.invalid/watch?v=fixture-clip",duration:$duration,
+            subtitles:{en:[{ext:"srt",url:"https://example.invalid/en.srt"}]},
+            automatic_captions:{},chapters:[]}'
+    fi
+}
 
 template=""
+languages="en"
 prev=""
+preflight=0
+want_subs=0
+manual=0
+automatic=0
 for a in "$@"; do
-	[ "${prev}" = "-o" ] && template="${a}"
-	prev="${a}"
+    case "$prev" in
+    -o | --output) template="$a" ;;
+    --sub-langs) languages="$a" ;;
+    esac
+    case "$a" in
+    -J | --dump-single-json | --dump-json | -j) preflight=1 ;;
+    --write-subs)
+        want_subs=1
+        manual=1
+        ;;
+    --write-auto-subs)
+        want_subs=1
+        automatic=1
+        ;;
+    esac
+    prev="$a"
 done
-
-[ -n "${template}" ] || {
-	printf 'yt-dlp-stub: no -o template in the argument list\n' >&2
-	exit 2
-}
-
-dir="$(dirname "${template}")"
-mkdir -p "${dir}"
-
-printf '[fixture] destination %s\n' "${dir}"
-printf '[download] 100%% of 4.00KiB in 00:00\n'
-
-if [ "${SVR_STUB_YTDLP_FAIL:-0}" = "1" ]; then
-	printf 'ERROR: [fixture] %s: this stub was asked to fail\n' "${id}" >&2
-	exit 1
+if [ "$preflight" = 1 ]; then
+    metadata
+    exit 0
 fi
-
-cat >"${dir}/${id}.info.json" <<JSON
-{
-  "id": "${id}",
-  "title": "Fixture clip",
-  "uploader": "fixture-uploader",
-  "upload_date": "20200101",
-  "extractor": "fixture",
-  "webpage_url": "https://example.invalid/watch?v=${id}",
-  "format": "fixture-360p",
-  "duration": 12
+[ -n "$template" ] || {
+    printf 'missing output template\n' >&2
+    exit 2
 }
-JSON
-
-printf 'video-reader fixture artifact — not a real media file\n' >"${dir}/${id}.mp4"
-
-if [ "${want_subs}" = "1" ]; then
-	cat >"${dir}/${id}.en.srt" <<'SRT'
-1
-00:00:01,000 --> 00:00:03,000
-fixture caption line one
-
-2
-00:00:04,000 --> 00:00:06,000
-fixture caption line two
-SRT
+dir="$(dirname "$template")"
+mkdir -p "$dir"
+metadata >"$dir/fixture-clip.info.json"
+printf 'fixture media\n' >"$dir/fixture-clip.mp4"
+if [ "${SVR_STUB_YTDLP_SUBS:-1}" = 1 ] && [ "$want_subs" = 1 ]; then
+    old_ifs="$IFS"
+    IFS=,
+    for lang in $languages; do
+        metadata | jq -e --arg lang "$lang" --argjson manual "$manual" --argjson automatic "$automatic" \
+            '($manual == 1 and ((.subtitles[$lang] // [])|length) > 0) or
+           ($automatic == 1 and ((.automatic_captions[$lang] // [])|length) > 0)' >/dev/null || continue
+        if [ -n "${SVR_STUB_CAPTION_FILE:-}" ]; then
+            cp "$SVR_STUB_CAPTION_FILE" "$dir/fixture-clip.$lang.srt"
+        else
+            printf '1\n00:00:01,000 --> 00:00:03,000\nfixture caption line one\n\n2\n00:00:04,000 --> 00:00:06,000\nfixture caption line two\n' >"$dir/fixture-clip.$lang.srt"
+        fi
+    done
+    IFS="$old_ifs"
 fi
-
-exit 0

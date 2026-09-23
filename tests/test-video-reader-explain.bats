@@ -73,7 +73,7 @@ teardown() {
 	[ "$(printf '%s' "${output}" | jq -r '.values.max_duration')" = "42" ]
 	[ "$(printf '%s' "${output}" | jq -r '.values.max_height')" = "480" ]
 	[ "$(printf '%s' "${output}" | jq -r '.values.stt_lang')" = "ru" ]
-	[ "$(printf '%s' "${output}" | jq -r '.values.max_size_mb')" = "250" ]
+	[ "$(printf '%s' "${output}" | jq -r '.values.max_size_mb')" = "null" ]
 	[ "$(printf '%s' "${output}" | jq -r '.values.interval')" = "null" ]
 }
 

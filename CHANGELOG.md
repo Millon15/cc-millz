@@ -1,5 +1,50 @@
 # Changelog
 
+## video-reader v1.0.0 - 2026-09-22
+
+### Changed
+
+- Renamed from `short-video-reader`, and every name with it: the plugin and skill are `video-reader`,
+  the script is `scripts/video-read.sh`, the environment variables are `VIDEO_READER_DIR` and
+  `VIDEO_READER_WHISPER_MODEL`, the profile is `.video-reader.json`, the run marker is
+  `.video-reader-run` holding `video-reader/run/v1`, and the default base is
+  `${TMPDIR:-/tmp}/video-reader`. No alias keeps the old names.
+- No limits by default. `--max-duration` and `--max-size` are opt-in, compared against the exact
+  float duration and byte count, and exit 2 naming the flag; a URL's duration is checked from a
+  `yt-dlp -J` preflight before any media downloads, a URL's size by yt-dlp and again on the merged
+  file. yt-dlp's `--match-filter` is gone.
+- Speech-to-text runs. When no caption track qualifies, the script runs `whisper-cli` itself and
+  writes the canonical transcript; `--stt` forces it, `--no-stt` skips it. The language is
+  `--stt-lang`, the profile, the metadata language with its region stripped, then `auto`.
+- Captions are chosen from the metadata: manual original language > manual English > auto
+  `<lang>-orig` > auto original > auto English > another manual track, with an English companion
+  beside a non-English track. `transcript.txt` is the reading text, `transcript.srt` the
+  untouched track; only auto captions get the rolling-duplicate collapse.
+- Frames are pulled by input seek every max(2 s, ceil(duration / 120)), so cost follows the frame count.
+  Scene cuts come from a full scan up to 1200 s (`--scene N` beyond it, `--no-scene` off), spread
+  over the whole timeline instead of the first 60 cuts.
+- Contact sheets are built from a numerically ordered list, with `sheets/index.tsv` mapping every
+  cell to its timestamp, since common ffmpeg builds ship without `drawtext`.
+- Every yt-dlp call adds `--ignore-config --no-geo-bypass` to the cookie flags, so a user's
+  yt-dlp config cannot inject credentials, a proxy or another output path.
+- A re-run of a slug drops the artifacts this tool wrote before acquiring again.
+- `--no-audio` is replaced by `--no-stt`; `--audio-only` and `--no-scene` are new. `--video-only`
+  now turns speech-to-text off for any input, and `--video-only --stt` is exit 2.
+
+### Added
+
+- `--window <run-dir> <from> <to> [step]`: dense frames and sheets for one stretch of an acquired
+  video, no second download. Times are seconds or `[hh:]mm:ss`.
+- `chapters.tsv` and `report.json` `.chapters`, `.transcript` and `.frames.scene` blocks.
+- A playlist, a live stream and a scheduled premiere are refused with exit 2 before any download.
+
+### Fixed
+
+- ffmpeg 9.0.1 rejects `-vsync` (deprecated since 5.1) with "Unrecognized option 'vsync'": the frame
+  passes failed and the run still exited 0 with zero frames. The script no longer passes `-vsync`, and a video stream that yields no
+  frame, or a sheet the index names that was not written, is exit 1 naming `logs/ffmpeg.log`.
+- A profile value that is not a positive number (`interval: 0` looped forever) is exit 2.
+
 ## peer-chat v0.5.0 - 2026-09-22
 
 ### Changed

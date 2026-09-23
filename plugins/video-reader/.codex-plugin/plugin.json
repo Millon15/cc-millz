@@ -1,7 +1,7 @@
 {
-  "name": "short-video-reader",
-  "version": "0.1.1",
-  "description": "Read ONE short video end-to-end from local artifacts and report what is visible, never what is guessed. One entry script acquires a clip from a URL or a local file with provenance, takes a stream inventory, extracts scene-cut and interval frames into contact sheets, keeps whatever captions the source already carried, and detects a free offline speech-to-text route rather than installing or calling one. Nothing authenticates, nothing leaves the machine, and where the scratch tree lands is resolved through a three-rung ladder the tool prints on request.",
+  "name": "video-reader",
+  "version": "1.0.0",
+  "description": "Fetch, transcribe and read ONE video of any length from a URL (any site yt-dlp supports) or a local file, and report what is said and visible, never what is guessed. One entry script runs a metadata preflight, acquires the media with provenance, picks the caption track in the original language (English companion kept), falls back to a local whisper.cpp build it already finds, samples at most 120 frames by input seek plus scene cuts into indexed contact sheets, and keeps chapters. Follow-ups use dense frame windows and close-ups without a second download. No limits by default; nothing authenticates, nothing is installed, nothing leaves the machine.",
   "author": {
     "name": "Millon15"
   },
@@ -9,8 +9,8 @@
   "repository": "https://github.com/Millon15/cc-millz",
   "skills": "./skills/",
   "interface": {
-    "displayName": "short-video-reader",
-    "shortDescription": "Millon15 short-video-reader: short-video-reader",
+    "displayName": "video-reader",
+    "shortDescription": "Millon15 video-reader: video-reader",
     "developerName": "Millon15",
     "category": "Developer Tools"
   }

@@ -1,50 +1,31 @@
 #!/usr/bin/env bash
-#
-# tests/fixtures/video-reader/stubs/whisper-cli.bash
-#
-# BEHAVIOURAL stub, with one honest asymmetry: the reader NEVER executes this
-# binary. It only asks whether the name is on PATH and pairs it with a GGML
-# model, then hands the operator a suggested command. So what this stub exists
-# for is the detection half — being present on the hermetic PATH so the STT rung
-# is reachable, and being absent so the "no free local transcription" rung is.
-#
-# The transcription half is implemented anyway, for the one case that runs the
-# suggested command rather than only reading it: `-of <base>` names the output
-# stem and `-otxt` asks for a text transcript, so `<base>.txt` is what a caller
-# following the suggestion gets back.
-
+# Produces transcripts only when the reader actually invokes the CLI.
 set -euo pipefail
-
+if [ -n "${SVR_STUB_CALLS:-}" ]; then
+    jq -cn --arg tool whisper-cli --args '{tool:$tool,args:$ARGS.positional}' -- "$@" >>"${SVR_STUB_CALLS}"
+fi
+[ "${SVR_STUB_STT_FAIL:-0}" = 1 ] && exit 1
 of=""
 model=""
 audio=""
 want_txt=0
+want_srt=0
 prev=""
 for a in "$@"; do
-	case "${prev}" in
-	-of) of="${a}" ;;
-	-m) model="${a}" ;;
-	-f) audio="${a}" ;;
-	esac
-	[ "${a}" = "-otxt" ] && want_txt=1
-	prev="${a}"
+    case "$prev" in
+    -of) of="$a" ;;
+    -m) model="$a" ;;
+    -f) audio="$a" ;;
+    esac
+    [ "$a" = -otxt ] && want_txt=1
+    [ "$a" = -osrt ] && want_srt=1
+    prev="$a"
 done
-
-[ -n "${model}" ] && [ ! -f "${model}" ] && {
-	printf 'whisper-cli-stub: no such model file: %s\n' "${model}" >&2
-	exit 1
-}
-
-[ -n "${audio}" ] && [ ! -f "${audio}" ] && {
-	printf 'whisper-cli-stub: no such audio file: %s\n' "${audio}" >&2
-	exit 1
-}
-
-printf 'whisper-cli-stub: %s\n' "${audio:-<no input>}"
-
-if [ "${want_txt}" -eq 1 ] && [ -n "${of}" ]; then
-	mkdir -p "$(dirname "${of}")"
-	printf 'fixture transcript line one\nfixture transcript line two\n' >"${of}.txt"
+[ -f "$model" ] && [ -f "$audio" ] && [ -n "$of" ] || exit 1
+[ "${SVR_STUB_STT_EMPTY:-0}" = 1 ] && exit 0
+mkdir -p "$(dirname "$of")"
+if [ "$want_txt" = 1 ]; then printf 'spoken fixture words\n' >"$of.txt"; fi
+if [ "$want_srt" = 1 ]; then
+    printf '1\n00:00:00,000 --> 00:00:02,000\nspoken fixture words\n' >"$of.srt"
 fi
-
 exit 0

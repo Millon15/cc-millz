@@ -67,7 +67,7 @@ SVR_RUN_MAGIC="video-reader/run/v1"
 # stub non-executable and every later invocation exits 126 instead of running.
 SVR_BASE_UTILS=(
 	bash jq
-	awk basename cat chmod cp cut date dirname find grep mkdir mktemp mv rm sed tr wc
+	awk basename cat chmod cp cut date dirname find grep head mkdir mktemp mv rm sed sort tail tr wc
 )
 
 # The toolchain the reader probes for. jq is NOT here and never will be: the
