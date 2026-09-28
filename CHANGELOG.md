@@ -45,6 +45,19 @@
   frame, or a sheet the index names that was not written, is exit 1 naming `logs/ffmpeg.log`.
 - A profile value that is not a positive number (`interval: 0` looped forever) is exit 2.
 
+## peer-chat v0.5.1 - 2026-09-27
+
+### Added
+
+- `peer-chat-spawn.sh` falls back to the other harness when the requested peer cannot start:
+  executable not on `PATH`, no appearance within `start_timeout`, or the other pane already running
+  that harness. Default `claude:fable` for a Codex request and `codex` (gpt-6-astra) for a Claude
+  request; `--fallback <harness[:model]>`, `PEER_CHAT_PEER_FALLBACK` and `peer_fallback` in
+  `.peer-chat.json` change it, `--no-fallback` turns it off. The JSON result carries `fallback_from`,
+  stderr names the reason, and the fallback never falls back again. A busy unknown program, an
+  agterm error or a config error still fail as before.
+- Skill § Bringing a peer in tells the agent to report which peer it got.
+
 ## peer-chat v0.5.0 - 2026-09-22
 
 ### Changed

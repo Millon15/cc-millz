@@ -14,9 +14,10 @@ import time
 
 
 class Failure(Exception):
-    def __init__(self, message, status=1):
+    def __init__(self, message, status=1, recoverable=False):
         super().__init__(message)
         self.status = status
+        self.recoverable = recoverable
 
 
 @dataclass(frozen=True)
@@ -33,6 +34,9 @@ def arguments():
     parser.add_argument('--model')
     parser.add_argument('--restart', action='store_true')
     parser.add_argument('--explain', action='store_true')
+    fallback = parser.add_mutually_exclusive_group()
+    fallback.add_argument('--fallback', help='harness[:model] to start when the peer cannot; default: the other harness')
+    fallback.add_argument('--no-fallback', action='store_const', const='none', dest='fallback')
     args = parser.parse_args(sys.argv[2:])
     if args.peer:
         harness, separator, model = args.peer.partition(':')
@@ -82,9 +86,10 @@ def resolve_config(args):
               ('start_timeout', 'PEER_CHAT_START_TIMEOUT', 30, None)]
     for key, env, default, cli in specs:
         values[key], sources[key] = resolve_value(profile, key, env, default, cli)
-    default_model = 'gpt-6-astra' if values['peer_harness'] == 'codex' else None
     values['peer_model'], sources['peer_model'] = resolve_value(
-        profile, 'peer_model', 'PEER_CHAT_PEER_MODEL', default_model, args.model)
+        profile, 'peer_model', 'PEER_CHAT_PEER_MODEL', default_model(values['peer_harness']), args.model)
+    values['peer_fallback'], sources['peer_fallback'] = resolve_value(
+        profile, 'peer_fallback', 'PEER_CHAT_PEER_FALLBACK', other_harness(values['peer_harness']), args.fallback)
     if sources['peer_args'].startswith('detected:env:'):
         try:
             values['peer_args'] = json.loads(values['peer_args'])
@@ -93,6 +98,21 @@ def resolve_config(args):
     validate_config(values)
     values['start_timeout'] = int(values['start_timeout'])
     return Config(path, values, sources)
+
+
+def default_model(harness):
+    return 'gpt-6-astra' if harness == 'codex' else None
+
+
+def other_harness(harness):
+    return 'claude:fable' if harness == 'codex' else 'codex'
+
+
+def parse_peer(value):
+    harness, separator, model = value.partition(':')
+    if harness not in ('claude', 'codex') or (separator and not model):
+        raise Failure(f'peer_fallback must be none, claude[:model] or codex[:model], got {value!r}', 2)
+    return harness, (model if separator else default_model(harness))
 
 
 def valid_text(value):
@@ -105,6 +125,11 @@ def validate_config(values):
     model = values['peer_model']
     if model is not None and (not valid_text(model) or model.startswith('-')):
         raise Failure('peer_model must be a nonempty model name', 2)
+    fallback = values['peer_fallback']
+    if not valid_text(fallback):
+        raise Failure('peer_fallback must be none, claude[:model] or codex[:model]', 2)
+    if fallback != 'none':
+        parse_peer(fallback)
     argv = values['peer_args']
     if not isinstance(argv, list) or not all(isinstance(v, str) and not any(ord(c) < 32 for c in v) for v in argv):
         raise Failure('peer_args must be an array of strings without control characters', 2)
@@ -191,14 +216,14 @@ class Terminal:
         if not node.get('split'):
             self.ctl('session', 'split', 'on', '--target', self.session)
 
-    def wait(self, predicate, timeout, failure):
+    def wait(self, predicate, timeout, failure, recoverable=False):
         deadline = time.monotonic() + timeout
         while time.monotonic() < deadline:
             if predicate():
                 return
             time.sleep(0.1)
         hint = f'agtermctl session text --pane {self.peer_pane} --target {self.session}'
-        raise Failure(f'{failure}; read it with: {hint}')
+        raise Failure(f'{failure}; read it with: {hint}', recoverable=recoverable)
 
     def require_shell(self):
         if self.foreground(self.node(), self.peer_pane):
@@ -258,10 +283,33 @@ def launch_argv(config, terminal, plugin_root):
 def require_tools(config):
     for tool in ('agtermctl', 'peer-chat.py', config.values[f"{config.values['peer_harness']}_command"]):
         if not shutil.which(tool):
-            raise Failure(f'{tool} not on PATH; run peer-chat-install.sh or install the selected harness', 3)
+            raise Failure(f'{tool} not on PATH; run peer-chat-install.sh or install the selected harness', 3,
+                          recoverable=tool == config.values[f"{config.values['peer_harness']}_command"])
 
 
 def spawn(config, args, plugin_root):
+    try:
+        return spawn_peer(config, args, plugin_root)
+    except Failure as error:
+        if not error.recoverable or config.values['peer_fallback'] == 'none':
+            raise
+        reason = str(error)
+    fallback = fallback_config(config)
+    print(f"peer-chat-spawn: {config.values['peer_harness']} unavailable ({reason}); "
+          f"falling back to {config.values['peer_fallback']}", file=sys.stderr)
+    result = spawn_peer(fallback, args, plugin_root)
+    result['fallback_from'] = config.values['peer_harness']
+    return result
+
+
+def fallback_config(config):
+    harness, model = parse_peer(config.values['peer_fallback'])
+    values = {**config.values, 'peer_harness': harness, 'peer_model': model, 'peer_fallback': 'none'}
+    sources = {**config.sources, 'peer_harness': 'fallback', 'peer_model': 'fallback', 'peer_fallback': 'fallback'}
+    return Config(config.profile_file, values, sources)
+
+
+def spawn_peer(config, args, plugin_root):
     require_tools(config)
     terminal = Terminal(config)
     terminal.validate_caller()
@@ -272,7 +320,7 @@ def spawn(config, args, plugin_root):
     wanted = config.values['peer_harness']
     if running and not args.restart:
         if running != wanted:
-            raise Failure(f'the peer runs {running}; use --restart to replace it with {wanted}')
+            raise Failure(f'the peer runs {running}; use --restart to replace it with {wanted}', recoverable=True)
         terminal.show_split()
         return report('already', terminal, config, False)
     argv = launch_argv(config, terminal, plugin_root)
@@ -283,7 +331,8 @@ def spawn(config, args, plugin_root):
     terminal.require_shell()
     terminal.type(shlex.join(argv) + '\n')
     terminal.wait(lambda: terminal.harness(terminal.node(), terminal.peer_pane) == wanted,
-                  config.values['start_timeout'], f'{wanted} did not appear in the {terminal.peer_pane} pane')
+                  config.values['start_timeout'], f'{wanted} did not appear in the {terminal.peer_pane} pane',
+                  recoverable=True)
     terminal.ctl('session', 'focus', terminal.own_pane, '--target', terminal.session)
     return report('restarted' if running else 'started', terminal, config, True)
 

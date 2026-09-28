@@ -51,15 +51,22 @@ prints `"state":"started"`. The object carries `harness`, `requested_model`, `pa
 `--restart` quits the peer that is there (`/quit` for Codex, `/exit` for Claude), starts a fresh
 one and prints `"state":"restarted"`; use it after the installer wrote new files, since a
 running agent never reloads its skills.
-On any non-zero exit, stop and report the stderr line. Never open the pane or start an agent by
-hand.
+When the requested harness cannot start, the script falls back on its own to the other harness
+(`claude:fable` for a Codex request, `codex` on `gpt-6-astra` for a Claude request; `--fallback
+<harness[:model]>`, `PEER_CHAT_PEER_FALLBACK` or `peer_fallback` change it, `--no-fallback` turns it
+off). Fallback covers three cases: the harness executable is not on `PATH`, the harness does not
+appear in the pane within `start_timeout`, or the other pane already runs the fallback harness (then
+`"state":"already"` names it). The result carries `fallback_from` and stderr says why; tell the
+user in one line which peer you got. A pane busy with an unknown program, an agterm error or a
+config error never falls back. On any other non-zero exit, stop and report the stderr line. Never
+open the pane or start an agent by hand.
 
 When you decided to bring a peer in on your own, say so in one line before the first send, naming
 the decision you want attacked. The user can close the pane; that ends the exchange.
 
-Config, highest first: flags, then `PEER_CHAT_PEER_HARNESS` / `PEER_CHAT_PEER_MODEL`, then
-`peer_harness`, `peer_model` and `peer_args` (an argv array) in a committed `.peer-chat.json` at the
-repo root. `PEER_CHAT_CLAUDE_COMMAND` / `PEER_CHAT_CODEX_COMMAND` (or `claude_command` /
+Config, highest first: flags, then `PEER_CHAT_PEER_HARNESS` / `PEER_CHAT_PEER_MODEL` /
+`PEER_CHAT_PEER_FALLBACK`, then `peer_harness`, `peer_model`, `peer_fallback` and `peer_args` (an
+argv array) in a committed `.peer-chat.json` at the repo root. `PEER_CHAT_CLAUDE_COMMAND` / `PEER_CHAT_CODEX_COMMAND` (or `claude_command` /
 `codex_command`) name wrapper executables. `peer-chat-spawn.sh --explain` prints what resolved and
 from where.
 

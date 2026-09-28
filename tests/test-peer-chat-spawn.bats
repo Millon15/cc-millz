@@ -75,7 +75,8 @@ elif args[:2] == ['session', 'type']:
         (root / 'launch.txt').write_text(body)
         (root / 'launch.json').write_text(json.dumps(argv))
         command_index = next(i for i in range(1, len(argv)) if '=' not in argv[i]) if argv[0] == 'env' else 0
-        if not (root / 'never-start').exists():
+        blocked = (root / 'never-start').read_text().strip() if (root / 'never-start').exists() else None
+        if blocked is None or (blocked and blocked != argv[command_index]):
             state[pane] = [argv[command_index]]
 elif args[:2] != ['session', 'focus']:
     raise SystemExit('unexpected command: ' + repr(args))
@@ -179,12 +180,63 @@ assert_launch_arg() {
     [ ! -e "$TMP/typed.jsonl" ]
 }
 
-@test "spawn: an existing other harness needs an explicit restart" {
+@test "spawn: an existing other harness needs an explicit restart when no fallback accepts it" {
     set_pair claude claude
-    run bash "$SPAWN"
+    run bash "$SPAWN" --no-fallback
     assert_status 1
     assert_contains "$output" 'use --restart'
     [ ! -e "$TMP/typed.jsonl" ]
+}
+
+@test "spawn: a peer already running the fallback harness is accepted as the fallback" {
+    set_pair claude claude
+    run bash "$SPAWN"
+    assert_status 0
+    assert_contains "$output" '"state":"already"'
+    assert_contains "$output" '"harness":"claude"'
+    assert_contains "$output" '"fallback_from":"codex"'
+    assert_contains "$output" 'falling back to claude:fable'
+    [ ! -e "$TMP/typed.jsonl" ]
+}
+
+@test "spawn: a missing codex executable falls back to claude:fable" {
+    PEER_CHAT_CODEX_COMMAND=peer-chat-nonexistent-test-binary run bash "$SPAWN"
+    assert_status 0
+    assert_contains "$output" '"state":"started"'
+    assert_contains "$output" '"harness":"claude"'
+    assert_contains "$output" '"requested_model":"fable"'
+    assert_contains "$output" '"fallback_from":"codex"'
+    assert_launch_arg claude
+    assert_launch_arg fable
+}
+
+@test "spawn: a codex that never appears falls back once, and the fallback itself never falls back" {
+    printf 'codex' > "$TMP/never-start"
+    run bash "$SPAWN"
+    assert_status 0
+    assert_contains "$output" 'codex did not appear'
+    assert_contains "$output" '"harness":"claude"'
+    assert_contains "$output" '"fallback_from":"codex"'
+    printf '' > "$TMP/never-start"
+    rm -f "$TMP/launch.json"
+    set_pair claude ""
+    run bash "$SPAWN"
+    assert_status 1
+    assert_contains "$output" 'claude did not appear'
+    [ "$(grep -c 'falling back' <<<"$output")" -eq 1 ]
+}
+
+@test "spawn: --fallback picks the harness and model, --no-fallback keeps the missing dependency error" {
+    export PEER_CHAT_CODEX_COMMAND=peer-chat-nonexistent-test-binary
+    run bash "$SPAWN" --fallback claude:opus
+    assert_status 0
+    assert_contains "$output" '"requested_model":"opus"'
+    run bash "$SPAWN" --no-fallback
+    assert_status 3
+    assert_contains "$output" 'not on PATH'
+    PEER_CHAT_PEER_FALLBACK=vim run bash "$SPAWN"
+    assert_status 2
+    assert_contains "$output" 'peer_fallback must be'
 }
 
 @test "spawn: a busy unknown program is refused before any typing" {
@@ -213,7 +265,7 @@ assert_launch_arg() {
 }
 
 @test "spawn: an absent selected executable reports the missing dependency" {
-    PEER_CHAT_CODEX_COMMAND=peer-chat-nonexistent-test-binary run bash "$SPAWN"
+    PEER_CHAT_CODEX_COMMAND=peer-chat-nonexistent-test-binary run bash "$SPAWN" --no-fallback
     assert_status 3
     assert_contains "$output" 'not on PATH'
     [ ! -e "$TMP/calls.jsonl" ]
