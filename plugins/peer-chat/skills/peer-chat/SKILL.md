@@ -100,7 +100,9 @@ either command: the approval rules the installer wrote match these exact prefixe
 goes after `--message-file` so they still match. Never put the message text in an argument. The
 send consumes the file; a send the ledger refuses restores it so you can fix the body and resend.
 
-`peer-chat-paste.py` keeps the line breaks. It resolves the peer pane, refuses a send that leaves
+`peer-chat-paste.py` keeps the line breaks; a tab becomes one space and CR or any other control
+character is dropped, so a body quoted verbatim from a web page or a bot comment pastes as it is.
+It resolves the peer pane, refuses a send that leaves
 a new ask from the peer without a disposition (see Asks), puts the body in through a bracketed
 paste with the clipboard saved and restored around it, confirms the last line is visible in the
 pane, and sends the submit key. It ignores composer occupancy for both harnesses, does not erase an

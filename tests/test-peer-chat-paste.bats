@@ -152,11 +152,13 @@ composer_matrix() {
     [ "$(cat "${TMP}/clip")" = "user clipboard" ]
 }
 
-@test "paste: a control character other than newline is refused" {
-    printf '🎯 x\ty\n' > "${TMP}/msg"
+@test "paste: a tab becomes a space, CR and other control characters are dropped, the send goes through" {
+    printf '🎯 x\ty\r\n\n🔎 a\033[0mb\r\n' > "${TMP}/msg"
     send_file "${TMP}/msg"
-    assert_status 1
-    assert_contains "${output}" "control character"
+    assert_status 0
+    [ "$(head -1 "${TMP}/clip-first-set")" = "Chat from claude (left): 🎯 x y" ]
+    [ "$(tail -1 "${TMP}/clip-first-set")" = "🔎 a[0mb" ]
+    ! grep -q $'\r' "${TMP}/clip-first-set"
 }
 
 @test "paste: exit 1 naming peer-chat.py when the transport is not on PATH" {

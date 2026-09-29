@@ -225,13 +225,22 @@ def load_transport() -> dict[str, Any]:
     return {**vars(adapter["engine"]), **adapter}
 
 
+def drop_control(raw: str) -> str:
+    """A tab becomes one space; CR and every other control character but newline is dropped."""
+    kept = []
+    for char in raw:
+        if char == "\t":
+            kept.append(" ")
+        elif char == "\n" or unicodedata.category(char) != "Cc":
+            kept.append(char)
+    return "".join(kept)
+
+
 def clean_lines(profile: Any, raw: str) -> list[str]:
-    lines = [line.rstrip() for line in raw.strip("\n").splitlines()]
+    lines = [line.rstrip() for line in drop_control(raw).strip("\n").splitlines()]
     while lines and not lines[-1]:
         lines.pop()
     text = "\n".join(lines)
-    if any(unicodedata.category(c) == "Cc" and c != "\n" for c in text):
-        raise ValueError("chat message contains a control character")
     prefix = profile.label.strip()
     while text.lower().startswith(prefix.lower()):
         text = text[len(prefix) :].lstrip(": ").lstrip()

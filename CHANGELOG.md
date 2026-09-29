@@ -1,5 +1,15 @@
 # Changelog
 
+## peer-chat v0.5.2 - 2026-09-28
+
+### Changed
+
+- `peer-chat-paste.py` no longer refuses a body with a control character: a tab becomes one space,
+  CR and every other control character but newline are dropped before the paste. A finding quoted
+  verbatim from a bot comment (CRLF, tabs) now sends as it is. `peer-chat.py --stdin`, the one-line
+  transport, keeps the vendored engine's refusal.
+
+
 ## video-reader v1.0.0 - 2026-09-22
 
 ### Changed
