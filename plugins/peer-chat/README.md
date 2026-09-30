@@ -56,6 +56,7 @@ Flags win, then env, then a committed `.peer-chat.json` at the repo root, then t
 
 - The peer is addressed by pane slot. After a promote or re-split puts a different agent of the same harness into that slot, the foreground check cannot tell them apart.
 - A model name reaches the harness verbatim; an unknown one fails inside the harness, not before the launch.
+- `peer_turn` and the mid-turn warning come from screen text, matched against the markers Claude Code and Codex draw today (a spinner line with a timer, `Working (… esc to interrupt)`); a harness that redraws them reads as `unknown`, which never warns and never blocks.
 
 ## Updating
 

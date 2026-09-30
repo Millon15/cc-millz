@@ -1,5 +1,21 @@
 # Changelog
 
+## peer-chat v0.6.2 - 2026-09-30
+
+### Added
+
+- `peer_turn` in every `peer-chat-spawn.sh` result: `working`, `idle` or `unknown`, read from the
+  peer pane's screen (Claude Code's spinner or running-tool line, Codex's `Working (… esc to
+  interrupt)`). An `already` on a working peer says on stderr that a send queues behind its current
+  task and that `--restart` replaces it; nothing waits and nothing restarts by itself. agterm's tree
+  has one status and one title per session, both last-writer, so the screen is the only per-pane
+  signal.
+- `peer-chat-paste.py --message-file <path>`: a value with a `/` is a path (an owned regular file,
+  no symlink, at most 64 KiB), read verbatim and kept. It is the form for a body that quotes code
+  or a bot comment, whose `$(...)`, `<(...)` and pipes a shell guard blocks inside a heredoc. A bare
+  name keeps the spool contract. Every send also reads the peer's screen and warns once on stderr
+  when the peer is mid-turn; the send proceeds.
+
 ## peer-chat v0.6.0 - 2026-09-29
 
 ### Added

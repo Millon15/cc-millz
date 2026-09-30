@@ -51,6 +51,13 @@ prints `"state":"started"`. The object carries `harness`, `requested_model`, `pa
 `--restart` quits the peer that is there (`/quit` for Codex, `/exit` for Claude), starts a fresh
 one and prints `"state":"restarted"`; use it after the installer wrote new files, since a
 running agent never reloads its skills.
+Every result also carries `peer_turn`, read from the peer pane's screen: `working` (Claude Code's
+spinner line or a running tool, Codex's `Working (… esc to interrupt)`), `idle` (a prompt line and
+no working marker; the prompt may hold a draft) or `unknown`. An `already` with `working` means
+the peer is mid-turn on something that is not your message, and stderr says so. Report it in one
+line ("peer busy, mid-turn on its current task"), send anyway if the ask can wait, and expect the
+reply after that turn ends rather than on your usual clock. Never wait for it and never `--restart`
+on your own: replacing a working peer discards its task, and only the user decides that.
 When the requested harness cannot start, the script falls back on its own to the other harness
 (`claude:fable` for a Codex request, `codex` on `gpt-6-astra` for a Claude request; `--fallback
 <harness[:model]>`, `PEER_CHAT_PEER_FALLBACK` or `peer_fallback` change it, `--no-fallback` turns it
@@ -72,8 +79,9 @@ from where.
 
 ## Sending
 
-Every send names the other pane with `--to peer` and the topic with `--slug`, in one of two forms.
-Use the stdin form when your harness runs a heredoc without asking for approval (Claude Code):
+Every send names the other pane with `--to peer` and the topic with `--slug`, in one of three forms.
+Use the stdin form for prose when your harness runs a heredoc without asking for approval (Claude
+Code):
 
 ```bash
 peer-chat-paste.py --to peer --slug <slug> --stdin <<'CHAT'
@@ -86,7 +94,18 @@ peer-chat-paste.py --to peer --slug <slug> --stdin <<'CHAT'
 CHAT
 ```
 
-Use the file-backed form when your harness approves shell commands by prefix (Codex): reserve a
+Use the path form for a body that quotes code, a diff or a bot comment: those carry `$(...)`,
+`<(...)`, pipes and backticks, and inside a heredoc they sit in the shell command itself, where a
+command guard (a repo's tirith hook, an approval matcher) reads them as the command and blocks the
+send. Write the body to the topic's artifact directory and name the path; a value with a `/` is a
+path, read verbatim and kept, never consumed (`--stdin < <path>` is the same send without the
+ownership checks):
+
+```bash
+peer-chat-paste.py --to peer --message-file tmp/peer-chat/<slug>/03-left-round1.msg --slug <slug>
+```
+
+Use the spool form when your harness approves shell commands by prefix (Codex): reserve a
 private one-shot file, fill that exact file in place without replacing it or its mode (Codex:
 `apply_patch`), then send the reserved name. Pick a fresh literal suffix for every send:
 
@@ -95,10 +114,14 @@ peer-chat.py --prepare-message peer-chat-right-a91f.txt
 peer-chat-paste.py --to peer --message-file peer-chat-right-a91f.txt --slug <slug>
 ```
 
-In the file-backed form, write no stdin, heredoc, redirection, variable or substitution into
-either command: the approval rules the installer wrote match these exact prefixes, and `--slug`
-goes after `--message-file` so they still match. Never put the message text in an argument. The
-send consumes the file; a send the ledger refuses restores it so you can fix the body and resend.
+In the spool form, write no stdin, heredoc, redirection, variable or substitution into either
+command: the approval rules the installer wrote match these exact prefixes, and `--slug` goes
+after `--message-file` so they still match. Never put the message text in an argument. The send
+consumes the spool file; a send the ledger refuses restores it so you can fix the body and resend.
+A path is never consumed or restored.
+
+Before the paste, every form reads the peer's screen; a `working` peer gets one stderr line,
+`the peer is mid-turn; this send queues behind its current task`, and the send proceeds.
 
 `peer-chat-paste.py` keeps the line breaks; a tab becomes one space and CR or any other control
 character is dropped, so a body quoted verbatim from a web page or a bot comment pastes as it is.

@@ -2,6 +2,7 @@
 exec python3 - "$0" "$@" <<'PY'
 import argparse
 from dataclasses import dataclass
+import importlib.util
 import json
 import os
 from pathlib import Path
@@ -208,6 +209,12 @@ class Terminal:
     def text(self):
         return self.ctl('session', 'text', '--pane', self.peer_pane, '--target', self.session)
 
+    def turn(self, harness, turn_state):
+        try:
+            return turn_state(self.text(), harness)
+        except Failure:
+            return 'unknown'
+
     def type(self, text):
         self.ctl('session', 'type', '--stdin', '--pane', self.peer_pane, '--target', self.session, text=text)
 
@@ -280,6 +287,19 @@ def launch_argv(config, terminal, plugin_root):
     return argv
 
 
+def load_turn_state(plugin_root):
+    """turn_state(screen, agent) lives in the sibling peer-chat-paste.py; a missing or broken sibling reads as unknown."""
+    path = plugin_root / 'scripts' / 'peer-chat-paste.py'
+    try:
+        spec = importlib.util.spec_from_file_location('peer_chat_paste', path)
+        module = importlib.util.module_from_spec(spec)
+        sys.modules[spec.name] = module  # dataclasses resolve annotations through sys.modules (Python 3.14)
+        spec.loader.exec_module(module)
+        return module.turn_state
+    except Exception:
+        return lambda screen, agent: 'unknown'
+
+
 def require_tools(config):
     for tool in ('agtermctl', 'peer-chat.py', config.values[f"{config.values['peer_harness']}_command"]):
         if not shutil.which(tool):
@@ -318,11 +338,16 @@ def spawn_peer(config, args, plugin_root):
     if terminal.foreground(node, terminal.peer_pane) and not running:
         raise Failure(f'the {terminal.peer_pane} pane is busy with an unknown program')
     wanted = config.values['peer_harness']
+    turn_state = load_turn_state(plugin_root)
     if running and not args.restart:
         if running != wanted:
             raise Failure(f'the peer runs {running}; use --restart to replace it with {wanted}', recoverable=True)
         terminal.show_split()
-        return report('already', terminal, config, False)
+        turn = terminal.turn(running, turn_state)
+        if turn == 'working':
+            print(f"peer-chat-spawn: the {terminal.peer_pane} pane's {running} is mid-turn; "
+                  'a send queues behind its current task; --restart replaces it', file=sys.stderr)
+        return report('already', terminal, config, False, turn)
     argv = launch_argv(config, terminal, plugin_root)
     terminal.show_split()
     if running:
@@ -333,14 +358,15 @@ def spawn_peer(config, args, plugin_root):
     terminal.wait(lambda: terminal.harness(terminal.node(), terminal.peer_pane) == wanted,
                   config.values['start_timeout'], f'{wanted} did not appear in the {terminal.peer_pane} pane',
                   recoverable=True)
+    turn = terminal.turn(wanted, turn_state)
     terminal.ctl('session', 'focus', terminal.own_pane, '--target', terminal.session)
-    return report('restarted' if running else 'started', terminal, config, True)
+    return report('restarted' if running else 'started', terminal, config, True, turn)
 
 
-def report(state, terminal, config, launched):
+def report(state, terminal, config, launched, peer_turn):
     return {'state': state, 'session': terminal.session, 'pane': terminal.peer_pane,
             'harness': config.values['peer_harness'], 'requested_model': config.values['peer_model'],
-            'launched': launched}
+            'launched': launched, 'peer_turn': peer_turn}
 
 
 def main():

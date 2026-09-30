@@ -8,10 +8,17 @@ both TUIs insert as multi-line composer text without submitting. It reuses peer-
 peer resolution by loading the installed script as a module.
 
     peer-chat-paste.py --to peer --stdin --slug <topic> < message.txt
+    peer-chat-paste.py --to peer --message-file tmp/peer-chat/<topic>/03-left-body.msg --slug <topic>
     peer-chat-paste.py --to peer --message-file peer-chat-right-a91f.txt --slug <topic>
 
---message-file is peer-chat.py's own spool contract: the name a `peer-chat.py --prepare-message`
-call printed, consumed on read.
+--message-file takes two forms. A value with a `/` is a path: an owned regular file, no symlink, at
+most MAX_MESSAGE_BYTES, read verbatim and kept, the form for a body that quotes code or a bot
+comment (`$(...)`, `<(...)`, pipes) that a shell guard would block inside a heredoc. A bare name is
+peer-chat.py's own spool contract: the name a `peer-chat.py --prepare-message` call printed,
+consumed on read.
+
+Before the paste the send reads the peer's screen: a mid-turn peer (`turn_state` says `working`)
+gets a stderr warning that the send queues behind its current task, and the send proceeds.
 
 Guards, in order: the target pane runs a known peer harness; every new ask from the peer carries
 a disposition; after the paste the pane shows the message's last line (or the TUI's collapsed-paste
@@ -32,11 +39,13 @@ columns on word boundaries so the pane never breaks a word, and a token with no 
 from __future__ import annotations
 
 import argparse
+import errno
 import fcntl
 import os
 import re
 import runpy
 import shutil
+import stat
 import subprocess
 import sys
 import textwrap
@@ -74,6 +83,33 @@ LEDGER_COLUMNS = (
     "question",
 )
 OPEN = ""
+TURN_WORKING = "working"
+TURN_IDLE = "idle"
+TURN_UNKNOWN = "unknown"
+TIMER = r"\((?:\d+h\s)?(?:\d+m\s)?\d+s\s"
+# Claude Code mid-turn: a spinner line `✻ Pouncing… (5m 3s · ↓ 19.7k tokens)` (the glyph cycles and
+# the idle summary `✻ Baked for 1m 59s · done 23:38` reuses it, so the `…` plus the timer is the
+# discriminator), or a running tool's `(ctrl+b to run in background)` hint.
+CLAUDE_WORKING_RES = (
+    re.compile(r"^\s*[✻✶✳✢·]\s+\S+(?:…|\.\.\.)\s+" + TIMER + r"·", re.MULTILINE),
+    re.compile(r"\(ctrl\+b to run in background\)"),
+)
+# Codex mid-turn: `• Working (2m 30s • esc to interrupt)`; the screen keeps drawing the empty
+# `› Ask Codex to do anything` prompt under it, so the prompt alone never means idle.
+CODEX_WORKING_RES = (
+    re.compile(
+        r"^\s*•\s+Working\s+" + TIMER + r"•\s+esc to interrupt\)",
+        re.IGNORECASE | re.MULTILINE,
+    ),
+)
+WORKING_MARKERS = {"claude": CLAUDE_WORKING_RES, "codex": CODEX_WORKING_RES}
+PROMPT_MARKERS = {
+    "claude": re.compile(r"^\s*❯", re.MULTILINE),
+    "codex": re.compile(r"^[›»]", re.MULTILINE),
+}
+MID_TURN_WARNING = (
+    "peer-chat-paste: the peer is mid-turn; this send queues behind its current task"
+)
 
 
 class LedgerRefusal(Exception):
@@ -225,6 +261,39 @@ def load_transport() -> dict[str, Any]:
     return {**vars(adapter["engine"]), **adapter}
 
 
+def is_message_path(value: str | None) -> bool:
+    return bool(value) and "/" in value
+
+
+def read_message_path(value: str, limit: int) -> str:
+    """An owned regular file, opened without following a symlink, at most `limit` bytes."""
+    try:
+        fd = os.open(value, os.O_RDONLY | os.O_NOFOLLOW | os.O_CLOEXEC)
+    except OSError as err:
+        if err.errno in (errno.ELOOP, errno.EMLINK):
+            raise ValueError(
+                "message path must be an owned regular file, not a symlink"
+            ) from err
+        raise
+    try:
+        info = os.fstat(fd)
+        if not stat.S_ISREG(info.st_mode) or info.st_uid != os.getuid():
+            raise ValueError(
+                "message path must be an owned regular file, not a symlink"
+            )
+        if info.st_size > limit:
+            raise ValueError(f"message path exceeds {limit} bytes")
+        return os.read(fd, info.st_size).decode("utf-8")
+    finally:
+        os.close(fd)
+
+
+def read_body(t: dict[str, Any], args: argparse.Namespace) -> str:
+    if is_message_path(args.message_file):
+        return read_message_path(args.message_file, t["MAX_MESSAGE_BYTES"])
+    return t["read_message"](args.stdin, args.message_file)
+
+
 def drop_control(raw: str) -> str:
     """A tab becomes one space; CR and every other control character but newline is dropped."""
     kept = []
@@ -361,6 +430,32 @@ def plan_body(
 # -------------------------------------------------------------------- pane --
 
 
+def turn_state(screen: str, agent: str) -> str:
+    """`working`, `idle` or `unknown` from a pane screen; a marker miss degrades to `unknown`."""
+    if agent not in WORKING_MARKERS:
+        return TURN_UNKNOWN
+    if any(marker.search(screen) for marker in WORKING_MARKERS[agent]):
+        return TURN_WORKING
+    if PROMPT_MARKERS[agent].search(screen):
+        return TURN_IDLE
+    return TURN_UNKNOWN
+
+
+def peer_turn(t: dict[str, Any], sid: str, profile: Any, window: str) -> str:
+    try:
+        screen = t["_pane_text_unchecked"](sid, profile, window)
+    except (RuntimeError, OSError, subprocess.CalledProcessError):
+        return TURN_UNKNOWN
+    return turn_state(screen, profile.agent)
+
+
+def warn_if_peer_mid_turn(
+    t: dict[str, Any], sid: str, profile: Any, window: str
+) -> None:
+    if peer_turn(t, sid, profile, window) == TURN_WORKING:
+        print(MID_TURN_WARNING, file=sys.stderr)
+
+
 def clipboard_get() -> str | None:
     try:
         return subprocess.run(
@@ -475,6 +570,7 @@ def send(t: dict[str, Any], args: argparse.Namespace, body: str) -> int:
     for warning in plan.warnings:
         print(warning, file=sys.stderr)
     message = profile.label + plan.text
+    warn_if_peer_mid_turn(t, sid, profile, window)
     status = deliver(t, sid, profile, window, message)
     if status != 0:
         return status
@@ -507,7 +603,7 @@ def main() -> int:
     args = parse_args()
     try:
         transport = load_transport()
-        body = transport["read_message"](args.stdin, args.message_file)
+        body = read_body(transport, args)
     except (RuntimeError, ValueError, OSError) as err:
         print(f"peer-chat-paste: {err}", file=sys.stderr)
         return 1
@@ -515,7 +611,7 @@ def main() -> int:
         return send(transport, args, body)
     except LedgerRefusal as refusal:
         print(f"peer-chat-paste: {refusal}", file=sys.stderr)
-        if args.message_file:
+        if args.message_file and not is_message_path(args.message_file):
             restore_message_file(transport, args.message_file, body)
         return 1
     except (RuntimeError, ValueError, OSError, subprocess.CalledProcessError) as err:

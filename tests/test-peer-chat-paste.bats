@@ -130,6 +130,7 @@ composer_matrix() {
             assert_not_contains "$(cat "${TMP}/calls.log")" 'surface cursor'
             assert_not_contains "$output" 'composer is not empty'
             assert_not_contains "$output" 'composer did not clear'
+            assert_not_contains "$output" 'mid-turn'
         done
     done
 }
@@ -167,6 +168,139 @@ composer_matrix() {
     PATH="${STUB_BIN}:/usr/bin:/bin" run python3 "${PASTE}" --to codex --stdin < "${TMP}/msg"
     assert_status 1
     assert_contains "${output}" "peer-chat.py not on PATH"
+}
+
+# ------------------------------------------------------------- busy peer --
+
+turn_state() { # turn_state <agent> <screen-file> — prints working|idle|unknown
+    python3 - "${PASTE}" "$1" "$2" <<'PY'
+import importlib.util, sys
+spec = importlib.util.spec_from_file_location("paste", sys.argv[1])
+module = importlib.util.module_from_spec(spec)
+sys.modules[spec.name] = module
+spec.loader.exec_module(module)
+print(module.turn_state(open(sys.argv[3], encoding="utf-8").read(), sys.argv[2]))
+PY
+}
+
+@test "turn_state: the Claude and Codex markers read live on 2026-09-30 classify working, idle, unknown" {
+    printf '✻ Percolating… (37s · ↓ 1.6k tokens)\n❯ \n' > "${TMP}/s"
+    [ "$(turn_state claude "${TMP}/s")" = working ]
+    printf '✻ Pouncing… (5m 3s · ↓ 19.7k tokens)\n❯ [⧉ In settings.json]\n' > "${TMP}/s"
+    [ "$(turn_state claude "${TMP}/s")" = working ]
+    printf '     (ctrl+b to run in background)\n\n❯ \n' > "${TMP}/s"
+    [ "$(turn_state claude "${TMP}/s")" = working ]
+    printf '✻ Baked for 1m 59s · done 23:38\n\n❯ \n' > "${TMP}/s"
+    [ "$(turn_state claude "${TMP}/s")" = idle ]
+    printf '❯ [⧉ In settings.json]\n' > "${TMP}/s"
+    [ "$(turn_state claude "${TMP}/s")" = idle ]
+    printf 'unrecognized composer rendering\n' > "${TMP}/s"
+    [ "$(turn_state claude "${TMP}/s")" = unknown ]
+    printf '• Working (14s • esc to interrupt)\n\n› Ask Codex to do anything\n' > "${TMP}/s"
+    [ "$(turn_state codex "${TMP}/s")" = working ]
+    printf '• Working (2m 30s • Esc to interrupt)\n› Ask Codex to do anything\n' > "${TMP}/s"
+    [ "$(turn_state codex "${TMP}/s")" = working ]
+    printf '  Worked for 54s • 23:43\n\n› Ask Codex to do anything\n' > "${TMP}/s"
+    [ "$(turn_state codex "${TMP}/s")" = idle ]
+    printf '» Ask Codex to do anything\n' > "${TMP}/s"
+    [ "$(turn_state codex "${TMP}/s")" = idle ]
+    printf '1. Approve\n2. Deny\n' > "${TMP}/s"
+    [ "$(turn_state codex "${TMP}/s")" = unknown ]
+    printf '❯ \n' > "${TMP}/s"
+    [ "$(turn_state shell "${TMP}/s")" = unknown ]
+}
+
+@test "busy peer: a working Codex screen prints the mid-turn warning and the paste still lands" {
+    printf '• Working (14s • esc to interrupt)\n\n› Ask Codex to do anything\n' > "${TMP}/composer"
+    printf '🎯 x\n' > "${TMP}/msg"
+    send_file "${TMP}/msg"
+    assert_status 0
+    assert_contains "${output}" "peer-chat-paste: the peer is mid-turn; this send queues behind its current task"
+    assert_contains "$(cat "${TMP}/calls.log")" "session paste --pane right --target ${SID}"
+    [ "$(wc -l < "${TMP}/typed.log")" -eq 1 ]
+}
+
+@test "busy peer: a working Claude screen warns with the Claude markers" {
+    cp "${FIX}/tree-pair-claude-claude.json" "${TMP}/tree.json"
+    printf '✻ Pouncing… (5m 3s · ↓ 19.7k tokens)\n❯ [⧉ In settings.json]\n' > "${TMP}/composer"
+    printf '🎯 x\n' > "${TMP}/msg"
+    send_file "${TMP}/msg"
+    assert_status 0
+    assert_contains "${output}" "the peer is mid-turn"
+    assert_contains "$(cat "${TMP}/calls.log")" "session paste --pane right --target ${SID}"
+}
+
+@test "busy peer: an idle or unknown screen prints no warning" {
+    printf '  Worked for 54s • 23:43\n\n› Ask Codex to do anything\n' > "${TMP}/composer"
+    printf '🎯 x\n' > "${TMP}/msg"
+    send_file "${TMP}/msg"
+    assert_status 0
+    assert_not_contains "${output}" "mid-turn"
+    printf 'empty' > "${TMP}/state"
+    printf 'unrecognized composer rendering\n' > "${TMP}/composer"
+    send_file "${TMP}/msg"
+    assert_status 0
+    assert_not_contains "${output}" "mid-turn"
+}
+
+@test "busy peer: a refused send reads no screen and prints no warning" {
+    seed_codex_ask "" "" ""
+    printf '🎯 no disposition here\n' > "${TMP}/msg"
+    send_file "${TMP}/msg" --slug seatos
+    assert_status 1
+    assert_not_contains "${output}" "mid-turn"
+    assert_not_contains "$(cat "${TMP}/calls.log")" "session text"
+}
+
+# ------------------------------------------------------------- path form --
+
+@test "path form: a body quoting \$(x), <(y) and a pipe sends verbatim and the file survives" {
+    mkdir -p "${TMP}/tmp/peer-chat/seatos"
+    printf '🎯 the finding, verbatim\n\n🔎 CLEAN=$(printf %%s $FILES | grep -Fxv -f <(partially_staged) || true)\n' > "${TMP}/tmp/peer-chat/seatos/03-left-body.msg"
+    PEER_CHAT_WRAP=0 run python3 "${PASTE}" --to peer --message-file tmp/peer-chat/seatos/03-left-body.msg
+    assert_status 0
+    assert_contains "$(cat "${TMP}/clip-first-set")" '🔎 CLEAN=$(printf %s $FILES | grep -Fxv -f <(partially_staged) || true)'
+    [ "$(sed -n 3p "${TMP}/tmp/peer-chat/seatos/03-left-body.msg")" = '🔎 CLEAN=$(printf %s $FILES | grep -Fxv -f <(partially_staged) || true)' ]
+    assert_not_contains "${output}" "message file restored"
+}
+
+@test "path form: a symlink is refused before any paste" {
+    printf '🎯 x\n' > "${TMP}/real.msg"
+    ln -s "${TMP}/real.msg" "${TMP}/link.msg"
+    run python3 "${PASTE}" --to peer --message-file "${TMP}/link.msg"
+    assert_status 1
+    assert_contains "${output}" "message path must be an owned regular file, not a symlink"
+    assert_not_contains "$(cat "${TMP}/calls.log" 2>/dev/null)" "session paste"
+}
+
+@test "path form: a file owned by another user is refused before any paste" {
+    [ "$(id -u)" -ne 0 ] || skip "root owns everything"
+    [ "$(stat -f %u /etc/hosts 2>/dev/null || stat -c %u /etc/hosts)" != "$(id -u)" ] || skip "/etc/hosts is ours"
+    run python3 "${PASTE}" --to peer --message-file /etc/hosts
+    assert_status 1
+    assert_contains "${output}" "message path must be an owned regular file, not a symlink"
+    assert_not_contains "$(cat "${TMP}/calls.log" 2>/dev/null)" "session paste"
+}
+
+@test "path form: a directory and an oversized file are refused with their own reasons" {
+    run python3 "${PASTE}" --to peer --message-file "${TMP}/"
+    assert_status 1
+    assert_contains "${output}" "message path must be an owned regular file, not a symlink"
+    head -c 65537 /dev/zero | tr '\0' 'x' > "${TMP}/big.msg"
+    run python3 "${PASTE}" --to peer --message-file "${TMP}/big.msg"
+    assert_status 1
+    assert_contains "${output}" "message path exceeds 65536 bytes"
+    assert_not_contains "$(cat "${TMP}/calls.log" 2>/dev/null)" "session paste"
+}
+
+@test "path form: a ledger refusal leaves the file as it was, no restore message" {
+    seed_codex_ask "" "" ""
+    printf '🎯 the guard is blind across bids\n' > "${TMP}/body.msg"
+    run python3 "${PASTE}" --to codex --message-file "${TMP}/body.msg" --slug seatos
+    assert_status 1
+    assert_contains "${output}" "refused: the peer's asks below have no disposition"
+    assert_not_contains "${output}" "message file restored"
+    [ "$(cat "${TMP}/body.msg")" = "🎯 the guard is blind across bids" ]
 }
 
 # ------------------------------------------------------------------ shape --

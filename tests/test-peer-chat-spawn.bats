@@ -58,7 +58,12 @@ elif args[:2] == ['session', 'text']:
     if state['pending'] and not (root / 'hide-quit').exists():
         print('❯ ' + state['pending'])
     elif state[pane]:
-        print('❯' if 'claude' in state[pane][0] else '› Ask Codex to do anything')
+        if (root / 'text-fails').exists():
+            raise SystemExit(9)
+        claude = 'claude' in state[pane][0]
+        if (root / 'working').exists():
+            print('✻ Pouncing… (2m 54s · ↓ 11.8k tokens)' if claude else '• Working (14s • esc to interrupt)')
+        print('❯' if claude else '› Ask Codex to do anything')
     else:
         print('%')
 elif args[:2] == ['session', 'type']:
@@ -178,6 +183,65 @@ assert_launch_arg() {
     assert_contains "$output" '"state":"already"'
     assert_contains "$output" '"launched":false'
     [ ! -e "$TMP/typed.jsonl" ]
+}
+
+@test "spawn: a reused peer mid-turn reports working and warns that the send queues behind it" {
+    set_pair claude codex
+    touch "$TMP/working"
+    run bash "$SPAWN"
+    assert_status 0
+    assert_contains "$output" '"state":"already"'
+    assert_contains "$output" '"peer_turn":"working"'
+    assert_contains "$output" "the right pane's codex is mid-turn; a send queues behind its current task; --restart replaces it"
+    [ ! -e "$TMP/typed.jsonl" ]
+}
+
+@test "spawn: a reused idle peer reports idle without a warning, and a fresh start reports idle" {
+    set_pair claude codex
+    run bash "$SPAWN"
+    assert_status 0
+    assert_contains "$output" '"peer_turn":"idle"'
+    ! printf '%s' "$output" | grep -q 'mid-turn'
+    set_pair claude ""
+    run bash "$SPAWN"
+    assert_status 0
+    assert_contains "$output" '"state":"started"'
+    assert_contains "$output" '"peer_turn":"idle"'
+}
+
+@test "spawn: an unreadable peer screen reports unknown and never fails a reuse or a fresh start" {
+    touch "$TMP/text-fails"
+    set_pair claude codex
+    run bash "$SPAWN"
+    assert_status 0
+    assert_contains "$output" '"state":"already"'
+    assert_contains "$output" '"peer_turn":"unknown"'
+    set_pair claude ""
+    run bash "$SPAWN"
+    assert_status 0
+    assert_contains "$output" '"state":"started"'
+    assert_contains "$output" '"peer_turn":"unknown"'
+    assert_contains "$(tail -1 "$TMP/calls.jsonl")" '"focus", "left"'
+}
+
+@test "spawn: a sibling paste script that fails to load reports unknown instead of a traceback" {
+    mkdir -p "$TMP/plugin/scripts"
+    cp "$SPAWN" "$TMP/plugin/scripts/peer-chat-spawn.sh"
+    printf 'import re\nre.compile("(")\n' > "$TMP/plugin/scripts/peer-chat-paste.py"
+    set_pair claude codex
+    run bash "$TMP/plugin/scripts/peer-chat-spawn.sh"
+    assert_status 0
+    assert_contains "$output" '"peer_turn":"unknown"'
+    ! printf '%s' "$output" | grep -q 'Traceback'
+}
+
+@test "spawn: a Claude peer mid-turn is read from its spinner line" {
+    set_pair codex claude
+    touch "$TMP/working"
+    run bash "$SPAWN" claude:fable
+    assert_status 0
+    assert_contains "$output" '"peer_turn":"working"'
+    assert_contains "$output" "the right pane's claude is mid-turn"
 }
 
 @test "spawn: an existing other harness needs an explicit restart when no fallback accepts it" {
