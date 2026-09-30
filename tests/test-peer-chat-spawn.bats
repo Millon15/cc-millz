@@ -10,9 +10,10 @@ setup() {
     export AGTERM_ENABLED=1 AGTERM_SESSION_ID="$SID" AGTERM_WINDOW_ID="$WID" AGTERM_PANE=left
     export PEER_CHAT_START_TIMEOUT=1 PEER_CHAT_QUIT_SETTLE=0.2
     export CLAUDE_CONFIG_DIR="$TMP/claude"
+    export CODEX_HOME="$TMP/codex home"
     unset PEER_CHAT_PEER_HARNESS PEER_CHAT_PEER_MODEL PEER_CHAT_PEER_ARGS
     unset PEER_CHAT_CODEX_ARGS PEER_CHAT_CODEX_COMMAND PEER_CHAT_CLAUDE_COMMAND
-    stub codex
+    stub codex 'printf "%s\n" "$*" >> "$TMP/daemon-calls.txt"'
     stub claude
     stub peer-chat.py
     stub_agtermctl
@@ -135,6 +136,64 @@ assert_launch_arg() {
     assert_launch_arg 'shell_environment_policy.set.AGTERM_ENABLED="1"'
     assert_launch_arg 'shell_environment_policy.set.PEER_CHAT_NAME="codex gpt-6-astra"'
     assert_launch_arg 'shell_environment_policy.set.PEER_CHAT_CODEX_COMMAND="codex-wrapper"'
+    assert_launch_arg --remote
+    assert_launch_arg "unix://$CODEX_HOME/app-server-control/app-server-control.sock"
+    assert_launch_arg --cd
+    assert_launch_arg "$(pwd -P)"
+}
+
+@test "spawn: starts the local daemon without applying pane overrides globally" {
+    run bash "$SPAWN"
+    assert_status 0
+    [ "$(cat "$TMP/daemon-calls.txt")" = 'app-server daemon start' ]
+    jq -e 'index("--no-daemon") == null' "$TMP/launch.json" >/dev/null
+}
+
+@test "spawn: an explicit working directory survives daemon mode" {
+    PEER_CHAT_PEER_ARGS='["--cd", "/tmp/peer project"]' run bash "$SPAWN"
+    assert_status 0
+    [ "$(jq '[.[] | select(. == "--cd")] | length' "$TMP/launch.json")" = 1 ]
+    assert_launch_arg '/tmp/peer project'
+}
+
+@test "spawn: --no-daemon preserves embedded mode without starting the server" {
+    PEER_CHAT_PEER_ARGS='["--no-daemon"]' run bash "$SPAWN"
+    assert_status 0
+    assert_launch_arg --no-daemon
+    assert_launch_arg 'shell_environment_policy.set.AGTERM_PANE="right"'
+    jq -e 'index("--remote") == null' "$TMP/launch.json" >/dev/null
+    [ ! -e "$TMP/daemon-calls.txt" ]
+}
+
+@test "spawn: daemon startup failure falls back once or fails before touching the peer" {
+    stub codex 'echo "daemon unavailable" >&2; exit 1'
+    run bash "$SPAWN" --no-fallback
+    assert_status 1
+    assert_contains "$output" 'Codex daemon startup failed: daemon unavailable'
+    [ ! -e "$TMP/typed.jsonl" ]
+    run bash "$SPAWN"
+    assert_status 0
+    assert_contains "$output" '"fallback_from":"codex"'
+    assert_launch_arg claude
+}
+
+@test "spawn: daemon startup timeout fails before replacing an existing peer" {
+    stub codex 'exec sleep 3'
+    set_pair claude codex
+    run bash "$SPAWN" --restart --no-fallback
+    assert_status 1
+    assert_contains "$output" 'Codex daemon startup timed out'
+    [ ! -e "$TMP/typed.jsonl" ]
+}
+
+@test "spawn: daemon mode refuses remote endpoints and ignored client options" {
+    for argv in '["--remote=ws://example.invalid"]' '["--profile", "review"]' \
+        '["-preview"]' '["--strict-config"]' '["--oss"]'; do
+        PEER_CHAT_PEER_ARGS="$argv" run bash "$SPAWN"
+        assert_status 2
+        [ ! -e "$TMP/daemon-calls.txt" ]
+        [ ! -e "$TMP/typed.jsonl" ]
+    done
 }
 
 @test "spawn: Claude shorthand injects environment and loads the plugin when no user install exists" {
@@ -178,6 +237,7 @@ assert_launch_arg() {
     assert_contains "$output" '"state":"already"'
     assert_contains "$output" '"launched":false'
     [ ! -e "$TMP/typed.jsonl" ]
+    [ ! -e "$TMP/daemon-calls.txt" ]
 }
 
 @test "spawn: an existing other harness needs an explicit restart when no fallback accepts it" {
@@ -347,6 +407,7 @@ assert_launch_arg() {
     [ "$(printf '%s' "$output" | jq -r '.values.peer_model')" = gpt-6-astra ]
     [ "$(printf '%s' "$output" | jq -r '.values.start_timeout')" = 30 ]
     [ ! -e "$TMP/calls.jsonl" ]
+    [ ! -e "$TMP/daemon-calls.txt" ]
 }
 
 @test "explain: CLI beats environment which beats the project profile" {
@@ -394,7 +455,7 @@ assert_launch_arg() {
 
 @test "spawn: shell metacharacters in argv remain literal when the launch line is executed" {
     cat > "$TMP/.peer-chat.json" <<'JSON'
-{"peer_args":["--profile","spaces ' quotes $(touch injected) ; touch injected2"]}
+{"peer_args":["--no-daemon","--profile","spaces ' quotes $(touch injected) ; touch injected2"]}
 JSON
     cat > "$STUB_BIN/codex" <<'PY'
 #!/usr/bin/env python3
@@ -410,5 +471,5 @@ PY
     [ ! -e "$TMP/injected" ]
     [ ! -e "$TMP/injected2" ]
     jq -e --slurpfile expected "$TMP/.peer-chat.json" \
-        '.[0:2] == $expected[0].peer_args' "$TMP/executed.json" >/dev/null
+        '.[0:3] == $expected[0].peer_args' "$TMP/executed.json" >/dev/null
 }

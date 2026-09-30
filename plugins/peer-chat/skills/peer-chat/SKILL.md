@@ -51,10 +51,13 @@ prints `"state":"started"`. The object carries `harness`, `requested_model`, `pa
 `--restart` quits the peer that is there (`/quit` for Codex, `/exit` for Claude), starts a fresh
 one and prints `"state":"restarted"`; use it after the installer wrote new files, since a
 running agent never reloads its skills.
+Codex starts the local daemon if needed and connects to its Unix socket explicitly. Pane context
+stays in per-thread configuration; the launch also passes the caller's working directory. Add
+`"--no-daemon"` to `peer_args` for embedded mode, including when using `--profile` or an older CLI.
 When the requested harness cannot start, the script falls back on its own to the other harness
 (`claude:fable` for a Codex request, `codex` on `gpt-6-astra` for a Claude request; `--fallback
 <harness[:model]>`, `PEER_CHAT_PEER_FALLBACK` or `peer_fallback` change it, `--no-fallback` turns it
-off). Fallback covers three cases: the harness executable is not on `PATH`, the harness does not
+off). Fallback covers a missing harness executable, a failed or timed-out Codex daemon start, a harness that does not
 appear in the pane within `start_timeout`, or the other pane already runs the fallback harness (then
 `"state":"already"` names it). The result carries `fallback_from` and stderr says why; tell the
 user in one line which peer you got. A pane busy with an unknown program, an agterm error or a

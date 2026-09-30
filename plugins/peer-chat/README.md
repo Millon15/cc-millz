@@ -54,6 +54,9 @@ Flags win, then env, then a committed `.peer-chat.json` at the repo root, then t
 
 ## Limits
 
+- Codex peers use the shared local daemon through an explicit Unix-socket connection. The launcher runs `codex app-server daemon start`, passes the caller's working directory, and sends pane variables as per-thread `-c` overrides. Verified with Codex 0.159.2. Plain environment variables inherit the daemon's original pane context and are insufficient.
+- To use embedded Codex, add `"--no-daemon"` to `peer_args`. This is required for `--profile`, `--oss`, `--strict-config`, and `--dangerously-bypass-hook-trust`, which need local CLI processing. Peer-chat selects the local endpoint, so `--remote` in `peer_args` is rejected in daemon mode. A configured Codex wrapper must also accept `app-server daemon start`.
+- A failed or timed-out daemon start follows the configured harness fallback. `--no-fallback` reports the error before replacing the peer.
 - The peer is addressed by pane slot. After a promote or re-split puts a different agent of the same harness into that slot, the foreground check cannot tell them apart.
 - A model name reaches the harness verbatim; an unknown one fails inside the harness, not before the launch.
 
