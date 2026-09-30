@@ -16,6 +16,16 @@
   name keeps the spool contract. Every send also reads the peer's screen and warns once on stderr
   when the peer is mid-turn; the send proceeds.
 
+## peer-chat v0.6.1 - 2026-09-29
+
+### Fixed
+
+- Codex peers connect explicitly to the shared local daemon, avoiding the automatic embedded-mode
+  fallback caused by pane-context `-c` overrides. The launcher starts the daemon if needed and
+  supplies the caller's working directory. Context remains scoped to each thread.
+- Daemon startup failures follow the existing harness fallback. `peer_args: ["--no-daemon"]`
+  retains embedded operation; profile and other local-only options require it.
+
 ## peer-chat v0.6.0 - 2026-09-29
 
 ### Added

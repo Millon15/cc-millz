@@ -282,6 +282,7 @@ def launch_argv(config, terminal, plugin_root):
         argv += ['--model', model]
     if harness == 'claude':
         return ['env', *(f'{key}={value}' for key, value in context.items()), *argv, *claude_plugin_args(plugin_root)]
+    argv += codex_daemon_args(values)
     for key, value in context.items():
         argv += ['-c', f'shell_environment_policy.set.{key}={json.dumps(value)}']
     return argv
@@ -298,6 +299,42 @@ def load_turn_state(plugin_root):
         return module.turn_state
     except Exception:
         return lambda screen, agent: 'unknown'
+
+
+def has_option(argv, option, short=None):
+    return any(value == option or value.startswith(option + '=')
+               or (short and value.startswith(short)) for value in argv)
+
+
+def codex_daemon_args(values):
+    argv = values['peer_args']
+    if '--no-daemon' in argv:
+        return []
+    if has_option(argv, '--remote'):
+        raise Failure('peer-chat selects the local Codex daemon; remove --remote from peer_args', 2)
+    if (has_option(argv, '--profile', '-p') or '--oss' in argv
+            or '--strict-config' in argv or '--dangerously-bypass-hook-trust' in argv):
+        raise Failure('these Codex options need local config processing; add --no-daemon to peer_args', 2)
+    start_codex_daemon(values)
+    codex_home = Path(os.environ.get('CODEX_HOME') or Path.home() / '.codex').expanduser().absolute()
+    socket = codex_home / 'app-server-control' / 'app-server-control.sock'
+    args = ['--remote', f'unix://{socket}']
+    if not has_option(argv, '--cd', '-C'):
+        args += ['--cd', str(Path.cwd())]
+    return args
+
+
+def start_codex_daemon(values):
+    command = [values['codex_command'], 'app-server', 'daemon', 'start']
+    try:
+        result = subprocess.run(command, capture_output=True, text=True, timeout=values['start_timeout'])
+    except subprocess.TimeoutExpired as error:
+        raise Failure('Codex daemon startup timed out; retry or add --no-daemon to peer_args',
+                      recoverable=True) from error
+    if result.returncode:
+        detail = result.stderr.strip() or result.stdout.strip() or f'exit {result.returncode}'
+        raise Failure(f'Codex daemon startup failed: {detail}; retry or add --no-daemon to peer_args',
+                      recoverable=True)
 
 
 def require_tools(config):
