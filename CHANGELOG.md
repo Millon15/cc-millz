@@ -1,5 +1,21 @@
 # Changelog
 
+## peer-chat v0.6.0 - 2026-09-29
+
+### Added
+
+- `/peer-chat:build`: implement an already-proposed design with the peer in the other pane. Pins
+  the design to a file, cuts it into two lanes with disjoint files, written seam contracts and an
+  integrator, waits for the peer's explicit acceptance before any lane edit, builds in parallel,
+  reviews a frozen target, records every acceptance check, commits only under the project's policy.
+
+### Changed
+
+- Skill § Artifacts gains the one task-input exception: `/peer-chat:build` may persist the design,
+  its acceptance checks and the lane agreement as `design.md` at the task path the command selects,
+  the topic directory or a per-run scratch directory outside the repo. Reasoning still never goes
+  to a file.
+
 ## peer-chat v0.5.2 - 2026-09-28
 
 ### Changed

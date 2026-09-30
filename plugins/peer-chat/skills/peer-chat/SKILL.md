@@ -215,6 +215,11 @@ the record.
 - every `📎` segment says what the file is, how to run it, and what it showed
 - a `.md` or `.txt` of reasoning under `tmp/peer-chat/` is a violation: the peer names it, and
   the author sends the content as chat
+- task input, the one exception: `/peer-chat:build` may persist the supplied design, its
+  acceptance checks and the lane agreement (owners, files, contracts, integrator, marked
+  `proposed` or `accepted`) as `design.md` at the path the command selects, the topic directory
+  or a scratch directory outside the repo, written by the integrator only and citing the source.
+  Defaults, amendments, findings and every argument still go to chat
 - `tmp/peer-chat/<slug>/` and `tmp/a/` are outside the ownership agreement below: either agent
   writes there, never the worktree's code
 

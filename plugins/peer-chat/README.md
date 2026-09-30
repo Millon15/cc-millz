@@ -26,6 +26,7 @@ Two coding agents hold a conversation in one agterm split, each typing into the 
 | Component | Trigger | Description |
 |-----------|---------|-------------|
 | skill | `peer-chat` | 🗣️ one body for every harness: preflight, spawn, send, receive, organizing the work, manners |
+| command | `/peer-chat:build` | 🏗️ implement a proposed design with the peer: pin it to a file, two lanes with disjoint files and written contracts, explicit acceptance before edits, frozen review targets, every acceptance check recorded, commits under the project's policy |
 | script | `scripts/peer-chat.py` | 📨 the adapter: resolves the peer pane and its harness, labels the sender, hands delivery to the engine; one line |
 | script | `scripts/vendor/peer-chat.py` | 🧱 the vendored engine: composer and caret checks, 197-byte marked events, submit confirmation |
 | script | `scripts/peer-chat-paste.py` | 📄 the multi-line send: resolves the peer, ignores composer occupancy, enforces the ask ledger (`--slug`), wraps prose, bracketed paste, confirms the tail, submits |
