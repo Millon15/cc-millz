@@ -1,5 +1,24 @@
 # Changelog
 
+## codex-delegation v0.1.2 - 2026-10-02
+
+### Changed
+
+- Run Codex forwarding agents on the `opus` alias, including workflow fan-out instructions.
+- Update the delegation rubric to Opus 5.5 and remove Sonnet from the model choices.
+
+## plan v0.2.1 - 2026-10-02
+
+### Changed
+
+- Run the researcher and proover agents on the `opus` alias and update the agent table.
+
+## ralphex-revmux v0.1.3 - 2026-10-02
+
+### Changed
+
+- Run the result reporter on the `opus` alias.
+
 ## peer-chat v0.6.2 - 2026-09-30
 
 ### Added

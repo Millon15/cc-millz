@@ -19,8 +19,8 @@ Answer a question with empirical proof instead of source-reading alone. `/plan:r
 | Component | Trigger | Description |
 |-----------|---------|-------------|
 | command | `/plan:research <question>` | 🔬 orchestrates researcher, hypotheses, proover, honest answer |
-| agent | `plan:answer-researcher` | 📚 Sonnet, read-only, writes `tmp/a/<slug>/research.md` with cites and suggested hypotheses |
-| agent | `plan:answer-proover` | 🧪 Sonnet, writes proof scripts, raw outputs and `tmp/a/<slug>/proof.md` with verdicts |
+| agent | `plan:answer-researcher` | 📚 Opus, read-only, writes `tmp/a/<slug>/research.md` with cites and suggested hypotheses |
+| agent | `plan:answer-proover` | 🧪 Opus, writes proof scripts, raw outputs and `tmp/a/<slug>/proof.md` with verdicts |
 | script | `scripts/plan-research.sh` | 🤖 headless runner; `--slug <s> --verify <n>` re-runs one proof against its contract; `--explain`, `--install` (launcher on PATH), `--check` |
 
 ## Config

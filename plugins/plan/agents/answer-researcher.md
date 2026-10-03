@@ -1,7 +1,7 @@
 ---
 name: answer-researcher
 description: Read-only research bundler with file:line citations. Gathers the facts that bear on a question (code, docs, tickets, history), never answers it. Spawned by /plan:research Phase 1.
-model: sonnet
+model: opus
 disallowedTools: Agent
 color: blue
 ---

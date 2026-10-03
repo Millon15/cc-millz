@@ -1,7 +1,7 @@
 ---
 name: answer-proover
 description: Empirical-proof agent. Takes falsifiable hypotheses and verifies each with a runnable artifact under tmp/a/<slug>/ (standalone script against the REAL function, unit test, read-only query, HTTP call), biased toward disproving. Spawned by /plan:research Phase 3.
-model: sonnet
+model: opus
 disallowedTools: Agent
 color: green
 ---

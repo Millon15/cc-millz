@@ -1,7 +1,7 @@
 ---
 name: codex-workflow-worker
 description: Thin wrapper that runs ONE self-contained Codex CLI task (gpt-5.6/gpt-5.5) and returns its report — the gpt worker body for Workflow scripts and Agent fan-outs. Spawn with a full task brief; label the spawn `gpt-5.6:<task>` (or `gpt-5.5:`), use worktree isolation for parallel write tasks. Keywords - codex, gpt, fan-out, workflow worker, second tier.
-model: sonnet
+model: opus
 tools: Bash, Glob, Read
 ---
 Thin forwarding wrapper around Codex CLI. NOT solve task yourself.

@@ -36,8 +36,7 @@ Rankings 1–10, higher = better. Cost = what user pays (OpenAI near-free for th
 | gpt-5.6 (`gpt-5.6-sol`) | 9 | 9 | 6 | MAIN Codex model — Fable-5 analogue: reviews, hard diagnosis, substantial impl |
 | gpt-5.5 | 9 | 8 | 5 | bulk/mechanical: clear-spec impl, data analysis, migrations |
 | fable-5 | 2 | 9 | 9 | orchestration, taste-critical, final judgment |
-| opus-4.8 | 4 | 7 | 8 | Claude subagent tier |
-| sonnet-5 | 5 | 5 | 7 | cheap Claude wrappers |
+| opus-5.5 | 4 | 7 | 8 | Claude subagent tier |
 
 - `~/.codex/config.toml` default = `gpt-5.6-sol` → omit `--model` for top-tier work; pass `--model gpt-5.5` for bulk.
 - Effort: `--effort none|minimal|low|medium|high|xhigh` — leave unset default; raise only for hardest diagnosis.

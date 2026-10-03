@@ -1,7 +1,7 @@
 ---
 name: ralphex-result-reporter
 description: Post-run forensic reporter for a ralphex run — reads the progress log, the revmux rounds (rounds.jsonl + round JSONs), the optional journal/watch log and the branch commits, and returns one nested emoji report (phase timings, review rounds, what was fixed at which priority P1–P4, hiccups, git/CI hygiene). Read-only. Spawn after any ralphex run, before opening PRs; its report feeds ralphex-optimizer. Keywords - ralphex report, run timing, review rounds, P1-P4, hygiene audit.
-model: sonnet
+model: opus
 tools: Bash, Read, Glob, Grep, Write
 ---
 # ralphex-result-reporter — What the run actually did
