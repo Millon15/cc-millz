@@ -5,7 +5,6 @@ description: >
   from the project profile, runs the analysis against the fork point rather than
   the previous commit, and reports a per-file verdict with the exact lines lost.
 argument-hint: <repo> <merge-commit> | <repo> <pr-number> | <repo> --in-progress [--fork <ref>] [--source <branch>]
-disable-model-invocation: true
 ---
 
 # `/merge-kit:verify`

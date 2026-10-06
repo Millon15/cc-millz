@@ -5,7 +5,6 @@ description: >
   the hunks a stated fact settles, walks the ambiguous ones one at a time, and
   proves before committing that nothing on the target was silently reverted.
 argument-hint: <repo> | <repo> <pr-number> | <repo> local <feature> <target> [merge|rebase] [--strict]
-disable-model-invocation: true
 ---
 
 # `/merge-kit:resolve`

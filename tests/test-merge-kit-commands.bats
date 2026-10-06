@@ -40,6 +40,12 @@ teardown() { teardown_tmp; }
 	[ -f "${PLUGIN}/commands/verify.md" ]
 }
 
+@test "merge-kit commands: another command or an agent can invoke both" {
+	# A pull-request flow hands its conflict to /merge-kit:resolve through the Skill tool; the flag refuses that.
+	assert_not_contains "${RESOLVE}" "disable-model-invocation"
+	assert_not_contains "${VERIFY}" "disable-model-invocation"
+}
+
 @test "merge-kit commands: the plugin is registered in the marketplace catalogue" {
 	run jq -r '.plugins[] | select(.name == "merge-kit") | .source' "${REPO_ROOT}/.claude-plugin/marketplace.json"
 	assert_status 0

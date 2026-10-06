@@ -1,5 +1,14 @@
 # Changelog
 
+## merge-kit v0.2.1 - 2026-10-06
+
+### Fixed
+
+- `/merge-kit:resolve` and `/merge-kit:verify` are now model-invocable. Both shipped with
+  `disable-model-invocation: true` from the command template, so a command or agent that hands its conflict to
+  `/merge-kit:resolve` (a pull-request flow, a monorepo update) stopped on a Skill tool error instead of starting
+  the walk. `resolve` still stops on every AMBIGUOUS hunk for a decision, and `verify` only reads.
+
 ## codex-delegation v0.1.3 - 2026-10-05
 
 ### Changed
