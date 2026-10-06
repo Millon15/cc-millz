@@ -493,3 +493,63 @@ seed_codex_ask() { # seed_codex_ask <disposition> <due> <reason>
     assert_contains "$(cat "${TMP}/clip-first-set")" "❓ #left-003 next question"
     assert_contains "$(cat "${TMP}/${LEDGER}")" $'claude-002\tleft\t'
 }
+
+
+@test "recovery: missing target preserves spool and verified selectors deliver it once" {
+    export TMPDIR="${TMP}"
+    python3 "${PLUGIN}/scripts/peer-chat.py" --prepare-message peer-chat-recovery.txt >/dev/null
+    spool="$(ls -d "${TMP}"/agterm-peer-chat-*)/peer-chat-recovery.txt"
+    printf '🎯 recovered conversation\n\n🔎 exact body preserved\n' > "${spool}"
+    cp "${spool}" "${TMP}/expected"
+    export AGTERM_SESSION_ID=deleted-session
+    run python3 "${PASTE}" --to peer --message-file peer-chat-recovery.txt --slug recovery
+    assert_status 1
+    assert_contains "${output}" "not found"
+    assert_contains "${output}" "message file restored"
+    cmp "${spool}" "${TMP}/expected"
+    [ ! -f "${TMP}/typed.log" ]
+    assert_not_contains "$(cat "${TMP}/calls.log")" 'session paste'
+    [ ! -f "${TMP}/tmp/peer-chat/recovery/asks.tsv" ]
+
+    run python3 "${PASTE}" --to peer --message-file peer-chat-recovery.txt --slug recovery --session "${SID}" --window win-1
+    assert_status 0
+    [ ! -e "${spool}" ]
+    [ "$(wc -l < "${TMP}/typed.log")" -eq 1 ]
+    assert_contains "$(cat "${TMP}/clip-last-set")" 'recovered conversation'
+    assert_contains "$(cat "${TMP}/calls.log")" "session paste --pane right --target ${SID} --window win-1"
+}
+
+@test "recovery: ambiguous selector preserves spool and never chooses the active pane" {
+    export TMPDIR="${TMP}"
+    python3 "${PLUGIN}/scripts/peer-chat.py" --prepare-message peer-chat-ambiguous.txt >/dev/null
+    spool="$(ls -d "${TMP}"/agterm-peer-chat-*)/peer-chat-ambiguous.txt"
+    printf '🎯 do not guess\n' > "${spool}"
+    python3 - "${TMP}/tree.json" <<'PY'
+import json, sys
+from pathlib import Path
+p = Path(sys.argv[1])
+tree = json.loads(p.read_text())
+p.write_text(json.dumps([tree, tree]))
+PY
+    run python3 "${PASTE}" --to peer --message-file peer-chat-ambiguous.txt
+    assert_status 1
+    assert_contains "${output}" "ambiguous"
+    [ "$(cat "${spool}")" = '🎯 do not guess' ]
+    [ ! -f "${TMP}/typed.log" ]
+    assert_not_contains "$(cat "${TMP}/calls.log")" 'session paste'
+}
+
+@test "recovery: unconfirmed paste preserves spool without submitting or retrying" {
+    export TMPDIR="${TMP}"
+    python3 "${PLUGIN}/scripts/peer-chat.py" --prepare-message peer-chat-unconfirmed.txt >/dev/null
+    spool="$(ls -d "${TMP}"/agterm-peer-chat-*)/peer-chat-unconfirmed.txt"
+    printf '🎯 inspect before retrying\n' > "${spool}"
+    touch "${TMP}/paste-ignored"
+    run python3 "${PASTE}" --to peer --message-file peer-chat-unconfirmed.txt
+    assert_status 1
+    assert_contains "${output}" "paste not confirmed"
+    assert_contains "${output}" "inspect the failure and peer screen before retrying"
+    [ "$(cat "${spool}")" = '🎯 inspect before retrying' ]
+    [ ! -f "${TMP}/typed.log" ]
+    [ "$(grep -c '^session paste ' "${TMP}/calls.log")" -eq 1 ]
+}

@@ -20,6 +20,7 @@ Two coding agents hold a conversation in one agterm split, each typing into the 
 - **Positions are checked, and reversals are named.** A peer's claim is accepted only as `accepted: "<their words>"; checked <path:line>`; a dropped position is announced as `🎯 I said X; Y is right because Z`; "fixed" is claimed only by quoting the re-run of the peer's own proof.
 - **Proofs beat agreed readings.** A disputed claim about runtime behaviour gets a proof before the next send: `/plan:research` (plugin `plan@cc-millz`) or `plan-research.sh`; `plan-research.sh --slug <s> --verify <n>` re-runs a proof against its `proof.json` contract.
 - **No prompt is ever answered for you.** Trust dialogs, login, permission requests and choosers are the user's; the skill stops and reports.
+- **A stale address is recovered, never guessed.** A resumed session can inherit the session and window ids of a split that no longer exists. The skill then inspects the live split read-only and retries with explicit `--session` / `--window` selectors only when exactly one pair of panes shows this conversation; anything less goes to the user. A failed multi-line send keeps its spool body, so the retry starts from the same text after a look at the peer's screen.
 
 ## Components
 

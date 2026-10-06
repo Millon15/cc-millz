@@ -35,3 +35,15 @@ setup() {
     assert_contains "${skill}" "task input, the one exception"
     assert_contains "${skill}" '/peer-chat:build'
 }
+
+
+@test "peer-chat skill: stale session recovery verifies both panes before an explicit retry" {
+    skill="$(cat "${PLUGIN}/skills/peer-chat/SKILL.md")"
+    assert_contains "${skill}" '## Recovering a stale session'
+    assert_contains "${skill}" 'THIS conversation'
+    assert_contains "${skill}" 'Exactly one verified pair'
+    assert_contains "${skill}" '--session <verified-session-id>'
+    assert_contains "${skill}" 'Retain these explicit'
+    assert_contains "${skill}" 'no pair or multiple pairs match'
+    assert_not_contains "${skill}" 'If a send refuses because the session cannot be found, stop'
+}

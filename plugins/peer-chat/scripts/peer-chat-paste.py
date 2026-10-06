@@ -583,7 +583,10 @@ def send(t: dict[str, Any], args: argparse.Namespace, body: str) -> int:
 def restore_message_file(t: dict[str, Any], name: str, body: str) -> None:
     path = t["prepare_message"](name)
     path.write_text(body, encoding="utf-8")
-    print(f"message file restored: {name}; fix the body and resend", file=sys.stderr)
+    print(
+        f"message file restored: {name}; inspect the failure and peer screen before retrying",
+        file=sys.stderr,
+    )
 
 
 def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
@@ -608,15 +611,16 @@ def main() -> int:
         print(f"peer-chat-paste: {err}", file=sys.stderr)
         return 1
     try:
-        return send(transport, args, body)
-    except LedgerRefusal as refusal:
-        print(f"peer-chat-paste: {refusal}", file=sys.stderr)
-        if args.message_file and not is_message_path(args.message_file):
-            restore_message_file(transport, args.message_file, body)
-        return 1
-    except (RuntimeError, ValueError, OSError, subprocess.CalledProcessError) as err:
+        status = send(transport, args, body)
+    except (LedgerRefusal, RuntimeError, ValueError, OSError, subprocess.CalledProcessError) as err:
         print(f"peer-chat-paste: {err}", file=sys.stderr)
-        return 1
+        status = 1
+    if status != 0 and args.message_file and not is_message_path(args.message_file):
+        try:
+            restore_message_file(transport, args.message_file, body)
+        except (RuntimeError, ValueError, OSError) as err:
+            print(f"peer-chat-paste: could not restore message file: {err}", file=sys.stderr)
+    return status
 
 
 if __name__ == "__main__":

@@ -11,9 +11,9 @@ neither side is special: a pair can be Claude and Codex, two Claudes or two Code
 model. The user reads both panes, so the conversation itself is the result even when code comes
 out of it.
 
-Everything that touches the pane goes through `peer-chat.py`. Do not drive `agtermctl` directly:
-the script finds the peer pane, checks which harness runs there, uses that harness's composer
-protocol, and confirms delivery. A raw command bypasses those checks.
+Every send goes through `peer-chat.py` or `peer-chat-paste.py`: the transport checks the target
+harness and uses its composer protocol. Direct `agtermctl` calls are permitted only for read-only
+session discovery and screen inspection during the recovery procedure below, never for delivery.
 
 `peer-chat.py`, its engine and `peer-chat-paste.py` are bare commands on `PATH`; the installer put
 them there. The installer and `peer-chat-spawn.sh` live in this plugin under
@@ -120,8 +120,9 @@ peer-chat-paste.py --to peer --message-file peer-chat-right-a91f.txt --slug <slu
 In the spool form, write no stdin, heredoc, redirection, variable or substitution into either
 command: the approval rules the installer wrote match these exact prefixes, and `--slug` goes
 after `--message-file` so they still match. Never put the message text in an argument. The send
-consumes the spool file; a send the ledger refuses restores it so you can fix the body and resend.
-A path is never consumed or restored.
+consumes the spool file on success; a failed send restores it. After a delivery-stage failure,
+inspect the peer screen before retrying because the text may already have arrived. A path is never
+consumed or restored.
 
 Before the paste, every form reads the peer's screen; a `working` peer gets one stderr line,
 `the peer is mid-turn; this send queues behind its current task`, and the send proceeds.
@@ -142,8 +143,8 @@ in what agterm reports for that pane, and picks that harness's composer protocol
 through a wrapper shows the wrapper's name instead: set `PEER_CHAT_CLAUDE_COMMAND` or
 `PEER_CHAT_CODEX_COMMAND` to it, or pass `--to <harness> --target-command <name>`. Never guess a
 name after a refusal and never retry with a different one until a human has told you which is
-right. If a send refuses because the session cannot be found, stop and say so; never pass
-`--session` with an id you inferred.
+right. A missing session or window triggers **Recovering a stale session** below. Do not stop
+at reporting a stale id when the live conversation can be verified.
 
 Do not write the `Chat from …:` label yourself. The script adds `Chat from <name>: `, where the name
 is `PEER_CHAT_NAME` (the spawn sets it for the peer it launches, e.g. `codex gpt-6-astra`) or
@@ -161,6 +162,32 @@ CHAT
 ```
 
 Answers, review results, corrections and stop signals always use the default steering send.
+
+## Recovering a stale session
+
+A resumed agent or long-lived daemon can retain `AGTERM_SESSION_ID`, `AGTERM_WINDOW_ID` and
+`AGTERM_PANE` from a deleted split. Recover the address without restarting either agent:
+
+1. Read `agtermctl window list --json`, then `agtermctl tree --json --window <open-window-id>`
+   for the open windows. A socket permission error needs the harness's normal execution approval;
+   it is not evidence that the session is missing.
+2. Inspect plausible split panes with `agtermctl session text --target <session-id>
+   --window <window-id> --pane left|right --lines 60`. Require recent, specific messages from
+   THIS conversation on the caller's side and the expected topic on the peer's side. The active
+   session, a matching cwd, a title or a harness name alone does not establish identity.
+3. Exactly one verified pair permits recovery without asking the user. Record its full session
+   id, owning window id and caller pane in the current thread. If no pair or multiple pairs match,
+   ask the user to identify the split; do not send, spawn, restart or guess a recipient.
+4. Retry the pending message through the transport with `--session <verified-session-id>
+   --window <verified-window-id>` appended to the normal send command. If the caller changed
+   sides, set `AGTERM_PANE` to the verified caller pane for that invocation. Retain these explicit
+   selectors on subsequent sends in this thread; a tool subprocess cannot repair its parent's
+   inherited environment. Reverify after a further lookup failure or after compaction.
+
+For a missing-target failure, no paste occurred. Retry its restored spool file or the original
+path. An older sender may have consumed the spool before failing; recreate the exact pending
+body under a fresh reserved name. For a paste or submit failure, first inspect the peer screen
+and the ask ledger to avoid duplicate delivery. Always report whether the retry was delivered.
 
 ## Message shape
 

@@ -1,5 +1,15 @@
 # Changelog
 
+## peer-chat v0.6.3 - 2026-10-06
+
+### Fixed
+
+- The skill recovers stale session and window ids by inspecting the live split and verifying both
+  conversations before retrying with explicit selectors. Ambiguous recipients still require the
+  user to identify the split; recovery never restarts an agent or types through raw agterm calls.
+- Failed multi-line sends restore their spool body, including target-resolution errors and
+  unconfirmed pastes. Delivery-stage retries require screen inspection to prevent duplicates.
+
 ## merge-kit v0.2.1 - 2026-10-06
 
 ### Fixed
