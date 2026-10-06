@@ -1,6 +1,6 @@
 ---
 name: codex-delegate
-description: Routing brain for delegating work to Codex CLI (gpt-5.6/gpt-5.5). Use when the user asks Codex/GPT to review, implement, diagnose, or verify something, when a second independent perspective is wanted, or when the model rubric calls for a cheap second-tier worker. Routes through the openai-codex plugin — never hand-rolled codex prompts.
+description: Routing brain for delegating work to Codex CLI. Use when the user asks Codex/GPT to review, implement, diagnose, or verify something, when a second independent perspective is wanted, or when the model rubric calls for a cheap second-tier worker. Routes through the openai-codex plugin — never hand-rolled codex prompts.
 ---
 # Codex Delegate
 
@@ -33,12 +33,12 @@ Rankings 1–10, higher = better. Cost = what user pays (OpenAI near-free for th
 
 | model | cost | intelligence | taste | use for |
 | --- | --- | --- | --- | --- |
-| gpt-5.6 (`gpt-5.6-sol`) | 9 | 9 | 6 | MAIN Codex model — Fable-5 analogue: reviews, hard diagnosis, substantial impl |
-| gpt-5.5 | 9 | 8 | 5 | bulk/mechanical: clear-spec impl, data analysis, migrations |
-| fable-5 | 2 | 9 | 9 | orchestration, taste-critical, final judgment |
-| opus-5.5 | 4 | 7 | 8 | Claude subagent tier |
+| `sol` | 9 | 9 | 6 | MAIN Codex model, the `fable` analogue: reviews, hard diagnosis, substantial impl; bulk/mechanical work at a lower effort |
+| `fable` | 2 | 9 | 9 | orchestration, taste-critical, final judgment |
+| `opus` | 4 | 7 | 8 | Claude subagent tier |
 
-- `~/.codex/config.toml` default = `gpt-5.6-sol` → omit `--model` for top-tier work; pass `--model gpt-5.5` for bulk.
+- Codex has no family alias and the companion maps only `spark`, so `--model` takes a full slug. Today's `sol` is `gpt-6.1-sol`: pass `--model gpt-6.1-sol`. Omitting `--model` runs whatever `~/.codex/config.toml` sets.
+- Bulk/mechanical work (clear-spec impl, data analysis, migrations) runs on `sol` too, with `--effort low`: the separate bulk model retires on 2026-10-14.
 - Effort: `--effort none|minimal|low|medium|high|xhigh` — leave unset default; raise only for hardest diagnosis.
 - Defaults, not limits: cheap output below bar → rerun with smarter model, no asking. Intelligence > taste > cost for anything that ships.
 - User-facing output (UI, copy, API design) needs taste ≥ 7 → Claude models, not Codex.

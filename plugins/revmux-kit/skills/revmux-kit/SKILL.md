@@ -1,6 +1,6 @@
 ---
 name: revmux-kit
-description: Bootstrap or tune revmux's project layer in the current repo — `.revmux/config` (default profile, xhigh-safe timeouts), a `profile.md` template, and the gpt-5.6-sol xhigh / claude fable rosters `sol-panel`, `sol-final`, `fable-panel`, `fable-final`. Use when a repo has no `.revmux/`, when revmux rounds time out at 20m, when the user wants "sol xhigh" or "no codex" reviews, or when another skill (ralphex-revmux) needs these profiles present.
+description: Bootstrap or tune revmux's project layer in the current repo — `.revmux/config` (default profile, xhigh-safe timeouts), a `profile.md` template, and the codex sol xhigh / claude fable rosters `sol-panel`, `sol-final`, `fable-panel`, `fable-final`. Use when a repo has no `.revmux/`, when revmux rounds time out at 20m, when the user wants "sol xhigh" or "no codex" reviews, or when another skill (ralphex-revmux) needs these profiles present.
 ---
 # revmux-kit
 
@@ -19,8 +19,8 @@ Then fill `./.revmux/profile.md` — every `<placeholder>` is a fact about THIS 
 
 | Profile | Roster | Stages | Reach for it |
 | --- | --- | --- | --- |
-| `sol-panel` (default) | 3× codex `gpt-5.6-sol:xhigh` finders (bugs+impl · architecture+quality+tests · docs+comments) + claude `fable:high` adversarial | codex xhigh | the first round on a real change |
-| `sol-final` | claude `fable:high` bugs+impl + codex `gpt-5.6-sol:xhigh` adversarial, **nothing below major** | codex xhigh | re-rounds after fixes, merge gate |
+| `sol-panel` (default) | 3× codex `sol` xhigh finders (bugs+impl · architecture+quality+tests · docs+comments) + claude `fable:high` adversarial | codex xhigh | the first round on a real change |
+| `sol-final` | claude `fable:high` bugs+impl + codex `sol` xhigh adversarial, **nothing below major** | codex xhigh | re-rounds after fixes, merge gate |
 | `fable-panel` | the same four splits on claude `fable:high` | claude | codex absent / not wanted |
 | `fable-final` | bugs+impl + adversarial on claude, major floor | claude | re-rounds without codex |
 

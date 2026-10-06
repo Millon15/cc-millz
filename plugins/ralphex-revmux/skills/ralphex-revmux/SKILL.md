@@ -8,7 +8,7 @@ ralphex reviews in serial passes — a multi-lane first review, then a crit/majo
 
 ## Setup (once per repo)
 
-1. `${CLAUDE_PLUGIN_ROOT}/skills/ralphex-revmux/scripts/bootstrap.sh` — copies the glue + preflight into `.ralphex/scripts/`, the two prompts into `.ralphex/prompts/`, appends the config snippet (`external_review_tool = custom`, `custom_review_script`, `max_external_iterations = 4`, `review_patience = 3`, `codex_model = gpt-5.6-sol`) to `.ralphex/config`, ignores `.revmux/tasks`. Idempotent — existing files are kept.
+1. `${CLAUDE_PLUGIN_ROOT}/skills/ralphex-revmux/scripts/bootstrap.sh` — copies the glue + preflight into `.ralphex/scripts/`, the two prompts into `.ralphex/prompts/`, appends the config snippet (`external_review_tool = custom`, `custom_review_script`, `max_external_iterations = 4`, `review_patience = 3`, `codex_model = gpt-6.1-sol`) to `.ralphex/config`, ignores `.revmux/tasks`. Idempotent — existing files are kept.
 2. Profiles: install `revmux-kit` and run its bootstrap (`sol-panel` / `sol-final` / `fable-*`), or set `RALPHEX_REVMUX_PROFILE` / `RALPHEX_REVMUX_FINAL_PROFILE` to profiles the repo already has.
 3. Fill `.revmux/profile.md` with the repo's facts — the round calibrates on it.
 

@@ -10,8 +10,7 @@ Official Codex plugin implementations always take precedence: reviews, implement
 
 ## Core ideas
 
-- **gpt-5.6** (`gpt-5.6-sol`, the Codex config default) is the top tier — use it for reviews, hard diagnosis, and substantial implementation work.
-- **gpt-5.5** is the bulk/mechanical tier — clear-spec implementation, data analysis, and migrations.
+- **`sol`** is the main Codex model: reviews, hard diagnosis, substantial implementation, and bulk/mechanical work at a lower effort. Codex has no family alias, so the rubric names the full slug to pass.
 - **Codex output is evidence, not authority** — Claude verifies Codex findings against the actual code before relaying them or declaring work done.
 - **Independent runtime verification** — Codex can act as a separate local agent that launches the app, drives the UI in a browser or simulator, captures screenshots, and reports pass/fail with actionable feedback (see `codex-computer-use` below).
 
@@ -19,8 +18,8 @@ Official Codex plugin implementations always take precedence: reviews, implement
 
 | Component | Trigger | Description |
 |-----------|---------|-------------|
-| skill | `codex-delegation:codex-delegate` | 🧭 Routing brain — maps intent to the right plugin command or agent, carries the model rubric (gpt-5.6 = top tier, gpt-5.5 = bulk), preflight checks, and the verification stance |
-| skill | `codex-delegation:codex-workflow-fanout` | 🔀 Pattern for gpt workers inside Workflow/Agent fan-outs — thin wrapper agents, `gpt-5.6:` labels, worktree isolation, timeout/background rules |
+| skill | `codex-delegation:codex-delegate` | 🧭 Routing brain — maps intent to the right plugin command or agent, carries the model rubric (`sol` for Codex work, `fable` / `opus` on the Claude side), preflight checks, and the verification stance |
+| skill | `codex-delegation:codex-workflow-fanout` | 🔀 Pattern for gpt workers inside Workflow/Agent fan-outs — thin wrapper agents, `<model>:` labels, worktree isolation, timeout/background rules |
 | skill | `codex-delegation:codex-computer-use` | 🖥️ Independent UI/runtime verification via `codex exec` — browser automation, simulators, app launching, screenshots, structured pass/fail/blocked reports |
 | agent | `codex-workflow-worker` | 📦 Spawnable thin wrapper — one self-contained Codex task per spawn; returns the report and never solves the task itself |
 

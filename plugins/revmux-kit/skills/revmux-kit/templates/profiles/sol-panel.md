@@ -1,6 +1,6 @@
 ---
-description: three codex gpt-5.6-sol finders at xhigh (bugs+impl, arch+quality+tests, docs+comments) plus one claude fable adversarial lane
-model: codex/gpt-5.6-sol:xhigh
+description: three codex sol finders at xhigh (bugs+impl, arch+quality+tests, docs+comments) plus one claude fable adversarial lane
+model: codex/gpt-6.1-sol:xhigh
 agents:
   - {name: bugs+impl,    lenses: [bugs, impl],                   color: cyan}
   - {name: arch+quality, lenses: [architecture, quality, tests], color: magenta}

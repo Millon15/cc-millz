@@ -15,10 +15,11 @@ NOT for code reading, typecheck, lint, tests Claude run directly. Launch apps/si
 3. Run non-interactive:
 
 ```bash
-codex exec -C <repo> --add-dir <artifact-dir> -s danger-full-access -o <artifact-dir>/report.md "<prompt>"
+codex exec -C <repo> --add-dir <artifact-dir> -s danger-full-access -m <m> -o <artifact-dir>/report.md "<prompt>"
 ```
 
 - `-s danger-full-access` ONLY for GUI automation, simulators, app launch, screenshots, outside-repo access. Non-GUI repo-only checks → `-s workspace-write`.
+- `-m <m>`: the `sol` slug the `codex-delegation:codex-delegate` rubric names; without it Codex runs the user's config default.
 - `--skip-git-repo-check` when cwd not git repo.
 - Long flows: explicit Bash timeout or background + poll report file.
 

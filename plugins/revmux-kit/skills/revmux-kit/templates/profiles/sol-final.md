@@ -1,6 +1,6 @@
 ---
-description: narrow re-round after fixes — bugs+impl on claude fable plus an adversarial codex gpt-5.6-sol xhigh peer, nothing below major reported
-model: codex/gpt-5.6-sol:xhigh
+description: narrow re-round after fixes — bugs+impl on claude fable plus an adversarial codex sol xhigh peer, nothing below major reported
+model: codex/gpt-6.1-sol:xhigh
 agents:
   - {name: bugs+impl, lenses: [bugs, impl], model: claude/fable:high, color: cyan}
   - {name: codex,     lenses: [adversarial],                          color: yellow}

@@ -1,5 +1,28 @@
 # Changelog
 
+## codex-delegation v0.1.3 - 2026-10-05
+
+### Changed
+
+- Name models by family in the rubric and docs (`sol`, `fable`, `opus`) instead of pinned versions.
+- Run Codex work on `sol` and pass its full slug, `gpt-6.1-sol`: Codex has no family alias. Bulk work moves to
+  `sol` at a lower effort, since the separate bulk model retires on 2026-10-14.
+- Every Codex transport passes the model: the companion `task` shape, both `codex exec` fallbacks and the
+  computer-use run. The fallbacks pass the effort too; before, they ran the user's config default.
+
+## revmux-kit v0.1.3 - 2026-10-05
+
+### Changed
+
+- The `sol-panel` and `sol-final` rosters run `codex/gpt-6.1-sol:xhigh`, the current sol model; the docs name the
+  family instead of the version.
+
+## ralphex-revmux v0.1.4 - 2026-10-05
+
+### Changed
+
+- The config snippet pins `codex_model = gpt-6.1-sol`, the current sol model.
+
 ## codex-delegation v0.1.2 - 2026-10-02
 
 ### Changed
