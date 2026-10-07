@@ -88,6 +88,11 @@
       "name": "unslop-kit",
       "source": "./plugins/unslop-kit",
       "description": "Millon15's reply contract as a Russian doll over pstack's unslop and umputun's writing-style: pass 1 pstack:unslop cuts the AI tells, pass 2 review:writing-style pins every claim to an exact reference, pass 3 unslop-formatting lays the reply out as figure-paragraphs (English Check first, TL;DR, emoji claim line, captioned hand-drawn ASCII visual, small numeric table, blockquote receipt ledger, no nested lists, no mermaid source). A SessionStart hook loads it, opt-in via ~/.claude/unslop-kit.mode. Requires pstack@cc-millz and review@umputun-cc-thingz. Personal taste, user scope."
+    },
+    {
+      "name": "peer-chat-bg",
+      "source": "./plugins/peer-chat-bg",
+      "description": "Equal background coding peers in Claude Code and Codex, without agterm: durable questions and delivery receipts, shared build protocol, accepted file ownership, frozen cross-review targets and empirical acceptance checks. Native peers remain in their host runtime."
     }
   ]
 }

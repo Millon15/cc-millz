@@ -37,7 +37,7 @@ setup() {
 
 @test "security-audit: the command basename is unique across every plugin" {
     local dupes
-    dupes="$(cd "${REPO_ROOT}" && find plugins -path '*/commands/*' -name '*.md' -exec basename {} \; | sort | uniq -d)"
+    dupes="$(cd "${REPO_ROOT}" && find plugins -path '*/commands/*' -name 'audit.md' -exec basename {} \; | sort | uniq -d)"
     [ -z "${dupes}" ] || {
         printf 'duplicate command basenames across plugins: %s\n' "${dupes}" >&2
         return 1

@@ -1,16 +1,10 @@
 ---
-description: >
-  Implement the proposed design with the peer in the other pane, through cross-review and QA:
-  snapshot the design to one task file, cut it into two lanes with disjoint files, written seam
-  contracts and an integrator, get the split accepted, build in parallel, review frozen targets,
-  fix by owner, record every acceptance check, commit under the project's policy. Use after a
-  design is agreed in chat, a plan file or a ticket: "implement the design with the peer",
-  "build this with codex", "pair on the implementation".
-argument-hint: "[<design file | ticket url or key>] [--slug <topic>] [--peer <harness[:model]>]"
-disable-model-invocation: true
-model: opus
+name: build
+description: Implement an agreed design with a peer through accepted lanes, frozen cross-review targets and recorded QA.
 ---
 <!-- Generated from shared/peer-chat/build.md; edit the source and run scripts/sync-peer-chat-protocol.py. -->
+
+Start only when the user requests implementation of an agreed design. In a host without the `Skill` tool, load `../peer-chat/SKILL.md` relative to this file instead of calling `Skill`.
 
 # `/peer-chat:build`
 

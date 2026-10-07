@@ -20,8 +20,14 @@ jobs:
               with:
                   bun-version: latest
 
-            # Both discovery sets run as separate steps so the log says which kind
+            # Discovery sets run as separate steps so the log says which kind
             # went red, and either one failing fails the job.
+            - name: Shared source drift
+              run: make test-generated
+
+            - name: Python protocol and packaging suites
+              run: make test-python
+
             - name: bats suites
               run: make test-bats
 

@@ -1,27 +1,23 @@
 ---
-description: >
-  Implement the proposed design with the peer in the other pane, through cross-review and QA:
-  snapshot the design to one task file, cut it into two lanes with disjoint files, written seam
-  contracts and an integrator, get the split accepted, build in parallel, review frozen targets,
-  fix by owner, record every acceptance check, commit under the project's policy. Use after a
-  design is agreed in chat, a plan file or a ticket: "implement the design with the peer",
-  "build this with codex", "pair on the implementation".
-argument-hint: "[<design file | ticket url or key>] [--slug <topic>] [--peer <harness[:model]>]"
-disable-model-invocation: true
-model: opus
+name: build
+description: Implement an agreed design with a peer through accepted lanes, frozen cross-review targets and recorded QA.
 ---
 <!-- Generated from shared/peer-chat/build.md; edit the source and run scripts/sync-peer-chat-protocol.py. -->
 
-# `/peer-chat:build`
+Start only when the user requests implementation of an agreed design. In a host without the `Skill` tool, load `../peer-chat/SKILL.md` relative to this file instead of calling `Skill`.
 
-Implement a design that already exists, in this session, with the peer in the other pane. The
-`peer-chat` skill is the engine: transport, asks, ownership, proofs and host lifecycle. This command
+# `/peer-chat-bg:build`
+
+Implement a design that already exists, in this session, with the background peer. The
+`peer-chat-bg` skill is the engine: transport, asks, ownership, proofs and host lifecycle. This command
 adds the build flow; where the two disagree, the skill wins.
 
 ## Engine
 
-1. `Skill(skill="peer-chat:peer-chat")`, then its Preflight.
-2. Peer: the skill's spawn step; `--peer <harness[:model]>` passes through. `"state":"already"` is fine.
+1. Load `peer-chat-bg:peer-chat` (Claude: `Skill`; Codex: read `../peer-chat/SKILL.md` relative to this skill).
+2. Complete its preflight and bind the returned native child identity. `--peer` selects a host-supported model, not another runtime.
+
+The paths below use the default `tmp/peer-chat-bg`. Substitute `values.state_dir` from `BG --explain` when configured. The ask/message ledger is `<state_dir>/<slug>/state.json`, not a TSV file. Use the engine's target/check/finalize commands to validate the unchanged integrated tree and close both peer confirmations.
 
 ## Input
 
@@ -36,7 +32,7 @@ build carries it.
 Chat dies at the next compaction, the peer does not inherit the entire parent conversation, and the user's own file must not
 grow orchestration state. Every input form gets ONE task file, written by the integrator only:
 
-1. Location: `tmp/peer-chat/<slug>/design.md` when `git check-ignore -q tmp/peer-chat` exits 0,
+1. Location: `tmp/peer-chat-bg/<slug>/design.md` when `git check-ignore -q tmp/peer-chat-bg` exits 0,
    else `design.md` in a directory the integrator allocates with
    `mktemp -d "${TMPDIR:-/tmp}/peer-chat.<slug>.XXXXXX"`. An existing snapshot is never overwritten:
    resume that build or allocate a fresh slug. The opening message carries the absolute path.
@@ -103,7 +99,7 @@ an ask; the requirement behind it stays open until fixed or accepted within the 
 - Acceptance checks: every check the design names, on the integrated final state. None named:
   derive one per lane from the design's "done" wording and send it as a `🎯` before running it.
 - The non-author runs a lane's check where the environment allows; the integrator runs anything
-  stateful. Output lands under `tmp/peer-chat/<slug>/NN-<role>-<what>.out`, cited in a `📎`.
+  stateful. Output lands under `tmp/peer-chat-bg/<slug>/NN-<role>-<what>.out`, cited in a `📎`.
 - A red check returns the lane to Phase 2 for its owner.
 
 Done when every acceptance check has a recorded outcome and every required one is green. A check
@@ -111,7 +107,7 @@ that could not run is `incomplete`, never green.
 
 ## Phase 5: Close
 
-- Both peers name the same final target: a sha, or the frozen list with hashes, unchanged since
+- Both peers name the same final target: a validated `git:<full-sha>` token on a clean HEAD, or the `manifest:<path>#<sha256>` token returned by the engine's `target --output` command, unchanged since
   the last green check and both confirmations.
 - Commit and push only as the user's instructions and the project's policy allow, through the
   project's commit command or agent when one exists; the command grants no publish authority.
@@ -121,9 +117,9 @@ that could not run is `incomplete`, never green.
 ## Guardrails
 
 - MUST hold every lane edit until `## Lanes` reads `accepted`, on a first run and after a recovery.
-- Continue independent work after sending; otherwise end the turn and let the reply resume it. Never poll a pane. Never claim completion while an ask is open.
+- Continue independent work after sending. Use the host completion/yield mechanism; use a bounded native wait only when the next step is blocked. Do not loop-poll. Never claim completion while an ask is open.
 - NEVER edit a file the peer owns: a patch through the skill's patch protocol instead.
 - NEVER claim "fixed", "passes" or "works" from a reading: run it, or write `🎯 unproven:`.
 - After compaction or an interruption: re-read the design file, `git status`, the diff and
-  `asks.tsv` before anything; a `## Lanes` not in `accepted` is re-agreed first.
+  `state.json` before anything; a `## Lanes` not in `accepted` is re-agreed first.
 - A peer agreement never widens what the user authorized (skill § Organizing the work).

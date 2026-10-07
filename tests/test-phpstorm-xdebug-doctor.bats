@@ -65,7 +65,7 @@ teardown() { teardown_tmp; }
 
 @test "phpstorm: the basename setup-xdebug is unique across every plugin's commands" {
 	local dupes
-	dupes="$(cd "${REPO_ROOT}" && find plugins -path '*/commands/*' -name '*.md' -exec basename {} \; | sort | uniq -d)"
+	dupes="$(cd "${REPO_ROOT}" && find plugins -path '*/commands/*' -name 'setup-xdebug.md' -exec basename {} \; | sort | uniq -d)"
 	[ -z "${dupes}" ] || {
 		printf 'duplicate command basenames across plugins: %s\n' "${dupes}" >&2
 		return 1

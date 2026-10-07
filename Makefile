@@ -7,14 +7,22 @@
 
 SHELL := /usr/bin/env bash
 
-.PHONY: help test test-bats test-ts
+.PHONY: help test test-bats test-ts test-python test-generated
 
 help:
-	@echo 'make test       run every suite, both kinds'
+	@echo 'make test       run every suite and generated-source checks'
 	@echo 'make test-bats  run the bats suites only'
 	@echo 'make test-ts    run the TypeScript suites only'
 
-test: test-bats test-ts
+test: test-generated test-python test-bats test-ts
+
+test-generated:
+	python3 scripts/sync-peer-chat-shared.py --check
+	python3 scripts/sync-peer-chat-protocol.py --check
+
+test-python:
+	@set -e; for suite in tests/test-*.py; do \
+	[ -f "$$suite" ] || continue; python3 "$$suite"; done
 
 test-bats:
 	@command -v bats >/dev/null 2>&1 || { echo 'bats-core not installed — run: brew install bats-core'; exit 127; }

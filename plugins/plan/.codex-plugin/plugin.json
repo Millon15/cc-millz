@@ -1,0 +1,20 @@
+{
+  "name": "plan",
+  "version": "0.3.0",
+  "description": "Research a codebase claim and test falsifiable hypotheses with reproducible, adversarial proof artifacts. Includes a native Codex skill and the existing Claude Code command, agent prompts and verifier.",
+  "author": {
+    "name": "Millon15"
+  },
+  "license": "MIT",
+  "repository": "https://github.com/Millon15/cc-millz",
+  "skills": "./skills/",
+  "interface": {
+    "displayName": "Plan",
+    "shortDescription": "Investigate claims with replayable proof artifacts",
+    "longDescription": "A native Codex research skill and shared proof-contract verifier for codebase claims. Separates cited research from adversarial runtime proof and records reproducible verdicts.",
+    "developerName": "Millon15",
+    "category": "Developer Tools",
+    "capabilities": [],
+    "defaultPrompt": "Use Plan to investigate and test this codebase claim."
+  }
+}

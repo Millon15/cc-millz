@@ -113,6 +113,30 @@
         "installation": "AVAILABLE"
       },
       "category": "Developer Tools"
+    },
+    {
+      "name": "peer-chat-bg",
+      "source": {
+        "source": "local",
+        "path": "./plugins/peer-chat-bg"
+      },
+      "policy": {
+        "installation": "AVAILABLE",
+        "authentication": "ON_INSTALL"
+      },
+      "category": "Productivity"
+    },
+    {
+      "name": "plan",
+      "source": {
+        "source": "local",
+        "path": "./plugins/plan"
+      },
+      "policy": {
+        "installation": "AVAILABLE",
+        "authentication": "ON_INSTALL"
+      },
+      "category": "Productivity"
     }
   ]
 }

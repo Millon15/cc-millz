@@ -1,5 +1,24 @@
 # Changelog
 
+## peer-chat-bg v0.1.0 - 2026-10-07
+
+- Add native background peer-chat and build workflows for Claude Code and Codex, without agterm.
+- Share the question machinery and build contract with the pane plugin through deterministic, standalone packaging.
+- Record transactional message reservations, real peer bindings, uncertain sends, dispositions and final-target QA receipts.
+- Preserve host approval policies; document same-runtime native peers and the separate cross-runtime bridge requirement.
+
+## peer-chat v0.7.0 - 2026-10-07
+
+- Extract reusable question machinery and build protocol; keep agterm transport and installer compatible.
+- Serialize legacy paste planning through delivery/recording and reject stale duplicate question IDs.
+- Add the build skill to Codex packaging and validate generated-source drift.
+
+## plan v0.3.0 - 2026-10-07
+
+- Add Codex plugin packaging and a thin native researcher/proover orchestration adapter.
+- Preserve the Claude research command, agent prompts and empirical proof verifier unchanged.
+
+
 ## peer-chat v0.6.4 - 2026-10-06
 
 ### Fixed

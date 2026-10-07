@@ -1,0 +1,26 @@
+{
+  "name": "peer-chat-bg",
+  "version": "0.1.0",
+  "description": "Equal background coding peers in Claude Code and Codex, without agterm: durable questions and delivery receipts, shared build protocol, accepted file ownership, frozen cross-review targets and empirical acceptance checks. Native peers remain in their host runtime.",
+  "author": {
+    "name": "Millon15"
+  },
+  "license": "MIT",
+  "repository": "https://github.com/Millon15/cc-millz",
+  "skills": "./skills/",
+  "interface": {
+    "displayName": "peer-chat-bg",
+    "shortDescription": "Background peers, shared proofs and build contracts",
+    "developerName": "Millon15",
+    "category": "Developer Tools",
+    "longDescription": "Equal background coding peers in Claude Code and Codex, without agterm: durable questions and delivery receipts, shared build protocol, accepted file ownership, frozen cross-review targets and empirical acceptance checks. Native peers remain in their host runtime.",
+    "capabilities": [
+      "Interactive",
+      "Write"
+    ],
+    "defaultPrompt": [
+      "Review an agreed design with a peer and record evidence-backed findings.",
+      "Build the agreed design with a peer through accepted lanes and cross-review."
+    ]
+  }
+}

@@ -32,6 +32,7 @@ RULES_FILE="$CODEX_HOME/rules/default.rules"
 SRC_SCRIPT="$PLUGIN_ROOT/scripts/peer-chat.py"
 SRC_ENGINE="$PLUGIN_ROOT/scripts/vendor/peer-chat.py"
 SRC_PASTE="$PLUGIN_ROOT/scripts/peer-chat-paste.py"
+SRC_CORE="$PLUGIN_ROOT/scripts/peer_chat_core.py"
 SRC_SKILL="$PLUGIN_ROOT/skills/peer-chat/SKILL.md"
 RULE_PREPARE='prefix_rule(pattern=["peer-chat.py", "--prepare-message"], decision="allow")'
 RULE_SEND='prefix_rule(pattern=["peer-chat.py", "--to", "peer", "--message-file"], decision="allow")'
@@ -78,7 +79,8 @@ bin_copies() {
 	printf '%s\t%s\n' \
 		peer-chat.py "$SRC_SCRIPT" \
 		peer-chat-engine.py "$SRC_ENGINE" \
-		peer-chat-paste.py "$SRC_PASTE"
+		peer-chat-paste.py "$SRC_PASTE" \
+		peer_chat_core.py "$SRC_CORE"
 }
 
 # codex_plugin_enabled: config.toml has a [plugins."peer-chat@<marketplace>"] table with enabled = true.

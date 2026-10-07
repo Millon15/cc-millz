@@ -56,3 +56,11 @@ The agents read more keys from the same file:
 ## Prior art
 
 The pipeline started life as a project command and two subagents in a private monorepo; this plugin is the neutral extraction, with the project facts moved into `.plan.json`.
+
+## Codex
+
+Install the `plan` plugin from this repository's Codex marketplace, then invoke its **research** skill for a claim that needs evidence. The native adapter is at `skills/research/SKILL.md` and ships in the same plugin folder as the existing command, agent prompts and verifier; copy the complete `plugins/plan/` directory if packaging it standalone. Codex uses native `spawn_agent` for separate researcher and proover tasks, and `followup_task` for an existing child's corrections. The Claude `/plan:research` command, its `Agent` calls and its frontmatter permissions do not execute in Codex.
+
+In the target repository, Plan writes its research/proof bundle only under `tmp/a/<slug>/` (or the configured artifacts directory). The artifact's `<n>-proof.json` is the oracle; from that repository run `bash <installed-plan-plugin>/scripts/plan-research.sh --slug <slug> --verify <n>` to re-run it. Verifier exits: 0 match, 1 regression, 2 execution failure, 3 no usable contract. A verified run records the tree and contract hashes. This `--verify` path does not call Claude; the script's question-running and `--install` modes are Claude-specific and should not be used to launch the Codex workflow.
+
+The skill shares the `research` name with the Claude command. If Claude selects the skill, it follows the unchanged command body directly with its named Claude agents; it never recursively invokes `/plan:research`. In Codex, `Agent(...)` and Claude `allowed-tools` frontmatter are not executed or enforced. The native skill scopes each child and the parent to artifact-only writes and retains the current Codex tool/approval policy; do not assume every Codex run prompts for approval. The proover must call the real code with adversarial cases; source-reading alone is READ-ONLY, and a missing contract is INCONCLUSIVE.

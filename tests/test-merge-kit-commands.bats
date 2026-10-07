@@ -62,7 +62,10 @@ teardown() { teardown_tmp; }
 
 @test "merge-kit commands: the basenames resolve and verify are unique across every plugin" {
 	local dupes
-	dupes="$(cd "${REPO_ROOT}" && find plugins -path '*/commands/*' -name '*.md' -exec basename {} \; | sort | uniq -d)"
+	# Only merge-kit's own bare aliases are constrained here. Other plugins may
+	# intentionally share a basename under distinct namespaces (peer-chat:build
+	# and peer-chat-bg:build); that is not a merge-kit routing collision.
+	dupes="$(cd "${REPO_ROOT}" && find plugins -path '*/commands/*' \( -name 'resolve.md' -o -name 'verify.md' \) -exec basename {} \; | sort | uniq -d)"
 	[ -z "${dupes}" ] || {
 		printf 'duplicate command basenames across plugins: %s\n' "${dupes}" >&2
 		return 1
