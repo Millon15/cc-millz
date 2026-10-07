@@ -1,5 +1,18 @@
 # Changelog
 
+## peer-chat v0.6.4 - 2026-10-06
+
+### Fixed
+
+- `peer-chat.py` hands a send that carries `--slug` or `--queue` to `peer-chat-paste.py` with the same
+  arguments. Before, it rejected `--slug`, and a `--queue` note to a busy Codex peer failed after five
+  tries, because the one-line sender cannot type into a busy composer. `--prepare-message` still reserves
+  the spool name itself and ignores both flags.
+- `peer-chat-paste.py` takes `--queue` for a Codex peer. It reads the peer's screen again once the paste
+  shows up and presses Tab only if the peer is still working; an idle peer, one that finished meanwhile, or
+  an unreadable screen gets Return, so a note is never left sitting in the composer while the send reports
+  success. The skill's `--queue` example now uses this script.
+
 ## peer-chat v0.6.3 - 2026-10-06
 
 ### Fixed

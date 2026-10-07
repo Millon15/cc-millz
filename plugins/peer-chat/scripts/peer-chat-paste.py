@@ -19,6 +19,10 @@ consumed on read.
 
 Before the paste the send reads the peer's screen: a mid-turn peer (`turn_state` says `working`)
 gets a stderr warning that the send queues behind its current task, and the send proceeds.
+--queue (a codex recipient only) submits with Tab, which queues the note behind that task, but
+only when a second read, taken once the paste is confirmed, still shows `working`: a turn that
+ended during the paste wait, an idle or an unreadable screen gets Return, because a Tab that does
+not submit would leave the note in the composer while the send reports success.
 
 Guards, in order: the target pane runs a known peer harness; every new ask from the peer carries
 a disposition; after the paste the pane shows the message's last line (or the TUI's collapsed-paste
@@ -83,6 +87,8 @@ LEDGER_COLUMNS = (
     "question",
 )
 OPEN = ""
+RETURN_KEY = "\n"
+QUEUE_KEY = "\t"
 TURN_WORKING = "working"
 TURN_IDLE = "idle"
 TURN_UNKNOWN = "unknown"
@@ -449,11 +455,20 @@ def peer_turn(t: dict[str, Any], sid: str, profile: Any, window: str) -> str:
     return turn_state(screen, profile.agent)
 
 
-def warn_if_peer_mid_turn(
-    t: dict[str, Any], sid: str, profile: Any, window: str
-) -> None:
-    if peer_turn(t, sid, profile, window) == TURN_WORKING:
+def warn_if_mid_turn(turn: str) -> None:
+    if turn == TURN_WORKING:
         print(MID_TURN_WARNING, file=sys.stderr)
+
+
+def submit_key(
+    t: dict[str, Any], sid: str, profile: Any, window: str, queue: bool
+) -> str:
+    """--queue reads the peer again after the paste: Tab only while its turn runs, else Return."""
+    if not queue:
+        return profile.submit
+    return (
+        QUEUE_KEY if peer_turn(t, sid, profile, window) == TURN_WORKING else RETURN_KEY
+    )
 
 
 def clipboard_get() -> str | None:
@@ -495,7 +510,7 @@ def composer_empty_now(t: dict[str, Any], sid: str, profile: Any, window: str) -
 
 
 def paste_and_submit(
-    t: dict[str, Any], sid: str, profile: Any, window: str, message: str
+    t: dict[str, Any], sid: str, profile: Any, window: str, message: str, queue: bool
 ) -> int:
     t["ctl"](
         "session",
@@ -515,7 +530,7 @@ def paste_and_submit(
         )
         return 1
     time.sleep(PASTE_SETTLE)
-    t["type_text"](sid, profile, profile.submit, window)
+    t["type_text"](sid, profile, submit_key(t, sid, profile, window, queue), window)
     # Post-submit occupancy check disabled too: new suggestions/drafts are not failures.
     # if not wait_until(
     #     lambda: composer_empty_now(t, sid, profile, window), ACCEPT_TIMEOUT
@@ -529,12 +544,12 @@ def paste_and_submit(
 
 
 def deliver(
-    t: dict[str, Any], sid: str, profile: Any, window: str, message: str
+    t: dict[str, Any], sid: str, profile: Any, window: str, message: str, queue: bool
 ) -> int:
     saved = clipboard_get()
     clipboard_set(message)
     try:
-        return paste_and_submit(t, sid, profile, window, message)
+        return paste_and_submit(t, sid, profile, window, message, queue)
     finally:
         if saved is not None:
             try:
@@ -554,7 +569,7 @@ def report(message: str, plan: Plan) -> None:
 
 def send(t: dict[str, Any], args: argparse.Namespace, body: str) -> int:
     peer = t["resolve_peer"](
-        args.to, args.session, args.window, args.target_command, False
+        args.to, args.session, args.window, args.target_command, args.queue
     )
     profile, window, sid, sender = peer.profile, peer.window, peer.session, peer.sender
     # Occupancy preflight disabled by user request for both agents (2026-09-13).
@@ -570,8 +585,8 @@ def send(t: dict[str, Any], args: argparse.Namespace, body: str) -> int:
     for warning in plan.warnings:
         print(warning, file=sys.stderr)
     message = profile.label + plan.text
-    warn_if_peer_mid_turn(t, sid, profile, window)
-    status = deliver(t, sid, profile, window, message)
+    warn_if_mid_turn(peer_turn(t, sid, profile, window))
+    status = deliver(t, sid, profile, window, message, args.queue)
     if status != 0:
         return status
     if ledger is not None:
@@ -596,6 +611,12 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--window")
     parser.add_argument("--target-command")
     parser.add_argument("--slug", default=os.environ.get("PEER_CHAT_SLUG") or None)
+    parser.add_argument(
+        "--queue",
+        action="store_true",
+        help="codex recipient only: Tab queues the note behind a peer seen working; "
+        "an idle or unreadable peer gets Return",
+    )
     source = parser.add_mutually_exclusive_group(required=True)
     source.add_argument("--stdin", action="store_true")
     source.add_argument("--message-file")

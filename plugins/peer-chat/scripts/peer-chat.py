@@ -15,6 +15,11 @@ pairs all work in both directions.
 --to peer (the default) is the other pane; --to left|right names a slot; --to claude|codex is the
 legacy form and resolves to the one pane running that harness. The label is `Chat from <name>: `,
 where the name is PEER_CHAT_NAME (set by peer-chat-spawn.sh) or `<harness> (<pane>)`.
+
+A send carrying --slug or --queue is handed, argv unchanged, to the sibling peer-chat-paste.py:
+the ask ledger and the Tab queue live there, and this keystroke engine cannot type into the
+composer of a mid-turn Codex, the one screen --queue exists for. The spool reservation step,
+--prepare-message, sends nothing: it never hands off and ignores both flags.
 """
 
 from __future__ import annotations
@@ -28,12 +33,15 @@ import sys
 from dataclasses import dataclass
 from pathlib import Path
 from types import ModuleType
-from typing import Any
+from typing import Any, NoReturn
 
 HARNESSES = ("claude", "codex")
 PANES = ("left", "right")
 TARGETS = ("peer", *PANES, *HARNESSES)
 ENGINE_NAMES = ("vendor/peer-chat.py", "peer-chat-engine.py")
+PASTE_SCRIPT = "peer-chat-paste.py"
+PASTE_FLAGS = ("--slug", "--queue")
+PREPARE_FLAG = "--prepare-message"
 
 
 def load_engine() -> ModuleType:
@@ -187,7 +195,10 @@ def resolve_peer(
 
 
 def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
-    parser = argparse.ArgumentParser()
+    parser = argparse.ArgumentParser(
+        epilog=f"--slug and --queue hand the whole send, argv unchanged, to {PASTE_SCRIPT}; "
+        f"{PREPARE_FLAG} ignores both"
+    )
     parser.add_argument("--to", choices=TARGETS, default="peer")
     parser.add_argument("--session", type=engine.selector_argument)
     parser.add_argument("--window", type=engine.selector_argument)
@@ -197,16 +208,15 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         metavar="NAME",
         help="wrapper executable the recipient runs; needs --to claude|codex for its protocol",
     )
-    parser.add_argument(
-        "--queue",
-        action="store_true",
-        help="queue a message to a codex recipient with Tab instead of steering with Return",
-    )
     source = parser.add_mutually_exclusive_group(required=True)
     source.add_argument("--stdin", action="store_true")
     source.add_argument("--message-file", type=engine.message_name, metavar="NAME")
-    source.add_argument("--prepare-message", type=engine.message_name, metavar="NAME")
+    source.add_argument(PREPARE_FLAG, type=engine.message_name, metavar="NAME")
+    parser.add_argument("--slug", help=argparse.SUPPRESS)
+    parser.add_argument("--queue", action="store_true", help=argparse.SUPPRESS)
     args = parser.parse_args(argv)
+    if not args.prepare_message and (args.slug is not None or args.queue):
+        parser.error(f"spell --slug and --queue in full: either hands the send to {PASTE_SCRIPT}")
     if args.target_command and args.to not in HARNESSES:
         parser.error(
             "--target-command needs --to claude or --to codex to pick the protocol"
@@ -220,9 +230,7 @@ def run_main(progress: Any) -> int:
         path = engine.prepare_message(args.prepare_message)
         print(json.dumps({"messageFile": str(path)}))
         return 0
-    peer = resolve_peer(
-        args.to, args.session, args.window, args.target_command, args.queue
-    )
+    peer = resolve_peer(args.to, args.session, args.window, args.target_command, False)
     message = engine.read_message(args.stdin, args.message_file)
     sent = engine.send_with_retry(
         peer.session, peer.profile, message, peer.window, progress
@@ -232,7 +240,32 @@ def run_main(progress: Any) -> int:
     return 0
 
 
+def prepares_message(argv: list[str]) -> bool:
+    return any(arg == PREPARE_FLAG or arg.startswith(f"{PREPARE_FLAG}=") for arg in argv)
+
+
+def hands_to_paste(argv: list[str]) -> bool:
+    """A send carrying --slug or --queue; the spool reservation step sends nothing and stays here."""
+    if prepares_message(argv):
+        return False
+    return any(arg in PASTE_FLAGS or arg.startswith("--slug=") for arg in argv)
+
+
+def hand_to_paste(argv: list[str]) -> NoReturn:
+    """Replace this process with the sibling paste transport, resolving through this adapter."""
+    adapter = Path(__file__).resolve()
+    paste = adapter.parent / PASTE_SCRIPT
+    if not paste.is_file():
+        raise SystemExit(
+            f"peer-chat: {PASTE_SCRIPT} is missing beside peer-chat.py; run peer-chat-install.sh"
+        )
+    os.environ.setdefault("PEER_CHAT_TRANSPORT", str(adapter))
+    os.execv(sys.executable, [sys.executable, str(paste), *argv])
+
+
 def main() -> int:
+    if hands_to_paste(sys.argv[1:]):
+        hand_to_paste(sys.argv[1:])
     progress = engine.DeliveryProgress()
     try:
         return run_main(progress)

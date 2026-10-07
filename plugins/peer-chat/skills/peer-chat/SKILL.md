@@ -118,11 +118,11 @@ peer-chat-paste.py --to peer --message-file peer-chat-right-a91f.txt --slug <slu
 ```
 
 In the spool form, write no stdin, heredoc, redirection, variable or substitution into either
-command: the approval rules the installer wrote match these exact prefixes, and `--slug` goes
-after `--message-file` so they still match. Never put the message text in an argument. The send
-consumes the spool file on success; a failed send restores it. After a delivery-stage failure,
-inspect the peer screen before retrying because the text may already have arrived. A path is never
-consumed or restored.
+command: the approval rules the installer wrote match these exact prefixes, and `--slug` and
+`--queue` go after `--message-file` so they still match. Never put the message text in an
+argument. The send consumes the spool file on success; a failed send restores it. After a
+delivery-stage failure, inspect the peer screen before retrying because the text may already have
+arrived. A path is never consumed or restored.
 
 Before the paste, every form reads the peer's screen; a `working` peer gets one stderr line,
 `the peer is mid-turn; this send queues behind its current task`, and the send proceeds.
@@ -134,9 +134,10 @@ a new ask from the peer without a disposition (see Asks), puts the body in throu
 paste with the clipboard saved and restored around it, confirms the last line is visible in the
 pane, and sends the submit key. It ignores composer occupancy for both harnesses, does not erase an
 existing draft, and does not check that the composer cleared. Every refusal names the step;
-nothing is typed after a failed one. `peer-chat.py --to peer --stdin` is the one-line transport:
-it collapses all whitespace to single spaces, so use it only for a one-line note or a `--queue`
-send.
+nothing is typed after a failed one. `peer-chat.py` without `--slug` or `--queue` is the one-line
+keystroke transport: it collapses all whitespace to single spaces and refuses a composer it
+cannot read, a mid-turn Codex included, after 5 tries 10 s apart. Given either flag, it hands the
+send, arguments unchanged, to `peer-chat-paste.py`.
 
 Before typing, the script checks that the other pane runs a known harness, `claude` or `codex`,
 in what agterm reports for that pane, and picks that harness's composer protocol. A peer started
@@ -153,10 +154,12 @@ a fresh instruction from the user.
 
 A busy peer is not a reason to wait. The script submits with Return: Codex takes it as a steer or
 queues it, Claude Code puts it in its input queue. Add `--queue` only for an informational note to
-a Codex peer that needs no action before its current turn ends; it changes Return to Tab:
+a Codex peer that needs no action before its current turn ends. A peer whose screen still reads
+`working` once the paste lands gets Tab, which queues the note behind that turn; an idle or
+unreadable one gets Return, which submits it now. A Claude peer refuses `--queue`:
 
 ```bash
-peer-chat.py --to peer --queue --stdin <<'CHAT'
+peer-chat-paste.py --to peer --queue --slug <slug> --stdin <<'CHAT'
 the background check finished; no action is needed in this turn
 CHAT
 ```
@@ -197,8 +200,8 @@ There is no length cap. A thought takes as many lines as it needs, and every lin
 reasoning belongs here, not in a file: the user follows the argument in the pane and interrupts
 either side when a domain fact is wrong. `peer-chat-paste.py` keeps the line breaks and wraps a
 prose line at 50 columns on a word boundary (`PEER_CHAT_WRAP`), so write naturally; a `path:line`
-longer than that stays whole. `peer-chat.py` collapses a message to one line and is only for a
-one-line note or a `--queue` send.
+longer than that stays whole. `peer-chat.py` without `--slug` or `--queue` collapses a message
+to one line and is only for a one-line note.
 
 - `🎯` the claim, verdict or answer; `🎯 unproven:` when you could not check it
 - `🔎` the evidence: `path:line`, or a proof path from `tmp/a/<slug>/`

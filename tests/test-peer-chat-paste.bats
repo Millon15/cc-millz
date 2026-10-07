@@ -48,7 +48,10 @@ case "\$1 \$2" in
             submitted) cat "${TMP}/after-submit" 2>/dev/null || cat "${FIX}/codex-pane-empty.txt" ;;
             *) cat "${TMP}/composer" 2>/dev/null || cat "${FIX}/codex-pane-empty.txt" ;;
         esac ;;
-    "session paste") [ -f "${TMP}/paste-ignored" ] || printf 'pasted' > "${TMP}/state"; echo ok ;;
+    "session paste")
+        [ -f "${TMP}/paste-ignored" ] || printf 'pasted' > "${TMP}/state"
+        [ ! -f "${TMP}/composer-after-paste" ] || cp "${TMP}/composer-after-paste" "${TMP}/composer"
+        echo ok ;;
     "session type") cat >> "${TMP}/typed.log"; printf 'submitted' > "${TMP}/state"; echo ok ;;
     *) echo "stub: unexpected \$*" >&2; exit 9 ;;
 esac
@@ -250,6 +253,150 @@ PY
     assert_status 1
     assert_not_contains "${output}" "mid-turn"
     assert_not_contains "$(cat "${TMP}/calls.log")" "session text"
+}
+
+# ----------------------------------------------------------------- queue --
+
+codex_working_screen() {
+    printf '• Working (2m 30s • esc to interrupt)\n› Ask Codex to do anything\n  tab to queue message\n  80%% context left\n' > "${TMP}/composer"
+}
+
+typed_keys() { od -An -c "${TMP}/typed.log" | tr -d ' \n'; }
+
+@test "queue: --queue --slug to a working codex pastes and submits with Tab" {
+    codex_working_screen
+    printf '🎯 the background check finished\n' > "${TMP}/msg"
+    send_file "${TMP}/msg" --queue --slug seatos
+    assert_status 0
+    assert_contains "${output}" "queues behind its current task"
+    assert_contains "$(cat "${TMP}/calls.log")" "session paste --pane right --target ${SID}"
+    [ "$(typed_keys)" = '\t' ]
+}
+
+@test "queue: --queue to a codex screen that reads as unknown submits with Return" {
+    printf '1. Approve\n2. Deny\n' > "${TMP}/composer"
+    printf '🎯 the background check finished\n' > "${TMP}/msg"
+    send_file "${TMP}/msg" --queue
+    assert_status 0
+    assert_not_contains "${output}" "mid-turn"
+    [ "$(typed_keys)" = '\n' ]
+}
+
+@test "queue: a codex that ends its turn during the paste wait gets Return, read after the paste" {
+    codex_working_screen
+    printf '  Worked for 54s • 23:43\n\n› Ask Codex to do anything\n' > "${TMP}/composer-after-paste"
+    printf '🎯 the background check finished\n' > "${TMP}/msg"
+    send_file "${TMP}/msg" --queue
+    assert_status 0
+    assert_contains "${output}" "queues behind its current task"
+    [ "$(typed_keys)" = '\n' ]
+    [ "$(wc -l < "${TMP}/typed.log")" -eq 1 ]
+}
+
+@test "queue: --queue to an idle codex submits with Return" {
+    printf '  Worked for 54s • 23:43\n\n› Ask Codex to do anything\n' > "${TMP}/composer"
+    printf '🎯 the background check finished\n' > "${TMP}/msg"
+    send_file "${TMP}/msg" --queue
+    assert_status 0
+    [ "$(typed_keys)" = '\n' ]
+}
+
+@test "queue: --queue to a claude peer is refused, nothing pasted" {
+    cp "${FIX}/tree-pair-claude-claude.json" "${TMP}/tree.json"
+    printf '🎯 x\n' > "${TMP}/msg"
+    send_file "${TMP}/msg" --queue --slug seatos
+    assert_status 1
+    assert_contains "${output}" "--queue works only when the recipient runs codex"
+    assert_not_contains "$(cat "${TMP}/calls.log")" "session paste"
+    [ ! -f "${TMP}/typed.log" ]
+    [ "$(cat "${TMP}/clip")" = "user clipboard" ]
+}
+
+# --------------------------------------------------------------- handoff --
+
+@test "handoff: peer-chat.py --slug hands the send to the paste transport and its ledger" {
+    printf '🔎 Processor.php:23\n\n❓ does a retry create a second bid?\n' > "${TMP}/msg"
+    run python3 "${PLUGIN}/scripts/peer-chat.py" --to peer --slug seatos --stdin < "${TMP}/msg"
+    assert_status 0
+    assert_contains "${output}" '"asks": ["#left-001"]'
+    assert_contains "$(cat "${TMP}/calls.log")" "session paste --pane right --target ${SID}"
+    assert_contains "$(cat "${TMP}/${LEDGER}")" $'left-001\tleft\t'
+    assert_not_contains "${output}" "unrecognized arguments"
+}
+
+@test "handoff: peer-chat.py --queue --slug to a working codex delivers through paste with Tab" {
+    codex_working_screen
+    printf '🎯 the background check finished\n' > "${TMP}/msg"
+    run python3 "${PLUGIN}/scripts/peer-chat.py" --to peer --queue --slug seatos --stdin < "${TMP}/msg"
+    assert_status 0
+    assert_contains "$(cat "${TMP}/calls.log")" "session paste"
+    assert_not_contains "${output}" "not recognisable"
+    [ "$(typed_keys)" = '\t' ]
+}
+
+@test "handoff: peer-chat.py --queue with a path --message-file hands off, the path survives the adapter parser" {
+    codex_working_screen
+    mkdir -p "${TMP}/tmp/peer-chat/seatos"
+    printf '🎯 the finding, verbatim\n\n🔎 CLEAN=$(x) | grep -f <(y)\n' > "${TMP}/tmp/peer-chat/seatos/01.msg"
+    run python3 "${PLUGIN}/scripts/peer-chat.py" --to peer --queue --message-file tmp/peer-chat/seatos/01.msg --slug seatos
+    assert_status 0
+    assert_contains "$(cat "${TMP}/clip-first-set")" '🔎 CLEAN=$(x) | grep -f <(y)'
+    [ "$(typed_keys)" = '\t' ]
+    [ -f "${TMP}/tmp/peer-chat/seatos/01.msg" ]
+    assert_not_contains "${output}" "message file restored"
+}
+
+@test "handoff: --prepare-message ignores --queue and --slug, reserves the spool and pastes nothing" {
+    export TMPDIR="${TMP}"
+    run python3 "${PLUGIN}/scripts/peer-chat.py" --prepare-message peer-chat-left-q1aa.txt --queue
+    assert_status 0
+    assert_contains "${output}" '"messageFile"'
+    run python3 "${PLUGIN}/scripts/peer-chat.py" --prepare-message=peer-chat-left-q1ab.txt --slug seatos
+    assert_status 0
+    assert_contains "${output}" '"messageFile"'
+    assert_not_contains "$(cat "${TMP}/calls.log" 2>/dev/null)" "session paste"
+}
+
+@test "handoff: an abbreviated --slug is refused, never sent without its ledger" {
+    printf '🎯 x\n' > "${TMP}/msg"
+    run python3 "${PLUGIN}/scripts/peer-chat.py" --to peer --stdin --slu seatos < "${TMP}/msg"
+    assert_status 2
+    assert_contains "${output}" "spell --slug and --queue in full"
+    assert_not_contains "$(cat "${TMP}/calls.log" 2>/dev/null)" "session"
+}
+
+@test "handoff: peer-chat.py --slug=<topic> hands off like --slug <topic>" {
+    printf '🔎 Processor.php:23\n\n❓ is the 409 retried at all?\n' > "${TMP}/msg"
+    run python3 "${PLUGIN}/scripts/peer-chat.py" --to peer --slug=seatos --stdin < "${TMP}/msg"
+    assert_status 0
+    assert_contains "$(cat "${TMP}/${LEDGER}")" $'left-001\tleft\t'
+}
+
+@test "handoff: the paste transport resolves through the handing adapter, not a copy on PATH" {
+    unset PEER_CHAT_TRANSPORT
+    py="$(python3 -c 'import sys; print(sys.executable)')"
+    printf '🎯 x\n' > "${TMP}/msg"
+    PATH="${STUB_BIN}:/usr/bin:/bin" run "${py}" "${PLUGIN}/scripts/peer-chat.py" --to peer --slug seatos --stdin < "${TMP}/msg"
+    assert_status 0
+    assert_not_contains "${output}" "not on PATH"
+    assert_contains "$(cat "${TMP}/calls.log")" "session paste"
+}
+
+@test "handoff: PEER_CHAT_SLUG in the environment keeps peer-chat.py on its own transport" {
+    export TMPDIR="${TMP}"
+    PEER_CHAT_SLUG=seatos run python3 "${PLUGIN}/scripts/peer-chat.py" --prepare-message peer-chat-left-e4v1.txt
+    assert_status 0
+    assert_contains "${output}" '"messageFile"'
+}
+
+@test "handoff: peer-chat.py with no paste script beside it names the installer" {
+    cp "${PLUGIN}/scripts/peer-chat.py" "${TMP}/peer-chat.py"
+    cp "${PLUGIN}/scripts/vendor/peer-chat.py" "${TMP}/peer-chat-engine.py"
+    printf '🎯 x\n' > "${TMP}/msg"
+    run python3 "${TMP}/peer-chat.py" --to peer --slug seatos --stdin < "${TMP}/msg"
+    assert_status 1
+    assert_contains "${output}" "peer-chat-paste.py is missing beside peer-chat.py; run peer-chat-install.sh"
+    assert_not_contains "$(cat "${TMP}/calls.log" 2>/dev/null)" "session paste"
 }
 
 # ------------------------------------------------------------- path form --

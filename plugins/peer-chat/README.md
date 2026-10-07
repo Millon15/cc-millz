@@ -28,7 +28,7 @@ Two coding agents hold a conversation in one agterm split, each typing into the 
 |-----------|---------|-------------|
 | skill | `peer-chat` | 🗣️ one body for every harness: preflight, spawn, send, receive, organizing the work, manners |
 | command | `/peer-chat:build` | 🏗️ implement a proposed design with the peer: pin it to a file, two lanes with disjoint files and written contracts, explicit acceptance before edits, frozen review targets, every acceptance check recorded, commits under the project's policy |
-| script | `scripts/peer-chat.py` | 📨 the adapter: resolves the peer pane and its harness, labels the sender, hands delivery to the engine; one line |
+| script | `scripts/peer-chat.py` | 📨 the adapter: resolves the peer pane and its harness, labels the sender, hands delivery to the engine; one line; a send with `--slug` or `--queue` goes to the paste sender instead |
 | script | `scripts/vendor/peer-chat.py` | 🧱 the vendored engine: composer and caret checks, 197-byte marked events, submit confirmation |
 | script | `scripts/peer-chat-paste.py` | 📄 the multi-line send: resolves the peer, ignores composer occupancy, enforces the ask ledger (`--slug`), wraps prose, bracketed paste, confirms the tail, submits |
 | script | `scripts/peer-chat-spawn.sh` | 🪟 open the other pane and start any harness + model; falls back to the other harness when the requested one cannot start (`--fallback`, `--no-fallback`); `--restart` relaunches the peer after an update; `--explain` prints the resolved config |
@@ -51,7 +51,7 @@ Flags win, then env, then a committed `.peer-chat.json` at the repo root, then t
 
 `peer-chat.py` reads `AGTERM_PANE`, `AGTERM_SESSION_ID`, `AGTERM_WINDOW_ID`, `PEER_CHAT_NAME` (the sender name in the `Chat from <name>:` label; the spawn sets it for the peer) and the two `PEER_CHAT_*_COMMAND` variables. `--to peer` is the default target; `--to left|right` names a slot, and the legacy `--to claude|codex` resolves to the one pane running that harness.
 
-`peer-chat-paste.py` adds `--slug` (or `PEER_CHAT_SLUG`) for the ask ledger, `PEER_CHAT_WRAP` (default `50`, `0` disables the wrap) and `PEER_CHAT_DEFER_MINUTES` (default `20`, when a deferred ask turns overdue).
+`peer-chat-paste.py` adds `--slug` (or `PEER_CHAT_SLUG`) for the ask ledger, `--queue` (a Codex peer only: Tab when its screen still reads `working` after the paste, Return when idle or unreadable), `PEER_CHAT_WRAP` (default `50`, `0` disables the wrap) and `PEER_CHAT_DEFER_MINUTES` (default `20`, when a deferred ask turns overdue).
 
 ## Limits
 
