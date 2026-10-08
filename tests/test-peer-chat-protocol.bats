@@ -11,9 +11,9 @@ setup() {
 
 @test "background build: standalone skill names native lifecycle and does not invoke pane transport" {
     local skill="$REPO_ROOT/plugins/peer-chat-bg/skills/build/SKILL.md"
-    run rg 'peer-chat-bg:peer-chat|bounded native wait|frozen|incomplete' "$skill"
+    run grep -E 'peer-chat-bg:peer-chat|bounded native wait|frozen|incomplete' "$skill"
     [ "$status" -eq 0 ]
-    ! rg -q 'agtermctl|Skill\(skill="peer-chat:peer-chat"\)|other pane' "$skill"
+    ! grep -qE 'agtermctl|Skill\(skill="peer-chat:peer-chat"\)|other pane' "$skill"
 }
 
 @test "background peer: both requested Codex skills are independently packaged" {

@@ -1,5 +1,11 @@
 # Changelog
 
+## peer-chat-bg v0.1.1 - 2026-10-07
+
+### Fixed
+
+- Cancelled receipts require `--evidence FILE` like failed ones, including cancellation of an unsent draft.
+
 ## peer-chat-bg v0.1.0 - 2026-10-07
 
 - Add native background peer-chat and build workflows for Claude Code and Codex, without agterm.
