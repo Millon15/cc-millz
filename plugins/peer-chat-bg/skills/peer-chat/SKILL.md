@@ -95,7 +95,7 @@ result, or an `uncertain` result, may already have arrived: reconcile its ID wit
 before retrying. Never blindly resend, claim exactly-once delivery, or rebind a stale ID to
 a fresh child. If reconciliation is impossible, report the unresolved state and start a
 new explicitly identified run rather than forging acknowledgment. `failed`/`cancelled`
-records need an honest explanation; they do not silently erase outstanding questions.
+receipts require `--evidence FILE` with an honest explanation, including cancellation of an unsent draft; they do not silently erase outstanding questions.
 
 The helper validates protocol records; it cannot intercept a model calling native tools
 directly. Its receipts are evidence-backed records, not authentication or a sandbox boundary.

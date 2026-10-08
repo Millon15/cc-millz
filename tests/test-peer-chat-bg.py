@@ -73,6 +73,24 @@ class ProtocolTests(unittest.TestCase):
         return self.call("check", "--name", "suite", "--state", state, "--target", target or self.target,
                          "--evidence", str(self.proof), status=status)
 
+    def test_cancellation_requires_and_preserves_explanation(self):
+        import hashlib
+        message = self.prepare("Draft with a typo")
+        self.call("receipt", "--message-id", message["message_id"], "--state", "cancelled",
+                  "--actor-id", "parent-real-id", status=2)
+        result = self.receipt(message, "cancelled")
+        proof = result["receipts"][-1]["evidence"]
+        self.assertEqual(proof["sha256"], hashlib.sha256(self.proof.read_bytes()).hexdigest())
+        self.assertTrue(self.receipt(message, "cancelled")["replayed"])
+        self.proof.write_text("different explanation")
+        self.receipt(message, "cancelled", status=2)
+
+    def test_cancellation_cannot_erase_dispatched_questions(self):
+        message = self.prepare("❓ Already dispatched?")
+        self.receipt(message, "dispatching")
+        self.receipt(message, "cancelled", status=2)
+        self.assertEqual(len(self.call("status")["open_asks"]), 1)
+
     def test_round_trip_requires_answer_check_and_both_confirmations(self):
         ask = self.prepare("🔎 proof\n❓ Is it true?")
         self.deliver(ask)

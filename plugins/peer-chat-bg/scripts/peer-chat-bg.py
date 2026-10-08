@@ -333,7 +333,7 @@ def mutate(args, state, repo):
         role = actor_role(state, args.actor_id)
         desired = message["recipient"] if args.state in ("acknowledged", "answered") else message["sender"]
         require(role == desired, "receipt actor is not the " + desired + " peer")
-        proof = None if args.state in ("dispatching", "cancelled") else evidence(repo, args.evidence)
+        proof = None if args.state == "dispatching" else evidence(repo, args.evidence)
         matching = [receipt for receipt in message["receipts"] if receipt["state"] == args.state]
         if matching:
             require(any(receipt["actor_id"] == args.actor_id and receipt["evidence"] == proof

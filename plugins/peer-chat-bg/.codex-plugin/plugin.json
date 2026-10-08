@@ -1,6 +1,6 @@
 {
   "name": "peer-chat-bg",
-  "version": "0.1.0",
+  "version": "0.1.1+codex.20261008000718",
   "description": "Equal background coding peers in Claude Code and Codex, without agterm: durable questions and delivery receipts, shared build protocol, accepted file ownership, frozen cross-review targets and empirical acceptance checks. Native peers remain in their host runtime.",
   "author": {
     "name": "Millon15"
