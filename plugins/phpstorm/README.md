@@ -2,16 +2,22 @@
 
     /plugin install phpstorm@cc-millz
 
-Turns the PhpStorm MCP server into a first-class agent surface. Requires **PhpStorm 2026.2+** with its MCP server enabled.
+Uses PhpStorm MCP for inspections, refactoring, and Xdebug. Requires **PhpStorm 2026.2+** with its MCP server enabled.
 
 ## Components
 
 | Component | Trigger | Description |
 |-----------|---------|-------------|
-| skill | `phpstorm:phpstorm-mcp` | 🧭 Tool map for indexed code — `analyze_calls` call hierarchy over grep, symbol/structural search, inspections + quick fixes, refactoring, project metadata, IDE-backed SQL; covers the 2026.2 tool renames |
+| skill | `phpstorm:phpstorm-mcp` | 🧭 Code search through `rg` / `rg --files` via Bash; file reads through the harness file tool or `sed -n`; IDE inspections on demand and in review, quick fixes, rename refactoring, and project metadata |
 | skill | `phpstorm:phpstorm-debug` | 🐞 Live Xdebug loop — attach to externally-triggered PHP (Docker, CLI, HTTP), breakpoints with conditions, stack + frame values, expression evaluation, mid-flight state mutation; preflight checklist and the Xdebug features that silently do nothing |
 | command | `/phpstorm:setup-xdebug [service]` | 🩺 Get that loop working end-to-end — diagnose every check, walk the fixes that need a human in the IDE, re-verify until green, then prove it with one real pause. Extracted from a private monorepo. |
 | script | `scripts/xdebug-doctor.sh` | 🔍 The checks themselves, and the only place they live — IDE process and listening port, the two force-break flags, per service: container up, extension loaded, `client_host`/`client_port`, `PHP_IDE_CONFIG`, server entry, path mapping |
+
+Code search uses `rg` / `rg --files` via Bash, with the directory as a path argument.
+Read files with the harness's file tool (Claude: `Read`) or `sed -n`.
+Run inspections during review, on request, and before handing back non-trivial PHP changes the IDE indexes.
+Worktree findings may resolve against main-checkout classes; verify the checkout before acting on them.
+Xdebug uses `phpstorm:phpstorm-debug` after the project doctor passes, subject to the project debugger safeguards.
 
 ## The doctor
 

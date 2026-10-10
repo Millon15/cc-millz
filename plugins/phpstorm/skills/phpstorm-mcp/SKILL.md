@@ -1,99 +1,53 @@
 ---
 name: phpstorm-mcp
 description: >-
-  Use PhpStorm's MCP server as the primary surface for indexed code — symbol
-  lookup, call hierarchy, structural search, inspections, refactoring, project
-  metadata, and IDE-backed SQL. Use when navigating or editing code while
-  PhpStorm is running, when finding who calls a symbol, when validating an edit,
-  or when a `mcp__phpstorm__*` call returns an unknown-tool error.
+  Use PhpStorm's MCP server for inspections on demand or during review,
+  rename refactoring, and project metadata when the IDE is connected.
+  Use when reviewing a non-trivial PHP change or investigating an IDE finding.
 ---
 
 # PhpStorm MCP
 
-The IDE has already parsed, indexed, and type-resolved the project. Its answers are
-**resolved**, not matched — `analyze_calls` knows a caller from a comment mentioning
-the method, and `search_symbol` knows a declaration from a string literal. Prefer it
-over text tools for anything the index covers.
+Code search goes through `rg` / `rg --files` via Bash, with the directory as a
+path argument. Read files with the harness's file tool (Claude: `Read`) or
+`sed -n`. Search the checkout being investigated, including its worktree when applicable.
 
-Grep / Glob / Read stay correct for what the index does **not** cover: docs, logs,
-YAML, JSON, fixtures, lockfiles, and any file outside a content root.
+PhpStorm MCP, when connected, provides inspections on demand and in review,
+rename refactoring, and Xdebug through `phpstorm:phpstorm-debug` after the
+project's doctor passes. Use the project's debugger skill when one exists.
 
-## Tool map
+## Search and reads
+
+| Need | Command |
+| --- | --- |
+| Literal code or call sites | `rg -n -F -e '->method(' -e '::method(' <checkout>/<dir>` |
+| Files by name | `rg --files <checkout>/<dir> -g '*.php'` |
+| Read matching lines in context | `sed -n '20,80p' <checkout>/<path>` |
+
+Read each candidate's receiver and imports to establish its type. Dynamic
+dispatch needs manual reading; a matching name alone does not prove a caller.
+
+## Inspections and refactoring
 
 | Need | Tool |
 | --- | --- |
-| Where is this declared | `search_symbol(q, paths[])` |
-| Signature, PHPDoc, type | `get_symbol_info(filePath, line, column)` |
-| **Who calls this** | `analyze_calls(symbolFqn, "INCOMING_CALLS")` |
-| What does this call | `analyze_calls(symbolFqn, "OUTGOING_CALLS")` |
-| Code shape, not text | `search_structural(pattern, fileType)` |
-| Literal text | `search_text(q, paths[])` |
-| Regex | `search_regex(q, paths[])` |
-| File by glob | `search_file(q)` |
-| Problems in one file | `get_inspections(filePath, minSeverity)` |
-| Problems across files | `lint_files(files[], min_severity)` |
+| Problems in one file | `get_file_problems` or `get_inspections` |
+| Problems across files | `lint_files` |
 | Apply an offered fix | `apply_quick_fix` |
-| Rename everywhere | `rename_refactoring` |
+| Rename a symbol | `rename_refactoring` |
 | PHP version, interpreter, extensions | `get_php_project_config` |
-| Installed packages | `get_composer_dependencies(nameFilter)` |
-| Runnable entry points in a file | `get_run_configurations(filePath)` |
-| Toggle any IDE setting or action | `search_ide_actions(query)` → `invoke_ide_action(actionId)` |
+| Installed packages | `get_composer_dependencies` |
+| Find or invoke an IDE action | `search_ide_actions(query)` then `invoke_ide_action(actionId)` |
 
-Always pass `projectPath` — it removes an ambiguity round-trip on every call.
+Pass `projectPath` on IDE calls to identify the project.
 
-## Callers: use the hierarchy, not the haystack
+Run inspections during review, when a reviewer or user asks, and before handing
+back a non-trivial PHP change in a file the IDE indexes. Group changed files in
+one `lint_files` call when useful; inspections are not an after-every-edit step.
 
-`analyze_calls` is the single highest-value tool here and the easiest to forget.
-Grepping a method name returns definitions, doc mentions, same-named methods on
-unrelated classes, and string literals. `analyze_calls` returns the actual call
-graph, already resolved through inheritance and interfaces.
+Worktrees and temporary checkouts may resolve against classes in the IDE's main
+checkout. Check the reported file and class versions before treating a finding
+as evidence about another checkout.
 
-Pass a fully qualified name (`App\Service\Booking.refund`). Ambiguous? The error
-returns exact signatures — pass one back. Only know a fragment? `search_symbol`
-first. Page big trees with `treePath` + `childOffset` rather than raising `maxNodes`.
-
-## After every edit
-
-`get_inspections(filePath, minSeverity="WARNING")` — the same engine that draws the
-squiggles, including type errors a linter run from the shell will not catch. Editing
-several files? One `lint_files` call beats N inspection calls.
-
-Returned problems carry their available quick fixes; `apply_quick_fix` applies one
-without you rewriting the line by hand.
-
-## Search scoping
-
-`paths[]` takes project-relative globs and supports `!` excludes, so scope at the
-call instead of filtering results:
-
-```
-paths: ["src/**", "!**/tests/**"]
-```
-
-Trailing `/` expands to `**`. A pattern with no `/` becomes `**/pattern`.
-`search_symbol` searches project sources only — retry with `include_external=true`
-to reach vendor and SDK symbols.
-
-## Databases
-
-The IDE's configured connections are queryable directly: `list_database_connections`
-→ `execute_sql_query` → `fetch_query_result`, plus `introspect_schema`,
-`list_schema_objects`, `preview_table_data`, and `get_database_object_description`.
-
-Useful when the IDE already holds credentials a shell client would need re-supplied.
-For scripted or repeatable work a CLI client is still the better tool — this lane is
-for ad-hoc reads while reasoning about code.
-
-## Tool names changed in 2026.2
-
-Two names were replaced. Calling the old ones returns an unknown-tool error:
-
-| Removed | Use |
-| --- | --- |
-| `search_in_files_by_text(fileMask)` | `search_text(q, paths[])` |
-| `find_files_by_name_keyword` | `search_file(q)` |
-
-The `fileMask` string parameter is gone with them — scoping is the `paths[]` glob
-array described above.
-
-Debugging PHP at runtime is a separate surface — load `phpstorm:phpstorm-debug`.
+Debugging PHP at runtime uses `phpstorm:phpstorm-debug`; follow the project's
+doctor gate, listener policy, and breakpoint cleanup rules when provided.

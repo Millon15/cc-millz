@@ -1,5 +1,13 @@
 # Changelog
 
+## phpstorm v0.2.2 - 2026-10-10
+
+### Changed
+
+- `phpstorm-mcp` routes code search to `rg` / `rg --files` via Bash and keeps the IDE for inspections (on demand and in review), quick fixes, rename refactoring and project metadata. The tool map, the call-hierarchy section, the database section and the 2026.2 rename table are gone: the IDE's structural search lost to `rg` on every measured axis (no extra callers found, timeouts, silent empty results against unindexed worktrees).
+- Inspections are no longer an after-every-edit step: run them before handing back a non-trivial PHP change, and verify worktree findings against the checkout they describe.
+- Plugin, marketplace and README descriptions drop "code navigation" and "call hierarchy".
+
 ## peer-chat-bg v0.1.1 - 2026-10-07
 
 ### Fixed
