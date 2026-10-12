@@ -1,5 +1,24 @@
 # Changelog
 
+## unslop-kit v0.10.0 - 2026-10-11
+
+### Added
+
+- `cto-brief` skill: `human-brief`'s place in the pipeline, for a decider instead of a colleague. Exactly three
+  bullets of at most 12 words in fixed slots (what changed, why it matters with one number a decider weighs, the
+  ask with a deadline or "Nothing needed, FYI."), at most one link, no proof block. On `human-brief`'s own example
+  it cuts 44 words to 29.
+
+### Changed
+
+- `unslop-formatting` § Scope: a reply shaped by `cto-brief` takes passes 1 and 2 only and is its three bullets,
+  ready to paste.
+
+### Fixed
+
+- The marketplace description still named `pstack:unslop` as pass 1 and required `pstack@cc-millz`, both stale
+  since v0.8.0, and never mentioned `human-brief`.
+
 ## phpstorm v0.2.2 - 2026-10-10
 
 ### Changed

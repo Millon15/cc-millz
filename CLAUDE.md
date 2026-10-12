@@ -57,7 +57,7 @@ Millon15 personal Claude Code plugin marketplace — skills, agents, (future) ho
 - `plugins/security-audit/` — pre-adoption security audit of a repo, MCP server or package (1 command)
 - `plugins/statusline/` — two-line status line, self-installs into settings.json (1 SessionStart hook + scripts)
 - `plugins/toolsmith/` — agent dev-tool lifecycle (4 commands + 2 skills + scripts)
-- `plugins/unslop-kit/` — reply contract over a vendored pstack unslop (3 skills + 1 SessionStart hook + sync script)
+- `plugins/unslop-kit/` — reply contract over a vendored pstack unslop (4 skills + 1 SessionStart hook + sync script)
 - `plugins/video-reader/` — fetch, transcribe and read one video of any length from a URL or file (1 skill + script)
 
 ## Local Plugin Development
