@@ -21,9 +21,22 @@ Exactly three bullets, one sentence each, at most 12 words, in slot order. The b
 
 Write in the decider's words: product, customer, money, dates. Repo, service, class and PR names stay behind the
 message's links, with every proof, caveat and hedge. So does any fact that settles a doubt only the team had. Link
-every noun the decider may open, per `unslop-kit:human-brief` § Links: the ticket or doc that holds the detail, and the
-page where a record named in a bullet lives. URLs cost no words; labels count toward the 12. A slot 2 with no number yet states the scale in
+every noun the decider may open (§ Links). A slot 2 with no number yet states the scale in
 the decider's words ("every customer", "one country") and when the number lands.
+
+## Links
+
+A link saves the reader a search, so add the ones nobody asked for. Before the send-check, walk every noun and id in
+the bullets and ask "would the reader open this?"; yes means link it.
+
+| Noun | Link to |
+| --- | --- |
+| A record the reader will check or edit: an account, an order, a config entry | the admin page that opens it, deep-linked to the tab or anchor where they act |
+| A ticket, PR, commit, alert, thread, dashboard, log query, doc | its own page |
+| A code file | nothing in the bullets; a path is proof and stays behind the ticket or doc |
+
+A deep link not at hand gets built from the app's route; one that lands a click short still beats a bare id. A label
+counts toward the 12 words, its URL does not.
 
 ## Example
 
@@ -53,4 +66,5 @@ The staging fact left: it answered one commenter's doubt, and the decider never 
 - Each bullet one sentence of at most 12 words.
 - Slot 1 is an outcome; slot 2 carries a decider's number or scale; slot 3 is one ask with a deadline, or "Nothing
   needed, FYI."
-- Every noun the decider may open is a link (`human-brief` § Links); zero repo, service, class, method or PR names.
+- Every record, ticket, alert or page the decider may open is a link, deep-linked to where they act; no bare id.
+- Zero repo, service, class, method or PR names.

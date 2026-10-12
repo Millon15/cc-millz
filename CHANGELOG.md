@@ -1,5 +1,12 @@
 # Changelog
 
+## unslop-kit v0.11.1 - 2026-10-12
+
+### Changed
+
+- `cto-brief` carries the link rule itself in its own § Links (same table and accounting as `human-brief`, budget 12
+  words) instead of pointing at `human-brief`, so it runs with no other brief loaded.
+
 ## unslop-kit v0.11.0 - 2026-10-12
 
 ### Changed
