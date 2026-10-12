@@ -1,7 +1,7 @@
 {
   "name": "unslop-kit",
-  "version": "0.11.1",
-  "description": "Millon15's writing contract — unslop (pstack's 31-pattern AI-tell cutter, vendored and model-invocable), human-brief (headline plus at most 8 flat facts for a human colleague, proof in its own block), cto-brief (exactly three bullets for a decider: what changed, why it matters, the ask) and unslop-formatting (the figure-paragraph chat layout over unslop and umputun's writing-style). Personal taste — install at user scope.",
+  "version": "0.12.0",
+  "description": "Millon15's writing contract — unslop (pstack's 31-pattern AI-tell cutter, vendored and model-invocable), human-brief (headline, a decision block of decided / why it matters / need from you / by when / risk if wrong, then at most 8 flat facts for a human colleague, proof in its own block), cto-brief (five bullets for a decider with the same labels) and unslop-formatting (the figure-paragraph chat layout over unslop and umputun's writing-style). Personal taste — install at user scope.",
   "author": {
     "name": "Millon15"
   },

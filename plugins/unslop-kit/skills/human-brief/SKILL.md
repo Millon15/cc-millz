@@ -1,6 +1,6 @@
 ---
 name: human-brief
-description: Shape a message for a human colleague as a headline plus flat facts, with any proof in its own block after them. Use before any Slack, Jira or Linear body, a handoff or status message to a person, or a brief for another agent that will draft one; on "for humans", "too much text", "facts only", "one by one", "state it, don't prove it", "add links". A project outbound skill loads it as its shape step, after the cut and before the reword.
+description: Shape a message for a human colleague as a headline, a decision block (decided, why it matters, what you need, by when, risk if wrong) and flat facts, with any proof in its own block after them. Use before any Slack, Jira or Linear body, a handoff or status message to a person, or a brief for another agent that will draft one; on "for humans", "too much text", "facts only", "one by one", "state it, don't prove it", "add links", "what do you need from me". A project outbound skill loads it as its shape step, after the cut and before the reword.
 ---
 
 # human-brief
@@ -13,11 +13,25 @@ instead of conclude. Run it after the cut and before `unslop-kit:unslop` and `re
 
 | Layer | Budget |
 | --- | --- |
-| Headline | 1-2 lines, the conclusion or the ask, first |
-| Facts | at most 8 bullets, at most 15 words each, one fact per bullet, one list level |
+| Headline | 1-2 lines, the conclusion, first |
+| Decision block | right under the headline, one bullet per line below, bold label first, at most 15 words after it |
+| Facts | after a bold label line, at most 8 bullets, at most 15 words each, one fact per bullet, one list level |
 | Context | at most 1 clause inside a bullet when a human needs it: the job's name, who, when |
 | Links | on every noun the reader may open, several per bullet when it names several (§ Links) |
 | Proof block | optional, after the facts, heading "How to verify", fenced commands with the expected result |
+
+The decision block, in this order:
+
+| Label | Carries |
+| --- | --- |
+| **Decided:** | the decision made, or the one you ask the reader to make |
+| **Why it matters:** | one number or scale the reader weighs: money, customers, %, a date, person-days |
+| **Need from you:** | `@person`, then the ask, verb first, with the options when there is a choice; or "nothing, FYI" |
+| **By:** | the date, and what happens with no reply |
+| **Risk if wrong:** | what breaks, costs or slips if the decision turns out wrong, with a number or scale |
+
+An FYI ends the block at "**Need from you:** nothing, FYI." A message with no decision in play drops the Decided
+line. The facts follow under their own bold label line ("**What we know**"), so the two lists never merge.
 
 A bullet states a fact; it never proves one. Proof means file paths, `tmp/` artifacts, method and class names,
 queries, timings, cohort caveats and hedges ("does not establish", "may indicate"). Each moves to the proof block or
@@ -44,23 +58,32 @@ hosts and `OrderNotificationMessage`, not evidence of a PROD consumer failure. T
 through the shared hook, queue and consumer path during the gap. The count covers orders created from 12:48 UTC
 through 11:03 UTC; it does not establish zero webhook events processed during that period."
 
-AFTER, 3 bullets:
+AFTER, the headline, the decision block, then 3 facts:
 
 ```markdown
-The evidence rules out a total webhook-consumer outage; the provider-specific failure stays open, tracked in [ABC-457](url).
+The evidence rules out a total webhook-consumer outage; the provider-specific failure stays open.
 
+- **Decided:** the order-expiry job stays off until the fix in [ABC-457](url) ships.
+- **Why it matters:** [63 paid orders](url) are stuck pending while the provider holds the money.
+- **Need from you:** @dev, take the fix in [ABC-457](url).
+- **By:** Friday; with no reply, the job stays off another week.
+- **Risk if wrong:** truly unpaid orders stop expiring too and keep holding seats.
+
+**What we know**
 - [Error 6a981e7b](url) is from staging, not PROD.
 - The [second provider's webhooks](url) kept working during the gap.
 - No webhook was applied to [orders created between 12:48 and 11:03 UTC](url).
 ```
 
-Nobody asked for the last two links: one opens the provider's webhook dashboard, the other the order list already
-filtered to the window, the two pages the reader would otherwise go looking for.
+Nobody asked for the links on the last two facts: one opens the provider's webhook dashboard, the other the order
+list already filtered to the window, the two pages the reader would otherwise go looking for.
 
 ## Send-check
 
-- Headline first, conclusion or ask.
-- At most 8 bullets, one level, none over 15 words.
+- Headline first, the conclusion.
+- Decision block next, labels in table order; an FYI ends at "nothing, FYI"; each line at most 15 words.
+- An ask names a person and a date; Risk if wrong does not restate Why it matters.
+- At most 8 fact bullets under their own label line, one level, none over 15 words.
 - Every record, ticket, alert or page the reader may open is a link, deep-linked to where they act; no bare id.
 - No path, method name, query, timing, caveat or hedge above the proof block.
 - Proof block present only when the reader asked how to verify; the message reads without it.

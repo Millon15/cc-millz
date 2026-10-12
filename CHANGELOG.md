@@ -1,5 +1,16 @@
 # Changelog
 
+## unslop-kit v0.12.0 - 2026-10-12
+
+### Changed
+
+- `human-brief` opens with the conclusion, then a decision block of five labeled lines: Decided, Why it matters,
+  Need from you (`@person` and a verb-first ask), By (the date and what happens with no reply) and Risk if wrong.
+  An FYI stops at "Need from you: nothing, FYI"; the facts follow under their own label line.
+- `cto-brief` grows from three bullets to five with the same labels, at most 12 words each after the label; an FYI
+  stays at three. Slot 5 must name a different cost than slot 2.
+- `unslop-formatting` § Scope no longer counts cto-brief's bullets.
+
 ## unslop-kit v0.11.1 - 2026-10-12
 
 ### Changed

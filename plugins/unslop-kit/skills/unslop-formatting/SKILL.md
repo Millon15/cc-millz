@@ -125,7 +125,7 @@ Every table, fence and visual sits at column zero with a blank line on each side
 
 ## Scope
 
-Chat replies get all three passes. A reply the user asked to shape with `unslop-kit:cto-brief` gets passes 1 and 2 only: its three bullets are the whole reply, ready to paste, after the English Check block when one is active. Commit messages, PR bodies, code comments, docs, Slack, Jira and Linear bodies get passes 1 and 2 only, without the pass-3 overrides; `essentials:concise-writing` and the project's outbound skill own their layout. A project's outbound skill is such an orchestrator when it calls `unslop-kit:unslop`, `review:writing-style` and `essentials:concise-writing` itself and ranks writing-style above unslop on conflict, the same ranking as here; this skill is not in that chain.
+Chat replies get all three passes. A reply the user asked to shape with `unslop-kit:cto-brief` gets passes 1 and 2 only: its labeled bullets are the whole reply, ready to paste, after the English Check block when one is active. Commit messages, PR bodies, code comments, docs, Slack, Jira and Linear bodies get passes 1 and 2 only, without the pass-3 overrides; `essentials:concise-writing` and the project's outbound skill own their layout. A project's outbound skill is such an orchestrator when it calls `unslop-kit:unslop`, `review:writing-style` and `essentials:concise-writing` itself and ranks writing-style above unslop on conflict, the same ranking as here; this skill is not in that chain.
 
 ## Send-check
 
