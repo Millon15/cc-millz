@@ -1,5 +1,14 @@
 # Changelog
 
+## unslop-kit v0.11.0 - 2026-10-12
+
+### Changed
+
+- `human-brief` links every noun the reader may open, several per bullet, and adds the links nobody asked for: a
+  record the reader will check or edit gets a deep link to the admin page and tab where they act. New § Links holds
+  the rule; a label counts toward the 15 words, its URL does not. The example shows two such unasked links.
+- `cto-brief` drops its one-link cap and follows `human-brief` § Links; URLs cost no words.
+
 ## unslop-kit v0.10.0 - 2026-10-11
 
 ### Added

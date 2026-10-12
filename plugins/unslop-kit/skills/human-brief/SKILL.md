@@ -1,6 +1,6 @@
 ---
 name: human-brief
-description: Shape a message for a human colleague as a headline plus flat facts, with any proof in its own block after them. Use before any Slack, Jira or Linear body, a handoff or status message to a person, or a brief for another agent that will draft one; on "for humans", "too much text", "facts only", "one by one", "state it, don't prove it". A project outbound skill loads it as its shape step, after the cut and before the reword.
+description: Shape a message for a human colleague as a headline plus flat facts, with any proof in its own block after them. Use before any Slack, Jira or Linear body, a handoff or status message to a person, or a brief for another agent that will draft one; on "for humans", "too much text", "facts only", "one by one", "state it, don't prove it", "add links". A project outbound skill loads it as its shape step, after the cut and before the reword.
 ---
 
 # human-brief
@@ -16,12 +16,26 @@ instead of conclude. Run it after the cut and before `unslop-kit:unslop` and `re
 | Headline | 1-2 lines, the conclusion or the ask, first |
 | Facts | at most 8 bullets, at most 15 words each, one fact per bullet, one list level |
 | Context | at most 1 clause inside a bullet when a human needs it: the job's name, who, when |
-| Links | at most 1 per bullet, on the noun that has a URL |
+| Links | on every noun the reader may open, several per bullet when it names several (§ Links) |
 | Proof block | optional, after the facts, heading "How to verify", fenced commands with the expected result |
 
 A bullet states a fact; it never proves one. Proof means file paths, `tmp/` artifacts, method and class names,
 queries, timings, cohort caveats and hedges ("does not establish", "may indicate"). Each moves to the proof block or
 the ticket. Add the proof block only when the reader asked how to verify, and the facts read without it.
+
+## Links
+
+A link saves the reader a search, so add the ones nobody asked for. Before the send-check, walk every noun and id in
+the message and ask "would the reader open this?"; yes means link it.
+
+| Noun | Link to |
+| --- | --- |
+| A record the reader will check or edit: an account, an order, a config entry | the admin page that opens it, deep-linked to the tab or anchor where they act |
+| A ticket, PR, commit, alert, thread, dashboard, log query, doc | its own page |
+| A code file | nothing in the facts; a path is proof and goes to the proof block |
+
+A deep link not at hand gets built from the app's route; one that lands a click short still beats a bare id. A label
+counts toward the 15 words, its URL does not.
 
 ## Example
 
@@ -36,13 +50,17 @@ AFTER, 3 bullets:
 The evidence rules out a total webhook-consumer outage; the provider-specific failure stays open, tracked in [ABC-457](url).
 
 - [Error 6a981e7b](url) is from staging, not PROD.
-- The second provider's webhooks kept working during the gap.
-- No webhook was applied to orders created between 12:48 and 11:03 UTC.
+- The [second provider's webhooks](url) kept working during the gap.
+- No webhook was applied to [orders created between 12:48 and 11:03 UTC](url).
 ```
+
+Nobody asked for the last two links: one opens the provider's webhook dashboard, the other the order list already
+filtered to the window, the two pages the reader would otherwise go looking for.
 
 ## Send-check
 
 - Headline first, conclusion or ask.
-- At most 8 bullets, one level, none over 15 words, at most one link each.
+- At most 8 bullets, one level, none over 15 words.
+- Every record, ticket, alert or page the reader may open is a link, deep-linked to where they act; no bare id.
 - No path, method name, query, timing, caveat or hedge above the proof block.
 - Proof block present only when the reader asked how to verify; the message reads without it.

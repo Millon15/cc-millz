@@ -20,8 +20,9 @@ Exactly three bullets, one sentence each, at most 12 words, in slot order. The b
 | 3 Ask | verb first, the options, a deadline, what happens with no reply; or "Nothing needed, FYI." | it holds two asks, or an ask with no deadline |
 
 Write in the decider's words: product, customer, money, dates. Repo, service, class and PR names stay behind the
-message's one link, with every proof, caveat and hedge. So does any fact that settles a doubt only the team had. Put
-the link on the noun that opens the detail, the ticket or the doc. A slot 2 with no number yet states the scale in
+message's links, with every proof, caveat and hedge. So does any fact that settles a doubt only the team had. Link
+every noun the decider may open, per `unslop-kit:human-brief` § Links: the ticket or doc that holds the detail, and the
+page where a record named in a bullet lives. URLs cost no words; labels count toward the 12. A slot 2 with no number yet states the scale in
 the decider's words ("every customer", "one country") and when the number lands.
 
 ## Example
@@ -32,7 +33,7 @@ error came from staging, the second provider kept working, no webhook applied be
 AFTER, 29 words:
 
 ```markdown
-- Webhooks stayed up; only one payment provider's callbacks failed.
+- Webhooks stayed up; only [one payment provider's callbacks](url) failed.
 - Orders paid in a 22-hour window missed their status update.
 - Nothing needed from you; the fix is tracked in [ABC-457](url).
 ```
@@ -43,7 +44,7 @@ The staging fact left: it answered one commenter's doubt, and the decider never 
 
 | Surface | Output |
 | --- | --- |
-| A send (Slack, ticket, email) | the three bullets alone; the outbound skill adds its one link and no figure, proof block or headline |
+| A send (Slack, ticket, email) | the three bullets alone; the outbound skill adds its links and no figure, proof block or headline |
 | Chat, "cto-brief this" | the three bullets alone, ready to paste (`unslop-kit:unslop-formatting` § Scope) |
 
 ## Send-check
@@ -52,4 +53,4 @@ The staging fact left: it answered one commenter's doubt, and the decider never 
 - Each bullet one sentence of at most 12 words.
 - Slot 1 is an outcome; slot 2 carries a decider's number or scale; slot 3 is one ask with a deadline, or "Nothing
   needed, FYI."
-- At most one link; zero repo, service, class, method or PR names.
+- Every noun the decider may open is a link (`human-brief` § Links); zero repo, service, class, method or PR names.
