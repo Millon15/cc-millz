@@ -4,7 +4,7 @@ setup() {
     REPO_ROOT="$(cd "${BATS_TEST_DIRNAME}/.." && pwd)"
 }
 
-@test "shared build: generated commands and Codex skills match canonical protocol" {
+@test "shared build: generated build skills match canonical protocol" {
     run python3 "$REPO_ROOT/scripts/sync-peer-chat-protocol.py" --check
     [ "$status" -eq 0 ]
 }

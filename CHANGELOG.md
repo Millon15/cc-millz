@@ -1,5 +1,17 @@
 # Changelog
 
+## peer-chat v0.7.2 - 2026-10-13
+
+### Fixed
+
+- `/peer-chat:build` shows once in the slash menu: the same-named command is gone, the skill carries its argument hint, user-only invocation and model.
+
+## peer-chat-bg v0.1.2 - 2026-10-13
+
+### Fixed
+
+- `/peer-chat-bg:build` shows once in the slash menu: the same-named command is gone, the skill carries its argument hint, user-only invocation and model.
+
 ## peer-chat v0.7.1 - 2026-10-13
 
 ### Fixed

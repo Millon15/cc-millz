@@ -1,6 +1,9 @@
 ---
 name: build
 description: Implement an agreed design with a peer through accepted lanes, frozen cross-review targets and recorded QA.
+argument-hint: "[<design file | ticket url or key>] [--slug <topic>] [--peer <harness[:model]>]"
+disable-model-invocation: true
+model: opus
 ---
 <!-- Generated from shared/peer-chat/build.md; edit the source and run scripts/sync-peer-chat-protocol.py. -->
 

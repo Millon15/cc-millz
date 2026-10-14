@@ -5,11 +5,11 @@ setup() {
     # shellcheck source=/dev/null
     source "${REPO_ROOT}/tests/helpers/common.bash"
     PLUGIN="${REPO_ROOT}/plugins/peer-chat"
-    COMMAND="${PLUGIN}/commands/build.md"
+    COMMAND="${PLUGIN}/skills/build/SKILL.md"
     body="$(cat "${COMMAND}")"
 }
 
-@test "peer-chat build: command requires user invocation and loads the peer-chat engine" {
+@test "peer-chat build: skill requires user invocation and loads the peer-chat engine" {
     frontmatter="$(sed -n '2,/^---$/p' "${COMMAND}" | sed '/^---$/q')"
     assert_contains "${frontmatter}" "disable-model-invocation: true"
     assert_contains "${body}" 'Skill(skill="peer-chat:peer-chat")'
@@ -46,4 +46,13 @@ setup() {
     assert_contains "${skill}" 'Retain these explicit'
     assert_contains "${skill}" 'no pair or multiple pairs match'
     assert_not_contains "${skill}" 'If a send refuses because the session cannot be found, stop'
+}
+
+@test "peer-chat build: ships as one skill per plugin, no same-named command" {
+    for plugin in peer-chat peer-chat-bg; do
+        [ ! -e "${REPO_ROOT}/plugins/${plugin}/commands/build.md" ]
+        skill="$(cat "${REPO_ROOT}/plugins/${plugin}/skills/build/SKILL.md")"
+        assert_contains "${skill}" "argument-hint:"
+        assert_contains "${skill}" "disable-model-invocation: true"
+    done
 }
