@@ -84,6 +84,7 @@ def resolve_config(args):
     specs += [(f'{name}_command', f'PEER_CHAT_{name.upper()}_COMMAND', name, None)
               for name in ('claude', 'codex')]
     specs += [('peer_args', 'PEER_CHAT_PEER_ARGS', [], None),
+              ('codex_mode', 'PEER_CHAT_CODEX_MODE', 'embedded', None),
               ('start_timeout', 'PEER_CHAT_START_TIMEOUT', 30, None)]
     for key, env, default, cli in specs:
         values[key], sources[key] = resolve_value(profile, key, env, default, cli)
@@ -123,6 +124,8 @@ def valid_text(value):
 def validate_config(values):
     if values['peer_harness'] not in ('claude', 'codex'):
         raise Failure('peer_harness must be claude or codex', 2)
+    if values['codex_mode'] not in ('embedded', 'daemon'):
+        raise Failure('codex_mode must be embedded or daemon', 2)
     model = values['peer_model']
     if model is not None and (not valid_text(model) or model.startswith('-')):
         raise Failure('peer_model must be a nonempty model name', 2)
@@ -308,10 +311,12 @@ def has_option(argv, option, short=None):
 
 def codex_daemon_args(values):
     argv = values['peer_args']
+    if has_option(argv, '--remote'):
+        raise Failure('peer-chat selects the Codex runtime; remove --remote from peer_args', 2)
     if '--no-daemon' in argv:
         return []
-    if has_option(argv, '--remote'):
-        raise Failure('peer-chat selects the local Codex daemon; remove --remote from peer_args', 2)
+    if values['codex_mode'] == 'embedded':
+        return ['--no-daemon']
     if (has_option(argv, '--profile', '-p') or '--oss' in argv
             or '--strict-config' in argv or '--dangerously-bypass-hook-trust' in argv):
         raise Failure('these Codex options need local config processing; add --no-daemon to peer_args', 2)

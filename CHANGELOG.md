@@ -1,5 +1,12 @@
 # Changelog
 
+## peer-chat v0.7.1 - 2026-10-13
+
+### Fixed
+
+- Codex peers now default to embedded mode with `--no-daemon`, even with custom launch arguments.
+- Shared local daemon mode requires `codex_mode: "daemon"` or `PEER_CHAT_CODEX_MODE=daemon`.
+
 ## unslop-kit v0.12.0 - 2026-10-12
 
 ### Changed

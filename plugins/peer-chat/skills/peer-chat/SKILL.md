@@ -58,9 +58,10 @@ the peer is mid-turn on something that is not your message, and stderr says so. 
 line ("peer busy, mid-turn on its current task"), send anyway if the ask can wait, and expect the
 reply after that turn ends rather than on your usual clock. Never wait for it and never `--restart`
 on your own: replacing a working peer discards its task, and only the user decides that.
-Codex starts the local daemon if needed and connects to its Unix socket explicitly. Pane context
-stays in per-thread configuration; the launch also passes the caller's working directory. Add
-`"--no-daemon"` to `peer_args` for embedded mode, including when using `--profile` or an older CLI.
+Codex defaults to embedded mode with `--no-daemon`. Pane context stays in per-thread configuration.
+Set `codex_mode` to `daemon` in `.peer-chat.json`, or `PEER_CHAT_CODEX_MODE=daemon`, to start and
+connect to the shared local daemon. Explicit `"--no-daemon"` in `peer_args` keeps embedded mode.
+Use embedded mode for `--profile`, `--oss`, `--strict-config` and `--dangerously-bypass-hook-trust`.
 When the requested harness cannot start, the script falls back on its own to the other harness
 (`claude:fable` for a Codex request, `codex` on `gpt-6-astra` for a Claude request; `--fallback
 <harness[:model]>`, `PEER_CHAT_PEER_FALLBACK` or `peer_fallback` change it, `--no-fallback` turns it

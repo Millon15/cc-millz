@@ -11,6 +11,7 @@ setup() {
     export PEER_CHAT_START_TIMEOUT=1 PEER_CHAT_QUIT_SETTLE=0.2
     export CLAUDE_CONFIG_DIR="$TMP/claude"
     export CODEX_HOME="$TMP/codex home"
+    unset PEER_CHAT_CODEX_MODE
     unset PEER_CHAT_PEER_HARNESS PEER_CHAT_PEER_MODEL PEER_CHAT_PEER_ARGS
     unset PEER_CHAT_CODEX_ARGS PEER_CHAT_CODEX_COMMAND PEER_CHAT_CLAUDE_COMMAND
     stub codex 'printf "%s\n" "$*" >> "$TMP/daemon-calls.txt"'
@@ -126,6 +127,9 @@ assert_launch_arg() {
     assert_launch_arg codex
     assert_launch_arg --model
     assert_launch_arg gpt-6-astra
+    assert_launch_arg --no-daemon
+    jq -e 'index("--remote") == null' "$TMP/launch.json" >/dev/null
+    [ ! -e "$TMP/daemon-calls.txt" ]
     assert_contains "$(cat "$TMP/calls.jsonl")" '"session", "split", "on"'
     assert_contains "$(cat "$TMP/calls.jsonl")" "\"--window\", \"$WID\""
 }
@@ -141,20 +145,24 @@ assert_launch_arg() {
     assert_launch_arg 'shell_environment_policy.set.AGTERM_ENABLED="1"'
     assert_launch_arg 'shell_environment_policy.set.PEER_CHAT_NAME="codex gpt-6-astra"'
     assert_launch_arg 'shell_environment_policy.set.PEER_CHAT_CODEX_COMMAND="codex-wrapper"'
+    assert_launch_arg --no-daemon
+    [ ! -e "$TMP/daemon-calls.txt" ]
+}
+
+@test "spawn: starts the local daemon without applying pane overrides globally" {
+    export PEER_CHAT_CODEX_MODE=daemon
+    run bash "$SPAWN"
+    assert_status 0
+    [ "$(cat "$TMP/daemon-calls.txt")" = 'app-server daemon start' ]
     assert_launch_arg --remote
     assert_launch_arg "unix://$CODEX_HOME/app-server-control/app-server-control.sock"
     assert_launch_arg --cd
     assert_launch_arg "$(pwd -P)"
-}
-
-@test "spawn: starts the local daemon without applying pane overrides globally" {
-    run bash "$SPAWN"
-    assert_status 0
-    [ "$(cat "$TMP/daemon-calls.txt")" = 'app-server daemon start' ]
     jq -e 'index("--no-daemon") == null' "$TMP/launch.json" >/dev/null
 }
 
 @test "spawn: an explicit working directory survives daemon mode" {
+    export PEER_CHAT_CODEX_MODE=daemon
     PEER_CHAT_PEER_ARGS='["--cd", "/tmp/peer project"]' run bash "$SPAWN"
     assert_status 0
     [ "$(jq '[.[] | select(. == "--cd")] | length' "$TMP/launch.json")" = 1 ]
@@ -162,15 +170,18 @@ assert_launch_arg() {
 }
 
 @test "spawn: --no-daemon preserves embedded mode without starting the server" {
+    export PEER_CHAT_CODEX_MODE=daemon
     PEER_CHAT_PEER_ARGS='["--no-daemon"]' run bash "$SPAWN"
     assert_status 0
     assert_launch_arg --no-daemon
+    [ "$(jq '[.[] | select(. == "--no-daemon")] | length' "$TMP/launch.json")" = 1 ]
     assert_launch_arg 'shell_environment_policy.set.AGTERM_PANE="right"'
     jq -e 'index("--remote") == null' "$TMP/launch.json" >/dev/null
     [ ! -e "$TMP/daemon-calls.txt" ]
 }
 
 @test "spawn: daemon startup failure falls back once or fails before touching the peer" {
+    export PEER_CHAT_CODEX_MODE=daemon
     stub codex 'echo "daemon unavailable" >&2; exit 1'
     run bash "$SPAWN" --no-fallback
     assert_status 1
@@ -183,6 +194,7 @@ assert_launch_arg() {
 }
 
 @test "spawn: daemon startup timeout fails before replacing an existing peer" {
+    export PEER_CHAT_CODEX_MODE=daemon
     stub codex 'exec sleep 3'
     set_pair claude codex
     run bash "$SPAWN" --restart --no-fallback
@@ -192,6 +204,7 @@ assert_launch_arg() {
 }
 
 @test "spawn: daemon mode refuses remote endpoints and ignored client options" {
+    export PEER_CHAT_CODEX_MODE=daemon
     for argv in '["--remote=ws://example.invalid"]' '["--profile", "review"]' \
         '["-preview"]' '["--strict-config"]' '["--oss"]'; do
         PEER_CHAT_PEER_ARGS="$argv" run bash "$SPAWN"
@@ -205,6 +218,7 @@ assert_launch_arg() {
     run bash "$SPAWN" claude:fable
     assert_status 0
     assert_launch_arg env
+    jq -e 'index("--no-daemon") == null' "$TMP/launch.json" >/dev/null
     assert_launch_arg "AGTERM_SESSION_ID=$SID"
     assert_launch_arg "AGTERM_WINDOW_ID=$WID"
     assert_launch_arg AGTERM_PANE=right
@@ -467,6 +481,8 @@ assert_launch_arg() {
     assert_status 0
     assert_explain_complete "$output"
     assert_explain_source "$output" peer_harness default
+    assert_explain_source "$output" codex_mode default
+    [ "$(printf '%s' "$output" | jq -r .values.codex_mode)" = embedded ]
     assert_explain_source "$output" peer_model default
     [ "$(printf '%s' "$output" | jq -r '.values.peer_model')" = gpt-6-astra ]
     [ "$(printf '%s' "$output" | jq -r '.values.start_timeout')" = 30 ]
@@ -499,7 +515,7 @@ assert_launch_arg() {
 
 @test "config: invalid harness, arguments, model and profile are rejected before terminal IO" {
     unset PEER_CHAT_START_TIMEOUT
-    for config in '{"peer_harness":"other"}' '{"peer_args":"--verbose"}' \
+    for config in '{"codex_mode":"other"}' '{"peer_harness":"other"}' '{"peer_args":"--verbose"}' \
         '{"peer_args":[null]}' '{"peer_args":["--model","wrong"]}' \
         '{"peer_model":""}' '{"start_timeout":0}' '[]' 'broken'; do
         printf '%s\n' "$config" > "$TMP/.peer-chat.json"
@@ -536,4 +552,33 @@ PY
     [ ! -e "$TMP/injected2" ]
     jq -e --slurpfile expected "$TMP/.peer-chat.json" \
         '.[0:3] == $expected[0].peer_args' "$TMP/executed.json" >/dev/null
+}
+
+@test "spawn: custom client arguments keep embedded mode by default" {
+    PEER_CHAT_PEER_ARGS='["--profile", "review"]' run bash "$SPAWN"
+    assert_status 0
+    assert_launch_arg --profile
+    assert_launch_arg review
+    assert_launch_arg --no-daemon
+    [ ! -e "$TMP/daemon-calls.txt" ]
+}
+
+@test "spawn: remote endpoints are refused in embedded mode before typing" {
+    PEER_CHAT_PEER_ARGS='["--remote=ws://example.invalid"]' run bash "$SPAWN"
+    assert_status 2
+    [ ! -e "$TMP/typed.jsonl" ]
+    [ ! -e "$TMP/daemon-calls.txt" ]
+}
+
+@test "explain: daemon mode can be selected by profile and overridden by environment" {
+    printf '{"codex_mode":"daemon"}\n' > "$TMP/.peer-chat.json"
+    run bash "$SPAWN" --explain
+    assert_status 0
+    assert_explain_source "$output" codex_mode profile
+    [ "$(printf '%s' "$output" | jq -r .values.codex_mode)" = daemon ]
+    PEER_CHAT_CODEX_MODE=embedded run bash "$SPAWN" --explain
+    assert_status 0
+    assert_explain_source "$output" codex_mode detected:env:PEER_CHAT_CODEX_MODE
+    [ "$(printf '%s' "$output" | jq -r .values.codex_mode)" = embedded ]
+    [ ! -e "$TMP/calls.jsonl" ]
 }

@@ -45,6 +45,7 @@ Flags win, then env, then a committed `.peer-chat.json` at the repo root, then t
 | `peer_model` | `PEER_CHAT_PEER_MODEL` | `gpt-6-astra` for codex, none for claude | passed verbatim as `--model` (`--model`); with none, `--explain` shows `null` and Claude keeps its own default |
 | `peer_fallback` | `PEER_CHAT_PEER_FALLBACK` | `claude:fable` for codex, `codex` for claude | `harness[:model]` started when the peer cannot: executable missing, no appearance within `start_timeout`, or that harness already in the pane (`--fallback`, `--no-fallback`); `none` disables; the result carries `fallback_from` |
 | `peer_args` | `PEER_CHAT_PEER_ARGS` | `[]` | extra launch arguments as a JSON string array; a model flag here is refused, use `peer_model` |
+| `codex_mode` | `PEER_CHAT_CODEX_MODE` | `embedded` | `embedded` launches with `--no-daemon`; `daemon` connects to the shared local daemon |
 | `codex_command` | `PEER_CHAT_CODEX_COMMAND` | `codex` | the name agterm reports for a wrapped Codex |
 | `claude_command` | `PEER_CHAT_CLAUDE_COMMAND` | `claude` | the name agterm reports for a wrapped Claude |
 | `start_timeout` | `PEER_CHAT_START_TIMEOUT` | `30` | seconds to wait for the peer to appear, and for the old one to exit on `--restart` |
@@ -55,9 +56,9 @@ Flags win, then env, then a committed `.peer-chat.json` at the repo root, then t
 
 ## Limits
 
-- Codex peers use the shared local daemon through an explicit Unix-socket connection. The launcher runs `codex app-server daemon start`, passes the caller's working directory, and sends pane variables as per-thread `-c` overrides. Verified with Codex 0.159.2. Plain environment variables inherit the daemon's original pane context and are insufficient.
-- To use embedded Codex, add `"--no-daemon"` to `peer_args`. This is required for `--profile`, `--oss`, `--strict-config`, and `--dangerously-bypass-hook-trust`, which need local CLI processing. Peer-chat selects the local endpoint, so `--remote` in `peer_args` is rejected in daemon mode. A configured Codex wrapper must also accept `app-server daemon start`.
-- A failed or timed-out daemon start follows the configured harness fallback. `--no-fallback` reports the error before replacing the peer.
+- Codex peers default to embedded mode with `--no-daemon`, including when `peer_args` contains other options. Pane variables are passed through per-thread `-c` overrides.
+- Set `codex_mode` to `daemon` in `.peer-chat.json`, or set `PEER_CHAT_CODEX_MODE=daemon`, to use the shared local daemon. The launcher starts it, connects through its Unix socket, and passes the caller's working directory. Explicit `--no-daemon` in `peer_args` overrides daemon mode.
+- `--profile`, `--oss`, `--strict-config`, and `--dangerously-bypass-hook-trust` require embedded mode. Peer-chat selects the runtime, so `--remote` in `peer_args` is rejected. A daemon-mode Codex wrapper must accept `app-server daemon start`; a failed or timed-out start follows the configured harness fallback.
 - The peer is addressed by pane slot. After a promote or re-split puts a different agent of the same harness into that slot, the foreground check cannot tell them apart.
 - A model name reaches the harness verbatim; an unknown one fails inside the harness, not before the launch.
 - `peer_turn` and the mid-turn warning come from screen text, matched against the markers Claude Code and Codex draw today (a spinner line with a timer, `Working (… esc to interrupt)`); a harness that redraws them reads as `unknown`, which never warns and never blocks.
