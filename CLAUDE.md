@@ -48,6 +48,7 @@ Millon15 personal Claude Code plugin marketplace — skills, agents, (future) ho
 - `plugins/codex-delegation/` — Codex CLI second-tier delegation (3 skills + 1 agent)
 - `plugins/essentials/` — general-purpose personal skills and commands (code-style, concise-writing, q-sql, qsv, /e15, /recall, /tldr)
 - `plugins/gws-workspace/` — Google Workspace through the `gws` CLI (1 skill + references)
+- `plugins/idea-config/` — JetBrains `.idea/` reading, diagnosis and hand-editing for any IntelliJ-platform IDE (1 skill + references + doctor script)
 - `plugins/merge-kit/` — conflict resolution and merge forensics (2 commands + scripts)
 - `plugins/peer-chat/` — two coding agents, any harness and model, talking in one agterm split (2 skills + vendored engine + adapter + spawn/install scripts)
 - `plugins/plan/` — `/plan:research` with empirical proof (1 command + 2 agents + headless runner)

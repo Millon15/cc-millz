@@ -1,0 +1,13 @@
+<module version="4">
+  <component name="NewModuleRootManager">
+    <orderEntry type="module-library">
+      <library>
+        <CLASSES>
+          <root url="jar://$PROJECT_DIR$/present%20archive.jar!/unverified/member" />
+          <root url="jar://$PROJECT_DIR$/missing.phar!/" />
+          <root url="jar://$MODULE_DIR$/missing.jar!/package/Example.class" />
+        </CLASSES>
+      </library>
+    </orderEntry>
+  </component>
+</module>

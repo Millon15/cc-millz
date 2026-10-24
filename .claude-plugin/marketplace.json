@@ -45,6 +45,11 @@
       "description": "PhpStorm MCP for inspections, rename refactoring and a live Xdebug loop (breakpoints, frames, expression evaluation, state mutation) against local or Dockerised PHP; code search stays on rg. /phpstorm:setup-xdebug drives scripts/xdebug-doctor.sh, which tells three identical-looking debug misconfigurations apart and reads the project's services, ports and path mappings from a committed .xdebug-doctor.json. Requires PhpStorm 2026.2+ with its MCP server enabled. Extracted from a private monorepo."
     },
     {
+      "name": "idea-config",
+      "source": "./plugins/idea-config",
+      "description": "Read, diagnose and hand-edit a JetBrains project's .idea/ for any IntelliJ-platform IDE (PhpStorm, GoLand, PyCharm, IntelliJ IDEA, WebStorm, ...): VCS mappings for nested repos, module source roots with package prefixes, excludes, run configurations, debugger servers and path mappings, interpreters and SDKs. scripts/idea-config.sh runs a read-only doctor (stale paths, unmapped nested git repos, dead mappings, duplicate entries, invalid XML, a running IDE that would overwrite disk edits) and backs .idea up first. References cite a tiered corpus of JetBrains docs and intellij-community source. Extracted from a private monorepo."
+    },
+    {
       "name": "ralphex-revmux",
       "source": "./plugins/ralphex-revmux",
       "description": "revmux as ralphex's external reviewer — live review preflight (codex auth, revmux, profile), the custom_review_script glue (one revmux round per iteration), a two-stage runner that skips ralphex's own review loops, and post-run reporter + optimizer agents. Requires the ralphex and revmux CLIs."

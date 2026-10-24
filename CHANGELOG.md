@@ -1,5 +1,13 @@
 # Changelog
 
+## idea-config v0.1.0 - 2026-10-24
+
+### Added
+
+- `idea-config` skill: read, diagnose and hand-edit a JetBrains `.idea/` directory for any IntelliJ-platform IDE, with a safety protocol for edits made while the IDE runs.
+- References for the project model (modules, `.iml` roots, `vcs.xml`, sharing rules), run configurations, debuggers (Xdebug, Delve, pydevd/debugpy, Node) and interpreters/SDKs, each citing a tiered source corpus.
+- `scripts/idea-config.sh`: `--explain`, a read-only `doctor` (stale paths, unmapped nested git repos, dead mappings, duplicate entries, invalid XML, running IDE) and `backup`.
+
 ## peer-chat v0.7.2 - 2026-10-13
 
 ### Fixed

@@ -71,6 +71,17 @@
       "category": "Developer Tools"
     },
     {
+      "name": "idea-config",
+      "source": {
+        "source": "local",
+        "path": "./plugins/idea-config"
+      },
+      "policy": {
+        "installation": "AVAILABLE"
+      },
+      "category": "Developer Tools"
+    },
+    {
       "name": "ralphex-revmux",
       "source": {
         "source": "local",

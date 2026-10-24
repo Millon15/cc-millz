@@ -1,0 +1,10 @@
+[
+  ["stale-path", ".idea/modules.xml"],
+  ["stale-path", ".idea/demo.iml"],
+  ["duplicate-entry", ".idea/demo.iml"],
+  ["stale-path", ".idea/vcs.xml"],
+  ["dead-mapping", ".idea/vcs.xml"],
+  ["dead-mapping", ".idea/vcs.xml"],
+  ["unmapped-git", ".idea/vcs.xml"],
+  ["invalid-xml", ".run/broken.run.xml"]
+]

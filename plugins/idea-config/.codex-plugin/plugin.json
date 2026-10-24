@@ -1,0 +1,17 @@
+{
+  "name": "idea-config",
+  "version": "0.1.0",
+  "description": "Read, diagnose and hand-edit a JetBrains project's .idea/ directory for any IntelliJ-platform IDE (PhpStorm, GoLand, PyCharm, IntelliJ IDEA, WebStorm and the rest): VCS root mappings for nested repos, module content and source roots with package prefixes, excludes, run configurations, debugger servers and path mappings, interpreters and SDKs. scripts/idea-config.sh runs a read-only doctor (stale paths, unmapped nested git repos, dead mappings, duplicate entries, invalid XML, a running IDE that would overwrite disk edits) and backs .idea up before an edit. References cite a tiered corpus of JetBrains docs and intellij-community source.",
+  "author": {
+    "name": "Millon15"
+  },
+  "license": "MIT",
+  "repository": "https://github.com/Millon15/cc-millz",
+  "skills": "./skills/",
+  "interface": {
+    "displayName": "idea-config",
+    "shortDescription": "Millon15 idea-config: idea-config",
+    "developerName": "Millon15",
+    "category": "Developer Tools"
+  }
+}
