@@ -15,6 +15,12 @@ Talk with a third, full-duplex voice about ONE Claude Code session while you are
 - **Full duplex, with a kill switch.** Talking over the voice cuts it off. `⌥⌘.` stops it at once. `⌥⌘⇧V` hangs up. An idle call hangs up after 15 minutes, because GPT-Live bills every open second.
 - **GPT-Live first, Realtime as fallback.** With `backend: auto`, a key that lacks the `api.responses.write` scope falls back to `gpt-realtime-2.1` for that call, and the transcript says so.
 
+## Security
+
+- Claude's output and the transcript are untrusted text the voice reads. A forward needs your own transcribed speech in the last 30 s, never starts with `/` or `!`, and reaches Claude framed as a voice-call message, so Claude's permission prompts still apply.
+- The 30 s gate narrows prompt injection; it does not prove the instruction was yours. Every forward shows as `→ cc` in the side pane.
+- A repository's `.voice-call.json` can change the backend, model and voice. The first line of each call names the profile in use.
+
 ## Components
 
 | Component | What it does |

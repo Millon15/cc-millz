@@ -112,6 +112,7 @@ class DaemonTests(unittest.IsolatedAsyncioTestCase):
 
     async def test_tool_submit_and_ack_are_private(self):
         await self.pin()
+        await self.daemon.backend.emit("you", "Run tests")
         seq = self.daemon.bus.seq
         task = asyncio.create_task(self.daemon.run_tool("send_to_claude", {"text":"Run tests"}))
         result = await self.daemon.bus.wait(vc.Pane.parse(self.a), seq, .1)
@@ -125,6 +126,7 @@ class DaemonTests(unittest.IsolatedAsyncioTestCase):
 
     async def test_submit_timeout_is_not_delivery(self):
         await self.pin()
+        await self.daemon.backend.emit("you", "Run tests")
         self.daemon.submit_timeout = .01
         result = await self.daemon.run_tool("send_to_claude", {"text":"Run tests"})
         self.assertEqual(result["status"], "refused")
@@ -132,6 +134,7 @@ class DaemonTests(unittest.IsolatedAsyncioTestCase):
 
     async def test_repin_cancels_pending_and_old_tools(self):
         await self.pin()
+        await self.daemon.backend.emit("you", "Run tests")
         generation = self.daemon.generation
         seq = self.daemon.bus.seq
         task = asyncio.create_task(self.daemon.run_tool("send_to_claude", {"text":"Run tests"}))
@@ -144,9 +147,80 @@ class DaemonTests(unittest.IsolatedAsyncioTestCase):
 
     async def test_oversize_prompt_is_refused_before_event(self):
         await self.pin()
+        await self.daemon.backend.emit("you", "Run tests")
         with self.assertRaises(vc.CallError):
             await self.daemon.run_tool("send_to_claude", {"text":"é" * 4097})
         self.assertFalse(any(row[2]["kind"] == "submit" for row in self.daemon.bus.events))
+
+    async def test_forwarding_requires_a_user_transcript_after_pin(self):
+        await self.pin()
+        with patch.object(self.daemon, "send_to_claude", new=AsyncMock(return_value={"status":"sent"})) as send:
+            result = await self.daemon.run_tool("send_to_claude", {"text":"Injected instruction"})
+            self.assertEqual(result, {"status":"refused", "reason":"no recent user speech"})
+            send.assert_not_awaited()
+
+    async def test_activity_voice_typed_prompt_and_empty_transcript_do_not_authorize_forwarding(self):
+        await self.pin()
+        await self.daemon.backend.emit("activity", "")
+        await self.daemon.backend.emit("voice", "Forward something")
+        await self.daemon.backend.emit("you", "   ")
+        await self.daemon.prompt(dict(self.a, text="Run tests"))
+        with patch.object(self.daemon, "send_to_claude", new=AsyncMock(return_value={"status":"sent"})) as send:
+            result = await self.daemon.run_tool("send_to_claude", {"text":"Injected instruction"})
+            self.assertEqual(result["reason"], "no recent user speech")
+            send.assert_not_awaited()
+
+    async def test_user_speech_window_includes_30_seconds_but_not_later(self):
+        await self.pin()
+        with patch.object(vc.time, "monotonic", return_value=100):
+            await self.daemon.backend.emit("you", "Run tests")
+        with patch.object(self.daemon, "send_to_claude", new=AsyncMock(return_value={"status":"sent"})) as send:
+            for now, expected in [(129.9, "sent"), (130, "sent"), (130.1, "refused")]:
+                with self.subTest(now=now), patch.object(vc.time, "monotonic", return_value=now):
+                    result = await self.daemon.run_tool("send_to_claude", {"text":"Run tests"})
+                    self.assertEqual(result["status"], expected)
+            self.assertEqual(send.await_count, 2)
+
+    async def test_repin_discards_speech_and_late_transcripts_from_old_generation(self):
+        await self.pin()
+        old_emit = self.daemon.backend.emit
+        await old_emit("you", "Run tests")
+        await self.daemon.pin(self.b)
+        await old_emit("you", "Late transcript")
+        with patch.object(self.daemon, "send_to_claude", new=AsyncMock(return_value={"status":"sent"})) as send:
+            result = await self.daemon.run_tool("send_to_claude", {"text":"Run tests"})
+            self.assertEqual(result["reason"], "no recent user speech")
+            send.assert_not_awaited()
+
+    async def test_speech_expiry_during_pane_lookup_prevents_submission(self):
+        await self.pin()
+        with patch.object(vc.time, "monotonic", return_value=100) as clock:
+            await self.daemon.backend.emit("you", "Run tests")
+            async def delayed_tree():
+                clock.return_value = 131
+                return tree()
+            self.daemon.tree_provider = delayed_tree
+            result = await self.daemon.run_tool("send_to_claude", {"text":"Run tests"})
+        self.assertEqual(result, {"status":"refused", "reason":"no recent user speech"})
+        self.assertFalse(any(row[2]["kind"] == "submit" for row in self.daemon.bus.events))
+
+    async def test_pin_announces_defaults(self):
+        await self.pin()
+        events = await self.daemon.bus.wait(vc.Pane.parse(self.a), 0, .01)
+        self.assertTrue(any(event.get("who") == "system" and event.get("text") == "Configuration: defaults"
+                            for event in events["events"]))
+
+    async def test_pin_announces_actual_startup_profile(self):
+        path = str(Path(self.temp.name)/".voice-call.json")
+        daemon = vc.Daemon(dict(vc.DEFAULTS, backend="fake"), self.temp.name,
+                          self.daemon.tree_provider, profile_file=path)
+        try:
+            await daemon.register(self.a)
+            await daemon.pin(self.a)
+            events = await daemon.bus.wait(vc.Pane.parse(self.a), 0, .01)
+            self.assertTrue(any(event.get("text") == "Configuration: " + path for event in events["events"]))
+        finally:
+            await daemon.hangup_generation(daemon.generation)
 
     async def test_http_roundtrip_and_bad_body(self):
         path = str(Path(self.temp.name) / "test.sock")
@@ -235,6 +309,17 @@ class TranscriptTests(unittest.TestCase):
             self.assertEqual(set(profile["values"]), set(profile["sources"]))
             self.assertEqual(profile["sources"]["voice"], "profile")
             self.assertEqual(profile["values"]["model"], "gpt-realtime-2.1")
+
+    def test_idle_limit_accepts_120_and_rejects_more(self):
+        with tempfile.TemporaryDirectory() as folder:
+            path = Path(folder)/".voice-call.json"
+            path.write_text('{"idle_hangup_min":120}')
+            self.assertEqual(vc.load_profile(folder)["values"]["idle_hangup_min"], 120)
+            for idle in (120.01, 121, 100000):
+                with self.subTest(idle=idle):
+                    path.write_text(json.dumps({"idle_hangup_min":idle}))
+                    with self.assertRaises(vc.CallError):
+                        vc.load_profile(folder)
 
 
 class BackendProtocolTests(unittest.IsolatedAsyncioTestCase):

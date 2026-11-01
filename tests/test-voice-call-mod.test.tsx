@@ -317,3 +317,18 @@ test("session start repoints the hotkey link at this plugin version", async ($, 
   expect(daemon.ran[0]?.slice(1)).toEqual(["install", "--link-only"]);
   expect(daemon.ran[0]?.[0]).toMatch(/scripts\/voice-call$/);
 });
+
+test("a forwarded slash command or shell escape is refused", async ($, on) => {
+  mock.env(on, AGTERM);
+  const clock = mock.clock(on);
+  const daemon = fakeDaemon(on, [
+    [pinned, { kind: "submit", id: "s6", text: "!rm -rf ~" }, { kind: "submit", id: "s7", text: " /clear" }],
+  ]);
+
+  await $.session.start({ cwd: "/", surface: "terminal", isInteractive: true });
+  await clock.advance(0);
+
+  expect(daemon.submitted).toEqual([]);
+  const results = daemon.posted.filter((one) => one.path === "/submit-result").map((one) => one.body.status);
+  expect(results).toEqual(["refused", "refused"]);
+});

@@ -77,8 +77,8 @@ def load_profile(cwd=None):
         if not isinstance(values[name], str) or not values[name].strip():
             raise CallError("invalid_profile", f"{name} must be a nonempty string")
     idle = values["idle_hangup_min"]
-    if isinstance(idle, bool) or not isinstance(idle, (int, float)) or not math.isfinite(idle) or idle <= 0:
-        raise CallError("invalid_profile", "idle_hangup_min must be a positive number")
+    if isinstance(idle, bool) or not isinstance(idle, (int, float)) or not math.isfinite(idle) or not 0 < idle <= 120:
+        raise CallError("invalid_profile", "idle_hangup_min must be greater than 0 and at most 120")
     if values["backend"] == "realtime" and sources["model"] == "default":
         values["model"] = "gpt-realtime-2.1"
     return dict(plugin="voice-call", profile_file=str(profile) if profile.exists() else None,
@@ -549,8 +549,9 @@ class NetworkBackend:
 
 
 class Daemon:
-    def __init__(self, config, directory=None, tree_provider=agterm_tree, backend_factory=None):
+    def __init__(self, config, directory=None, tree_provider=agterm_tree, backend_factory=None, profile_file=None):
         self.config, self.directory = config, Path(directory or state_dir())
+        self.profile_file = profile_file
         self.tree_provider, self.backend_factory = tree_provider, backend_factory
         self.registered, self.pending = {}, {}
         self.pinned = None
@@ -561,6 +562,7 @@ class Daemon:
         self.generation = 0
         self.lifecycle = asyncio.Lock()
         self.last_speech = time.monotonic()
+        self.last_user_transcript_at = None
         self.turn_ids = set()
         self.submit_timeout = 10
         self.recent_submits = {}
@@ -601,6 +603,7 @@ class Daemon:
             self.log = CallLog(self.directory / "calls")
             generation = self.generation
             await self.bus.emit(pane, dict(kind="pinned", call="connecting", model=self.config["model"]))
+            await self.line("system", "Configuration: " + (self.profile_file or "defaults"))
             try:
                 self.backend = await self.start_backend(generation)
                 await self.backend.feed("instructions", "Pinned Claude session: " + json.dumps(self.overview()))
@@ -621,6 +624,8 @@ class Daemon:
                 return
             if who in ("you", "activity"):
                 self.last_speech = time.monotonic()
+            if who == "you" and text.strip():
+                self.last_user_transcript_at = time.monotonic()
             if who == "failure":
                 await self.line("system", text)
                 asyncio.create_task(self.hangup_generation(generation))
@@ -677,6 +682,8 @@ class Daemon:
         if not isinstance(arguments, dict):
             raise CallError("invalid_arguments", "Tool arguments must be an object")
         if name == "send_to_claude":
+            if not self.has_recent_user_speech():
+                return dict(status="refused", reason="no recent user speech")
             return await self.send_to_claude(text_field(arguments, "text", 8192))
         if name == "session_overview":
             return self.overview()
@@ -696,10 +703,15 @@ class Daemon:
             return dict(turns[index], text=turns[index]["text"][:48000])
         raise CallError("unknown_tool", "Unknown voice-call tool")
 
+    def has_recent_user_speech(self):
+        return self.last_user_transcript_at is not None and 0 <= time.monotonic() - self.last_user_transcript_at <= 30
+
     async def send_to_claude(self, text):
         pane, generation = self.pinned, self.generation
         if resolve_pane(await self.tree_provider(), pane) != pane or generation != self.generation:
             return dict(status="refused", reason="Pinned Claude pane is no longer available")
+        if not self.has_recent_user_speech():
+            return dict(status="refused", reason="no recent user speech")
         identifier = str(uuid.uuid4())
         future = asyncio.get_running_loop().create_future()
         self.pending[identifier] = future
@@ -770,6 +782,7 @@ class Daemon:
 
     async def hangup_locked(self):
         self.generation += 1
+        self.last_user_transcript_at = None
         pane = self.pinned
         self.pinned, self.call = None, "ended"
         for future in self.pending.values():
@@ -855,7 +868,7 @@ async def http_connection(reader, writer, daemon):
             await writer.wait_closed()
 
 
-async def serve(config):
+async def serve(config, profile_file=None):
     directory = state_dir()
     directory.mkdir(parents=True, mode=0o700, exist_ok=True)
     os.chmod(directory, 0o700)
@@ -871,7 +884,7 @@ async def serve(config):
     path = socket_path()
     if path.is_socket():
         path.unlink()
-    daemon = Daemon(config, directory)
+    daemon = Daemon(config, directory, profile_file=profile_file)
     server = await asyncio.start_unix_server(lambda r, w: http_connection(r, w, daemon), str(path))
     os.chmod(path, 0o600)
     stop = asyncio.Event()
@@ -1029,12 +1042,13 @@ def main(argv=None):
             install(link_only=args.link_only)
             return 0
         if args.verb == "serve":
-            config = load_profile()["values"]
+            profile = load_profile()
+            config = profile["values"]
             if args.backend:
                 config["backend"] = args.backend
-                if args.backend == "realtime" and load_profile()["sources"]["model"] == "default":
+                if args.backend == "realtime" and profile["sources"]["model"] == "default":
                     config["model"] = "gpt-realtime-2.1"
-            asyncio.run(serve(config))
+            asyncio.run(serve(config, profile_file=profile["profile_file"]))
             return 0
         if args.verb == "bind":
             session = args.session or active_session()

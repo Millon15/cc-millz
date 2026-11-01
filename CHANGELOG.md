@@ -1,5 +1,12 @@
 # Changelog
 
+## voice-call v0.1.1 - 2026-11-01
+
+### Security
+
+- The mod refuses a forwarded instruction that starts with `/` or `!` (a slash command or a Claude Code shell escape), and submits without `asUser`, so Claude sees the voice-call frame instead of the user's own words.
+- The daemon forwards with `send_to_claude` only within 30 s of the user's own transcribed speech, rejects `idle_hangup_min` above 120 and names the active profile when a call starts. The time gate narrows prompt injection from transcript text; it does not prove an instruction came from the user.
+
 ## voice-call v0.1.0 - 2026-11-01
 
 ### Added

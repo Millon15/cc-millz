@@ -286,7 +286,7 @@ async function deliverSubmit(
   if (refusal) return reportSubmit($, id, "refused", text, refusal);
 
   void $.prompt
-    .submit({ text, asUser: true })
+    .submit({ text })
     .catch((error) => reportSubmit($, id, "refused", text, String(error)));
   await reportSubmit($, id, isBusy ? "queued" : "sent", text);
 }
@@ -314,6 +314,8 @@ async function pinMovedRefusal($: Engine): Promise<string | undefined> {
 
 function submitRefusal(text: string): string | undefined {
   if (text.trim() === "") return "empty instruction";
+  if (/^\s*[/!]/.test(text))
+    return "slash commands and shell escapes are typed by hand";
   if (new TextEncoder().encode(text).length > MAX_SUBMIT_BYTES)
     return `over ${MAX_SUBMIT_BYTES} bytes`;
   if (!isPinned) return "this session is not pinned";
