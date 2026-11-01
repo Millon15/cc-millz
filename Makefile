@@ -7,14 +7,14 @@
 
 SHELL := /usr/bin/env bash
 
-.PHONY: help test test-bats test-ts test-python test-generated
+.PHONY: help test test-bats test-ts test-python test-generated test-mods
 
 help:
 	@echo 'make test       run every suite and generated-source checks'
 	@echo 'make test-bats  run the bats suites only'
 	@echo 'make test-ts    run the TypeScript suites only'
 
-test: test-generated test-python test-bats test-ts
+test: test-generated test-python test-bats test-ts test-mods
 
 test-generated:
 	python3 scripts/sync-peer-chat-shared.py --check
@@ -38,3 +38,12 @@ test-ts:
 	if [ -z "$$suites" ]; then echo 'no TypeScript suites found'; exit 0; fi; \
 	echo "bun test: $$(echo "$$suites" | wc -l | tr -d ' ') suite(s)"; \
 	bun test $$suites
+
+# A mod's native test imports claude-code/testing, which only `claude plugin test` provides,
+# and that command discovers tests inside the plugin folder alone: scripts/test-mod.sh stages both.
+test-mods:
+	@command -v claude >/dev/null 2>&1 || { echo 'claude CLI not installed, native mod suites skipped'; exit 0; }
+	@set -e; for suite in tests/test-*-mod.test.tsx; do \
+	[ -f "$$suite" ] || continue; \
+	plugin=$$(basename "$$suite" -mod.test.tsx); plugin=$${plugin#test-}; \
+	echo "mod suite: $$plugin"; scripts/test-mod.sh "$$plugin"; done

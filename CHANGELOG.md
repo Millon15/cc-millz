@@ -1,5 +1,14 @@
 # Changelog
 
+## voice-call v0.1.0 - 2026-11-01
+
+### Added
+
+- Mod `hooks/register.tsx`: registers each agterm Claude pane with the daemon, draws the **Voice call** side pane in the pinned session, forwards finished turns and typed prompts, and delivers `send_to_claude` through `$.prompt.submit` with replay, stale-pin and stale-session refusals.
+- `scripts/voice-call` daemon and CLI: OpenAI GPT-Live with Responses delegation (`search_transcript`, `read_turn`, `session_overview`, `send_to_claude`), Realtime fallback on a missing key scope, HTTP over a unix socket, Keychain key import, `--explain`.
+- agterm hotkeys: `⌥⌘V` pin, `⌥⌘.` stop speaking, `⌥⌘⇧V` hang up.
+- `scripts/test-mod.sh` and `make test-mods`: run a mod's native suite with `claude plugin test`.
+
 ## idea-config v0.1.0 - 2026-10-24
 
 ### Added

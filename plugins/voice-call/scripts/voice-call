@@ -1,0 +1,15 @@
+#!/usr/bin/env bash
+set -euo pipefail
+SOURCE="${BASH_SOURCE[0]}"
+while [ -L "$SOURCE" ]; do
+    DIRECTORY="$(cd -P "$(dirname "$SOURCE")" && pwd)"
+    SOURCE="$(readlink "$SOURCE")"
+    [[ "$SOURCE" = /* ]] || SOURCE="$DIRECTORY/$SOURCE"
+done
+DIRECTORY="$(cd -P "$(dirname "$SOURCE")" && pwd)"
+export PATH="$HOME/.local/bin:$HOME/.local/share/mise/shims:$HOME/.brew/bin:/opt/homebrew/bin:/usr/local/bin:$PATH"
+if [[ "${1:-}" == serve ]]; then
+    command -v uv >/dev/null || { echo 'voice-call: uv is required to serve' >&2; exit 2; }
+    exec uv run --script "$DIRECTORY/voice_call.py" "$@"
+fi
+exec python3 "$DIRECTORY/voice_call.py" "$@"

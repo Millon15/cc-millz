@@ -59,6 +59,7 @@ Millon15 personal Claude Code plugin marketplace — skills, agents, (future) ho
 - `plugins/statusline/` — two-line status line, self-installs into settings.json (1 SessionStart hook + scripts)
 - `plugins/toolsmith/` — agent dev-tool lifecycle (4 commands + 2 skills + scripts)
 - `plugins/unslop-kit/` — reply contract over a vendored pstack unslop (4 skills + 1 SessionStart hook + sync script)
+- `plugins/voice-call/` — full-duplex voice companion pinned to one Claude pane (1 mod + daemon/CLI script + agterm keymap snippet, macOS + agterm only)
 - `plugins/video-reader/` — fetch, transcribe and read one video of any length from a URL or file (1 skill + script)
 
 ## Local Plugin Development

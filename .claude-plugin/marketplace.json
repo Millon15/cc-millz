@@ -98,6 +98,11 @@
       "name": "peer-chat-bg",
       "source": "./plugins/peer-chat-bg",
       "description": "Equal background coding peers in Claude Code and Codex, without agterm: durable questions and delivery receipts, shared build protocol, accepted file ownership, frozen cross-review targets and empirical acceptance checks. Native peers remain in their host runtime."
+    },
+    {
+      "name": "voice-call",
+      "source": "./plugins/voice-call",
+      "description": "Full-duplex voice companion pinned by hotkey to one Claude Code pane: OpenAI GPT-Live (Realtime fallback) summarizes each turn, answers from the full transcript and forwards spoken instructions to Claude. Requires agterm (macOS), headphones, uv and an OpenAI key."
     }
   ]
 }

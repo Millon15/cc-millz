@@ -1,0 +1,4 @@
+# voice-call v1
+command "Voice call: pin Claude" opt+cmd+v @VOICE_CALL@ bind --session "$AGT_SESSION_ID" --pane "$AGT_PANE"
+command "Voice call: stop speaking" opt+cmd+. @VOICE_CALL@ stop
+command "Voice call: hang up" opt+cmd+shift+v @VOICE_CALL@ hangup

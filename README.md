@@ -38,6 +38,7 @@ Provenance: several of these plugins were generalized out of a private codebase 
 | [📟 statusline](plugins/statusline/README.md) | Two-line status line — git scopes, context window, loaded skills and MCP, quota and spend |
 | [🛠 toolsmith](plugins/toolsmith/README.md) | Author, review, retire and explain agent dev tools in any layout — the directories come from a layout adapter, the reuse search runs first, companion skills are soft. Extracted from a private monorepo. |
 | [🪆 unslop-kit](plugins/unslop-kit/README.md) | My reply contract as a Russian doll: a vendored, model-invocable copy of pstack's unslop (wording), umputun's writing-style (precision), human-brief (headline, decision block and flat facts for a human colleague, proof in its own block), cto-brief (five bullets for a decider: decided, why it matters, need from you, by when, risk if wrong), then the layout pass, loaded by a SessionStart hook |
+| [📞 voice-call](plugins/voice-call/README.md) | Full-duplex voice companion pinned by hotkey to one Claude Code pane in agterm: OpenAI GPT-Live (Realtime fallback) summarizes each turn aloud, answers from the session's full transcript, and forwards your spoken instructions through Claude's own prompt queue; every other session stays silent |
 | [🎬 video-reader](plugins/video-reader/README.md) | Fetch, transcribe and read one video of any length from any yt-dlp site or a local file: original-language captions or local whisper.cpp, seek-sampled frames in indexed contact sheets, chapters, dense windows for follow-ups; no limits by default, no cookies, nothing leaves the machine. Extracted from a private monorepo. |
 | [🥔 pstack](https://github.com/cursor/plugins/tree/main/pstack) (mirror) | poteto's pstack, mirrored via `git-subdir` from `cursor/plugins` because upstream ships no Claude Code marketplace — 44 skills + 2 agents, Cursor-authored (model panels and `~/.cursor/rules` do not apply); unslop-kit re-vendors its `unslop` skill from it |
 
@@ -104,9 +105,10 @@ The whole test surface is flat, at the repo root. A plugin install copies that p
 
     tests/test-<plugin>-<suite>.bats     shell and command surfaces
     tests/test-<plugin>-<suite>.test.ts  TypeScript, run under bun test
+    tests/test-<plugin>-mod.test.tsx     a mod's native suite, staged by scripts/test-mod.sh for claude plugin test
     tests/fixtures/<plugin>/             fixtures, one directory per plugin
     tests/helpers/                       shared bats helpers
 
 - `tests/helpers/common.bash` carries temp-directory setup and teardown, stub executables on `PATH`, git fixtures, and `assert_explain_source`.
-- `make test` discovers and runs every suite of both kinds. `make test-bats` and `make test-ts` run one kind.
+- `make test` discovers and runs every suite of both kinds. `make test-bats`, `make test-ts` and `make test-mods` run one kind; `test-mods` skips when the `claude` CLI is absent.
 - CI runs the same two discovery sets on every push and pull request.
