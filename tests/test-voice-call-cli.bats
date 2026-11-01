@@ -33,7 +33,7 @@ teardown() { teardown_tmp; }
 }
 
 @test "voice-call rejects malformed or invalid profiles with exit 2" {
-    for profile in '{' '[]' '{"backend":"wrong"}' '{"idle_hangup_min":0}' '{"unknown":1}'; do
+    for profile in '{' '[]' '{"backend":"wrong"}' '{"idle_hangup_min":0}' '{"idle_hangup_min":121}' '{"unknown":1}'; do
         printf '%s' "$profile" > .voice-call.json
         run "$ENTRY" --explain
         [ "$status" -eq 2 ]
