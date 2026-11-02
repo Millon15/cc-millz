@@ -8,6 +8,7 @@ from pathlib import Path
 import sys
 import subprocess
 import tempfile
+import threading
 import time
 from types import SimpleNamespace
 import unittest
@@ -20,6 +21,23 @@ spec = importlib.util.spec_from_file_location("voice_call", SCRIPT)
 vc = importlib.util.module_from_spec(spec)
 sys.modules[spec.name] = vc
 spec.loader.exec_module(vc)
+
+DECORATED_ANSWER = '''> `★ English · A ──────────────────────────────────`
+> "resummarize" → "summarize ... again" ("resummarize" isn't a standard word)
+> `─────────────────────────────────────────────────`
+
+**TL;DR.** DEMO-576 (https://example.com/issue/DEMO-576) is a small change to how the Code Review Bot's Slack
+cards look. It does three things: each PR goes on its own numbered line, the cross-team card starts with the PR link,
+and the bot stops posting a review request the author already posted by hand. It's Trivial tier, 1 point, assigned to
+you and in Todo. Both tickets it depended on are Done, so nothing blocks it.
+
+---
+
+🧾 **The ticket is three card fixes, and each one came from a reviewer.**
+
+Eldaniz asked for numbered PR lines on 2026-09-23. On 2026-10-02 Konstantin asked for the PR link first and marked a
+bot card as a duplicate of his own manual request.
+'''
 
 
 def registration(session="s1", pane="left", claude="c1", path=None):
@@ -42,6 +60,8 @@ class DaemonTests(unittest.IsolatedAsyncioTestCase):
         self.rules_type = self.rules_mock.start()
         self.rules_type.return_value.primer.return_value = "Workspace: test. Use read_workspace_rules."
         self.rules_type.return_value.catalog.return_value = {"files": [], "truncated": False}
+        self.tokenizer_mock = patch.object(vc, "load_tokenizer", return_value=None)
+        self.tokenizer_mock.start()
         async def provider():
             return tree()
         self.daemon = vc.Daemon(dict(vc.DEFAULTS, backend="fake"), self.temp.name, provider)
@@ -53,6 +73,7 @@ class DaemonTests(unittest.IsolatedAsyncioTestCase):
     async def asyncTearDown(self):
         await self.daemon.hangup_generation(self.daemon.generation)
         self.rules_mock.stop()
+        self.tokenizer_mock.stop()
         self.temp.cleanup()
 
     async def pin(self):
@@ -69,6 +90,83 @@ class DaemonTests(unittest.IsolatedAsyncioTestCase):
             await self.daemon.pin(dict(agterm_session="s3", pane="right"))
         self.assertEqual(raised.exception.code, "no_claude_pane")
         self.assertEqual(self.daemon.pinned.agterm_session, "s1")
+
+    async def test_repeat_live_pin_shows_only_resolved_pane_without_restarting(self):
+        initial = await self.pin()
+        await self.daemon.prompt(dict(self.a, text="Keep this transcript"))
+        backend, rules, log = self.daemon.backend, self.daemon.workspace_rules, self.daemon.log
+        generation, transcript = self.daemon.generation, list(self.daemon.turn_cache)
+        log_text = log.path.read_text()
+        for requested_side in ("left", "right"):
+            with self.subTest(requested_side=requested_side):
+                since = self.daemon.bus.seq
+                previous_events = list(self.daemon.bus.events)
+                with patch.object(self.daemon, "start_backend", new_callable=AsyncMock) as start, \
+                     patch.object(self.daemon, "hangup_locked", new_callable=AsyncMock) as hangup:
+                    result = await self.daemon.dispatch("POST", "/pin", dict(agterm_session="s1", pane=requested_side))
+                start.assert_not_awaited()
+                hangup.assert_not_awaited()
+                self.assertEqual(result, dict(ok=True, pinned=initial["pinned"]))
+                self.assertEqual(await self.daemon.bus.wait(vc.Pane.parse(self.a), since, .01),
+                                 dict(seq=since + 1, events=[dict(kind="show")]))
+                self.assertEqual(list(self.daemon.bus.events),
+                                 previous_events + [(since + 1, vc.Pane.parse(self.a), dict(kind="show"))])
+                self.assertFalse((await self.daemon.bus.wait(vc.Pane.parse(self.b), since, .01))["events"])
+                self.assertIs(self.daemon.backend, backend)
+                self.assertIs(self.daemon.workspace_rules, rules)
+                self.assertIs(self.daemon.log, log)
+                self.assertEqual(self.daemon.generation, generation)
+                self.assertEqual(self.daemon.call, "live")
+                self.assertEqual(self.daemon.turn_cache, transcript)
+                self.assertEqual(log.path.read_text(), log_text)
+
+    async def test_repeat_connecting_pin_keeps_restart_behavior(self):
+        await self.pin()
+        backend, generation = self.daemon.backend, self.daemon.generation
+        self.daemon.call = "connecting"
+        since = self.daemon.bus.seq
+        await self.pin()
+        self.assertIsNot(self.daemon.backend, backend)
+        self.assertGreater(self.daemon.generation, generation)
+        self.assertEqual(self.daemon.call, "live")
+        events = (await self.daemon.bus.wait(vc.Pane.parse(self.a), since, .01))["events"]
+        self.assertNotIn(dict(kind="show"), events)
+        self.assertTrue(any(event["kind"] == "pinned" for event in events))
+
+    async def test_fresh_pin_greets_once_after_live_with_conversation_context(self):
+        path = Path(self.temp.name) / "transcript.jsonl"
+        path.write_text("\n".join(json.dumps(dict(type=role, message=dict(content=text))) for role, text in [
+            ("user", "Fix the voice transcript"), ("assistant", "The bottom band is ready for review")]))
+        await self.daemon.register(dict(self.a, transcript_path=str(path)))
+        greeted_states = []
+        class Backend(vc.FakeBackend):
+            async def greet(inner):
+                greeted_states.append((self.daemon.call, self.daemon.bus.events[-1][2]))
+                await super().greet()
+        self.daemon.backend_factory = lambda name, emit, tool, log: Backend(self.daemon.config, emit, tool, log)
+        await self.pin()
+        await self.pin()
+        self.assertEqual(greeted_states, [("live", dict(kind="call", state="live"))])
+        events = [json.loads(row) for row in self.daemon.log.path.read_text().splitlines()]
+        greetings = [event for event in events if event.get("type") == "greeting.request"]
+        self.assertEqual(len(greetings), 1)
+        self.assertEqual(greetings[0]["context"]["overview"], self.daemon.overview())
+        self.assertEqual(greetings[0]["context"]["recent_turns"], [
+            dict(role="user", text="Fix the voice transcript"),
+            dict(role="assistant", text="The bottom band is ready for review")])
+        self.assertIn("Hello", greetings[0]["instructions"])
+
+    async def test_empty_conversation_greeting_is_explicit_and_context_is_bounded(self):
+        await self.pin()
+        context = self.daemon.backend.greeting_context
+        self.assertEqual(context["overview"]["turn_count"], 0)
+        self.assertEqual(context["recent_turns"], [])
+        self.assertIn("If there is no conversation, say so", vc.GREETING_INSTRUCTIONS)
+        self.daemon.turn_cache = [dict(role="user", text="😀" * 10000) for _ in range(20)]
+        bounded = self.daemon.greeting_context()
+        self.assertEqual(len(bounded["recent_turns"]), 4)
+        self.assertLessEqual(len(bounded["overview"]["last_prompt"]), 800)
+        self.assertTrue(all(len(turn["text"]) <= 800 for turn in bounded["recent_turns"]))
 
     async def test_unregistered_refused(self):
         self.daemon.registered.clear()
@@ -108,6 +206,61 @@ class DaemonTests(unittest.IsolatedAsyncioTestCase):
         await self.daemon.line("voice", "Hello")
         second = await self.daemon.bus.wait(a, first["seq"], .01)
         self.assertEqual([e["text"] for e in second["events"]], ["Hello"])
+
+    async def test_turn_speaks_substance_but_keeps_complete_answer_for_read_turn(self):
+        await self.pin()
+        await self.daemon.turn(dict(self.a, turn_id="decorated", answer=DECORATED_ANSWER, aborted=False))
+        events = [json.loads(row) for row in self.daemon.log.path.read_text().splitlines()]
+        updates = [event for event in events if event.get("type") in ("session.thinking.append", "session.commentary.append")]
+        commentary = [event["content"] for event in updates if event["type"] == "session.commentary.append"]
+        self.assertEqual(len(commentary), 1)
+        content = "\n".join(event["content"] for event in updates)
+        self.assertIn("DEMO-576", content)
+        self.assertIn("small change", content)
+        self.assertNotIn("English", content)
+        self.assertIn("read_turn", commentary[0])
+        self.assertTrue(all(len(event["content"].encode()) <= 450 for event in updates))
+        self.assertEqual((await self.daemon.run_tool("read_turn", {"index": "last"}))["text"], DECORATED_ANSWER)
+        self.assertNotIn("English", self.daemon.greeting_context()["recent_turns"][-1]["text"])
+
+    async def test_turn_feeds_planned_parts_in_order_and_deduplicates_turn(self):
+        await self.pin()
+        answer = "\n\n".join(f"Paragraph {i}: " + "word " * 70 for i in range(6))
+        body = dict(self.a, turn_id="long", answer=answer, aborted=False)
+        with patch.object(self.daemon.backend, "feed", new_callable=AsyncMock) as feed:
+            await self.daemon.turn(body)
+            await self.daemon.turn(body)
+        self.assertEqual([call.args for call in feed.await_args_list], vc.turn_updates(answer))
+        self.assertEqual((await self.daemon.run_tool("read_turn", {"index": "last"}))["text"], answer)
+
+    async def test_tokenizer_missing_and_timeout_fall_back_without_retrying(self):
+        for failure in (ImportError("not installed"), TimeoutError("encoding fetch timed out")):
+            with self.subTest(failure=type(failure).__name__):
+                self.daemon.tokenizer_loaded = False
+                with patch.object(vc, "load_tokenizer", side_effect=failure) as load, redirect_stderr(io.StringIO()):
+                    first = await self.daemon.prepare_turn_updates("Hello")
+                    second = await self.daemon.prepare_turn_updates("Hello")
+                self.assertEqual(first, vc.turn_updates("Hello"))
+                self.assertEqual(second, first)
+                load.assert_called_once()
+
+    async def test_tokenizer_initialization_has_a_deadline_and_leaves_loop_running(self):
+        started, release = threading.Event(), threading.Event()
+        def slow_load():
+            started.set()
+            release.wait(1)
+            return None
+        try:
+            with patch.object(vc, "load_tokenizer", side_effect=slow_load), \
+                 patch.object(vc, "TOKENIZER_TIMEOUT", .02), redirect_stderr(io.StringIO()):
+                task = asyncio.create_task(self.daemon.prepare_turn_updates("Hello"))
+                await asyncio.sleep(.005)
+                self.assertTrue(started.is_set())
+                self.assertFalse(task.done())
+                result = await asyncio.wait_for(task, .2)
+                self.assertEqual(result, vc.turn_updates("Hello"))
+        finally:
+            release.set()
 
     async def test_wait_recovers_after_sequence_reset(self):
         result = await asyncio.wait_for(self.daemon.bus.wait(vc.Pane.parse(self.a), 900), .1)
@@ -341,6 +494,35 @@ class TranscriptTests(unittest.TestCase):
     def test_summary_bound_handles_multibyte_text(self):
         self.assertLessEqual(len(vc.summary("😀" * 2000).encode()), 400)
 
+    def test_summary_skips_english_check_and_keeps_answer_substance(self):
+        result = vc.summary(DECORATED_ANSWER)
+        self.assertTrue(result.startswith("DEMO-576"))
+        self.assertIn("small change", result)
+        for decoration in ("English", "─", ">", "**", "`"):
+            self.assertNotIn(decoration, result)
+        self.assertLessEqual(len(result.encode()), 400)
+
+    def test_summary_preserves_plain_prose_and_prioritizes_tldr_over_decoration(self):
+        cases = [
+            ("A plain answer.\n\nMore detail.", "A plain answer.\n\nMore detail."),
+            ("> English grammar matters in this answer.", "English grammar matters in this answer."),
+            ("# Context\n\n**TL;DR:** The fix is ready.\n\n---\n\n> **Proof**: `57 tests`.",
+             "The fix is ready.\n\nContext\n\nProof: 57 tests."),
+            ("```text\n┌────┐\n│ diagram │\n└────┘\n```\n\nThe real answer.", "The real answer."),
+            ("[The fix](https://example.com/fix) is ready.", "The fix is ready."),
+            ("", ""),
+        ]
+        for source, expected in cases:
+            with self.subTest(source=source):
+                self.assertEqual(vc.summary(source), expected)
+
+    def test_complete_commentary_stays_below_live_append_limit(self):
+        for answer in ("word " * 2000, "😀" * 2000, "已修复" * 2000, DECORATED_ANSWER):
+            with self.subTest(prefix=answer[:20]):
+                updates = vc.turn_updates(answer)
+                self.assertTrue(all(len(content.encode()) <= 450 for _, content in updates))
+                self.assertIn("read_turn", updates[-1][1])
+
     def test_profile_has_value_source_parity(self):
         with tempfile.TemporaryDirectory() as folder:
             Path(folder, ".voice-call.json").write_text('{"backend":"realtime","voice":"cedar"}')
@@ -446,6 +628,63 @@ def fake_audio_api(outcomes, *, start_error=None, stop_error=None):
                           _terminate=Mock(side_effect=lambda: operations.append("terminate")),
                           _initialize=Mock(side_effect=lambda: operations.append("initialize")))
     return api, operations
+
+
+class TurnBudgetTests(unittest.TestCase):
+    tokenizer = None
+
+    def count(self, text):
+        return len(text.encode())
+
+    def test_short_answer_has_one_complete_commentary(self):
+        answer = "The fix is ready."
+        self.assertEqual(vc.turn_updates(answer, self.tokenizer), [("commentary", vc.TURN_PREFIX + answer)])
+
+    def test_long_answer_preserves_order_and_content_with_bounded_parts(self):
+        answer = "\n\n".join(f"Paragraph {i}: " + "alpha beta gamma delta. " * 16 for i in range(6))
+        updates = vc.turn_updates(answer, self.tokenizer)
+        parts = updates[:-1]
+        self.assertGreater(len(parts), 1)
+        self.assertLessEqual(len(parts), 8)
+        for index, (kind, content) in enumerate(parts, 1):
+            self.assertEqual(kind, "thinking")
+            self.assertTrue(content.startswith(f"Claude answer part {index}/{len(parts)} "))
+        reassembled = " ".join(content.split("\n", 1)[1] for _, content in parts)
+        self.assertEqual(" ".join(reassembled.split()), " ".join(vc.clean_answer(answer).split()))
+        self.assertEqual(updates[-1], ("commentary", vc.TURN_PARTS_COMMENTARY))
+        self.assertTrue(all(self.count(content) <= 450 for _, content in updates))
+
+    def test_huge_answer_stops_at_eight_parts_with_read_turn_notice(self):
+        updates = vc.turn_updates("\n\n".join(f"Part {i}. " + "界😀 answer " * 100 for i in range(100)), self.tokenizer)
+        self.assertEqual([kind for kind, _ in updates], ["thinking"] * 8 + ["commentary"])
+        self.assertTrue(updates[-2][1].endswith(vc.TURN_TRUNCATED))
+        self.assertTrue(all(self.count(content) <= 450 for _, content in updates))
+
+    def test_no_replacement_characters_when_splitting_unicode_or_token_markers(self):
+        updates = vc.turn_updates(("café 中文 😀 <|endoftext|> " * 50), self.tokenizer)
+        self.assertTrue(all("\ufffd" not in content and self.count(content) <= 450 for _, content in updates))
+
+    def test_encoder_failure_uses_byte_bound(self):
+        encoder = SimpleNamespace(encode=Mock(side_effect=ValueError("bad encoding")))
+        answer = "Enough text to span multiple events. " * 100
+        self.assertEqual(vc.turn_updates(answer, encoder), vc.turn_updates(answer))
+
+
+@unittest.skipUnless(importlib.util.find_spec("tiktoken"), "real-token path needs uv with tiktoken")
+class RealTokenBudgetTests(TurnBudgetTests):
+    @classmethod
+    def setUpClass(cls):
+        cls.tokenizer = vc.load_tokenizer()
+
+    def count(self, text):
+        return len(self.tokenizer.encode(text, disallowed_special=()))
+
+    def test_cleaned_demo576_answer_fits_whole_in_one_token_budget(self):
+        updates = vc.turn_updates(DECORATED_ANSWER, self.tokenizer)
+        self.assertEqual(updates, [("commentary", vc.TURN_PREFIX + vc.clean_answer(DECORATED_ANSWER))])
+        self.assertLessEqual(self.count(updates[0][1]), 450)
+        self.assertGreater(len(updates[0][1].encode()), 450)
+        self.assertIn("manual request", updates[0][1])
 
 
 class AudioTests(unittest.IsolatedAsyncioTestCase):
@@ -561,6 +800,75 @@ class BackendProtocolTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(self.tools, [("session_overview", {})])
         self.assertEqual([e["type"] for e in self.backend.ws.sent], ["response.item.create","response.create"])
         self.assertEqual(self.backend.ws.sent[0]["item"]["call_id"], "c")
+
+    async def test_answer_parts_reach_live_and_realtime_in_order_with_one_speech_request(self):
+        updates = vc.turn_updates("\n\n".join("Paragraph " + "word " * 70 for _ in range(4)))
+        for name in ("gpt-live", "realtime"):
+            with self.subTest(name=name):
+                self.backend.name = name
+                self.backend.active_response = False
+                self.backend.ws.sent.clear()
+                for kind, content in updates:
+                    await self.backend.feed(kind, content)
+                events = self.backend.ws.sent
+                if name == "gpt-live":
+                    self.assertEqual([(event["type"], event["content"]) for event in events],
+                                     [(f"session.{kind}.append", content) for kind, content in updates])
+                else:
+                    self.assertEqual([event["type"] for event in events],
+                                     ["conversation.item.create"] * len(updates) + ["response.create"])
+                    self.assertEqual([event["item"]["content"][0]["text"] for event in events[:-1]],
+                                     [content for _, content in updates])
+
+    async def test_live_greeting_seeds_context_and_requests_speech_after_started(self):
+        context = dict(overview=dict(turn_count=2), recent_turns=[dict(role="assistant", text="Ready for review")])
+        self.backend.greeting_context = context
+        self.backend.ws.recv = AsyncMock(return_value=json.dumps(dict(type="session.started")))
+        await self.backend.handshake()
+        self.assertTrue(self.backend.started)
+        seed = self.backend.ws.sent[0]["session"]["input"][0]
+        self.assertEqual(seed["role"], "developer")
+        self.assertIn(vc.GREETING_INSTRUCTIONS, seed["content"][0]["text"])
+        self.assertIn(json.dumps(context), seed["content"][0]["text"])
+        self.backend.audio.flush()
+        await self.backend.greet()
+        self.assertFalse(self.backend.audio.muted)
+        greeting = self.backend.ws.sent[1]
+        self.assertEqual(greeting["type"], "session.commentary.append")
+        self.assertEqual(greeting["content"], vc.GREETING_INSTRUCTIONS)
+        self.assertLessEqual(len(greeting["content"].encode()), 500)
+        self.assertIsNone(greeting["delegation_id"])
+        self.assertTrue(greeting["event_id"].startswith("greeting_"))
+        self.assertEqual(len(self.backend.ws.sent), 2)
+
+    async def test_realtime_greeting_requests_audio_with_own_instructions_and_no_tools(self):
+        self.backend.name = "realtime"
+        self.backend.greeting_context = dict(overview=dict(turn_count=0), recent_turns=[])
+        await self.backend.greet()
+        sent = self.backend.ws.sent
+        self.assertEqual([event["type"] for event in sent], ["conversation.item.create", "response.create"])
+        self.assertIn('"turn_count": 0', sent[0]["item"]["content"][0]["text"])
+        self.assertEqual(sent[1]["response"]["instructions"], vc.GREETING_INSTRUCTIONS)
+        self.assertEqual(sent[1]["response"]["output_modalities"], ["audio"])
+        self.assertEqual(sent[1]["response"]["tools"], [])
+        self.assertTrue(self.backend.active_response)
+
+    async def test_realtime_greeting_waits_for_active_response_and_stop_discards_it(self):
+        self.backend.name = "realtime"
+        self.backend.active_response = True
+        await self.backend.greet()
+        self.assertEqual(self.backend.ws.sent, [])
+        await self.backend.handle(dict(type="response.done"))
+        self.assertEqual([event["type"] for event in self.backend.ws.sent],
+                         ["conversation.item.create", "response.create"])
+        self.assertFalse(self.backend.pending_greeting)
+        await self.backend.greet()
+        self.assertTrue(self.backend.pending_greeting)
+        await self.backend.stop()
+        count = len(self.backend.ws.sent)
+        await self.backend.handle(dict(type="response.done"))
+        self.assertFalse(self.backend.pending_greeting)
+        self.assertEqual(len(self.backend.ws.sent), count)
 
     async def test_live_stop_flushes_and_suppresses_already_queued_audio(self):
         self.backend.audio.append(b"\x00\x01" * 100)

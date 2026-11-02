@@ -1,5 +1,18 @@
 # Changelog
 
+## voice-call v0.1.5 - 2026-11-01
+
+### Added
+
+- Once a call is live, the voice says hello and gives a quick summary of the pinned conversation.
+
+### Changed
+
+- The voice's turn summary starts from the answer's TL;DR. The excerpt it gets skips the English check block, `---` rules, box-drawing characters and markdown markers; before, the English block filled the whole 400-byte excerpt. The voice is pointed at `read_turn` for the full answer.
+- Turn summaries are sized in tokens (tiktoken `o200k_base`, 450 per event) instead of a 400-byte cut. An answer that fits goes to the voice whole in one event; a longer one goes first as up to eight ordered context parts, then one request to summarize them. If tiktoken is unavailable, the byte bound applies.
+- The transcript is a band of at most six rows above Claude's prompt instead of a side pane, so a closed pane no longer hides it for the rest of the session.
+- `⌥⌘V` on the pane that is already pinned remounts the band instead of doing nothing; the call keeps running. The status line reads `voice: <state> · ⌥⌘V expands it`.
+
 ## voice-call v0.1.4 - 2026-11-01
 
 ### Added

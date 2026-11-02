@@ -11,19 +11,22 @@ const AGTERM = {
   HOME: "/home/u",
 };
 
-const PANE = {
+const BAND = {
   plugin: "voice-call",
-  component: "Pane",
-  requestId: "voice-call",
+  component: "AbovePrompt",
   props: {
-    title: "Voice call",
-    isFocused: false,
+    hasSurvey: false,
+    isWorking: false,
+    maxRows: 20,
     bodyColumns: 60,
-    placement: "dock",
-    scroll: { offset: 0, bodyRows: 20 },
+    scroll: { offset: 0, bodyRows: 19 },
     view: {},
   },
 } as const;
+
+function band(props: Partial<typeof BAND.props> = {}) {
+  return { ...BAND, props: { ...BAND.props, ...props } };
+}
 
 const HERE = {
   agterm_session: "S-PINNED",
@@ -35,6 +38,7 @@ function fakeDaemon(on: On, waits: object[][], pinnedAt: object = HERE) {
   const posted: Posted[] = [];
   const opened: string[] = [];
   const closed: string[] = [];
+  const statuses: (string | undefined)[] = [];
   const submitted: string[] = [];
   const ran: string[][] = [];
   let wait = 0;
@@ -67,6 +71,14 @@ function fakeDaemon(on: On, waits: object[][], pinnedAt: object = HERE) {
     closed.push(e.id);
     return { value: undefined };
   });
+  on("ui.render", { component: "AbovePrompt" }, ($, e) => {
+    const { Box } = $.ui.resolve(e);
+    return <Box key="beneath" />;
+  });
+  on("ui.status", (_, e) => {
+    statuses.push(e.text);
+    return { value: undefined };
+  });
   on("prompt.submit", (_, e) => {
     submitted.push(e.text);
     return { text: e.text };
@@ -83,7 +95,7 @@ function fakeDaemon(on: On, waits: object[][], pinnedAt: object = HERE) {
   on("session.start", (_, e) => ({ cwd: e.cwd }));
   on("turn.complete", () => ({ text: "" }));
 
-  return { posted, opened, closed, submitted, ran };
+  return { posted, opened, closed, statuses, submitted, ran };
 }
 
 function reply(body: object) {
@@ -116,7 +128,7 @@ test("outside agterm the mod registers nothing and posts nothing", async ($, on)
   expect(daemon.opened).toEqual([]);
 });
 
-test("a pinned event opens the pane and the next turn is forwarded", async ($, on) => {
+test("a pinned event draws the band, opens no pane, and the next turn is forwarded", async ($, on) => {
   mock.env(on, AGTERM);
   const clock = mock.clock(on);
   const daemon = fakeDaemon(on, [[pinned]]);
@@ -126,7 +138,11 @@ test("a pinned event opens the pane and the next turn is forwarded", async ($, o
   await $.turn.complete(turnEnd("Claude says hi"));
   await clock.advance(0);
 
-  expect(daemon.opened).toEqual(["voice-call"]);
+  expect(daemon.opened).toEqual([]);
+  expect(daemon.statuses).toContain("voice: live · ⌥⌘V expands it");
+  const ui = await $.ui.mount({ ...band(), surface: "terminal" });
+  expect(await ui.find({ type: "Text", text: /· gpt-live-1/ })).toBeDefined();
+  await ui.unmount();
   expect(daemon.posted.map((one) => one.path)).toEqual(["/register", "/turn"]);
   expect(daemon.posted[1]?.body).toMatchObject({
     agterm_session: "S-PINNED",
@@ -149,7 +165,7 @@ test("an unpinned session never forwards turns, and subagent turns are ignored",
   expect(daemon.posted.map((one) => one.path)).toEqual(["/register"]);
 });
 
-test("a submit event reaches Claude and is reported; an unpin closes the pane", async ($, on) => {
+test("a submit event reaches Claude and is reported; an unpin clears the band and the notice", async ($, on) => {
   mock.env(on, AGTERM);
   const clock = mock.clock(on);
   const daemon = fakeDaemon(on, [
@@ -164,7 +180,11 @@ test("a submit event reaches Claude and is reported; an unpin closes the pane", 
   expect(
     daemon.posted.find((one) => one.path === "/submit-result")?.body,
   ).toEqual({ id: "s1", status: "sent" });
-  expect(daemon.closed).toEqual(["voice-call"]);
+  expect(daemon.closed).toEqual([]);
+  expect(daemon.statuses.at(-1)).toBeUndefined();
+  const ui = await $.ui.mount({ ...band(), surface: "terminal" });
+  expect(await ui.find({ type: "Text", text: /gpt-live-1/ })).toBeUndefined();
+  await ui.unmount();
 });
 
 test("an empty instruction is refused, not submitted", async ($, on) => {
@@ -187,7 +207,7 @@ test("an empty instruction is refused, not submitted", async ($, on) => {
   });
 });
 
-test("the pane draws the header, disconnected once the daemon is gone, and the transcript, on every surface", async ($, on) => {
+test("the band draws the header, disconnected once the daemon is gone, and the transcript, on every surface", async ($, on) => {
   mock.env(on, AGTERM);
   const clock = mock.clock(on);
   fakeDaemon(on, [
@@ -201,7 +221,7 @@ test("the pane draws the header, disconnected once the daemon is gone, and the t
   await clock.advance(0);
 
   for (const surface of ["terminal", "desktop"] as const) {
-    const ui = await $.ui.mount({ ...PANE, surface });
+    const ui = await $.ui.mount({ ...band(), surface });
     expect(
       (await ui.find({ type: "Text", text: /· gpt-live-1/ }))?.text,
     ).toBe("● disconnected · gpt-live-1");
@@ -281,7 +301,7 @@ test("word-sized voice chunks merge into one line; a different speaker starts a 
   await $.session.start({ cwd: "/", surface: "terminal", isInteractive: true });
   await clock.advance(0);
 
-  const ui = await $.ui.mount({ ...PANE, surface: "terminal" });
+  const ui = await $.ui.mount({ ...band(), surface: "terminal" });
   expect((await ui.find({ type: "Text", text: /Okay/ }))?.text).toBe(
     "voice Okay, I",
   );
@@ -291,18 +311,18 @@ test("word-sized voice chunks merge into one line; a different speaker starts a 
   await ui.unmount();
 });
 
-test("a daemon restart that lost the pin closes the pane on reconnect", async ($, on) => {
+test("a daemon restart that lost the pin clears the band on reconnect", async ($, on) => {
   mock.env(on, AGTERM);
   const clock = mock.clock(on);
   const daemon = fakeDaemon(on, [[pinned]]);
 
   await $.session.start({ cwd: "/", surface: "terminal", isInteractive: true });
   await clock.advance(0);
-  expect(daemon.opened).toEqual(["voice-call"]);
+  expect(daemon.statuses.at(-1)).toContain("⌥⌘V expands it");
   await clock.advance(2000);
 
   expect(daemon.posted.filter((one) => one.path === "/register").length).toBeGreaterThan(1);
-  expect(daemon.closed).toEqual(["voice-call"]);
+  expect(daemon.statuses.at(-1)).toBeUndefined();
 });
 
 test("session start repoints the hotkey link at this plugin version", async ($, on) => {
@@ -331,4 +351,66 @@ test("a forwarded slash command or shell escape is refused", async ($, on) => {
   expect(daemon.submitted).toEqual([]);
   const results = daemon.posted.filter((one) => one.path === "/submit-result").map((one) => one.body.status);
   expect(results).toEqual(["refused", "refused"]);
+});
+
+test("the band stays slim: at most six rows, long lines wrapped to its width, newest rows kept", async ($, on) => {
+  mock.env(on, AGTERM);
+  const clock = mock.clock(on);
+  const long = "alpha ".repeat(40) + "omega";
+  fakeDaemon(on, [[pinned, { kind: "line", who: "you", text: long, ts: 1 }]]);
+
+  await $.session.start({ cwd: "/", surface: "terminal", isInteractive: true });
+  await clock.advance(0);
+
+  const ui = await $.ui.mount({ ...band({ bodyColumns: 30, maxRows: 20 }), surface: "terminal" });
+  const texts = await ui.findAll({ type: "Text" });
+  expect(texts).toHaveLength(6);
+  for (const text of texts) expect(text.text.length).toBeLessThanOrEqual(30);
+  expect(texts.at(-1)?.text).toContain("omega");
+  await ui.unmount();
+
+  const tight = await $.ui.mount({ ...band({ bodyColumns: 30, maxRows: 3 }), surface: "terminal" });
+  expect(await tight.findAll({ type: "Text" })).toHaveLength(3);
+  await tight.unmount();
+
+  for (const [maxRows, count] of [[2, 2], [1, 1]] as const) {
+    const slim = await $.ui.mount({ ...band({ bodyColumns: 30, maxRows }), surface: "terminal" });
+    expect(await slim.findAll({ type: "Text" })).toHaveLength(count);
+    await slim.unmount();
+  }
+  const none = await $.ui.mount({ ...band({ bodyColumns: 30, maxRows: 0 }), surface: "terminal" });
+  expect(await none.find({ type: "Text", text: /gpt-live-1/ })).toBeUndefined();
+  await none.unmount();
+});
+
+test("the band yields to a survey", async ($, on) => {
+  mock.env(on, AGTERM);
+  const clock = mock.clock(on);
+  fakeDaemon(on, [[pinned]]);
+
+  await $.session.start({ cwd: "/", surface: "terminal", isInteractive: true });
+  await clock.advance(0);
+
+  const ui = await $.ui.mount({ ...band({ hasSurvey: true }), surface: "terminal" });
+  expect(await ui.find({ type: "Text", text: /gpt-live-1/ })).toBeUndefined();
+  await ui.unmount();
+});
+
+test("a show event remounts the band: one pass, then a redraw, and opens no pane", async ($, on) => {
+  mock.env(on, AGTERM);
+  const clock = mock.clock(on);
+  const daemon = fakeDaemon(on, [[pinned], [{ kind: "show" }]]);
+
+  await $.session.start({ cwd: "/", surface: "terminal", isInteractive: true });
+  await clock.advance(0);
+
+  const during = await $.ui.mount({ ...band(), surface: "terminal" });
+  expect(await during.find({ type: "Text", text: /gpt-live-1/ })).toBeUndefined();
+  await during.unmount();
+  await clock.advance(100);
+
+  const after = await $.ui.mount({ ...band(), surface: "terminal" });
+  expect(await after.find({ type: "Text", text: /· gpt-live-1/ })).toBeDefined();
+  await after.unmount();
+  expect(daemon.opened).toEqual([]);
 });

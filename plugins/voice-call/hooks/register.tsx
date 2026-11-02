@@ -14,19 +14,22 @@ import type {
  * One instance per Claude session; only the instance in the pane the daemon pinned acts.
  *
  * Daemon contract: `scripts/voice-call` HTTP over `~/.local/state/voice-call/voice.sock`.
+ * The transcript is drawn only in the band above the prompt, never in a Pane.
  */
 
-const PANE_ID = "voice-call";
-const PANE_TITLE = "Voice call";
 const HOST = "http://voice-call";
 const MAX_LINES = 300;
 const MAX_SUBMIT_BYTES = 8192;
 const RETRY_MS = 2000;
 const MAX_SEEN_SUBMITS = 200;
 const MERGE_GAP_MS = 2500;
+const BAND_ROWS = 6;
+const MIN_TEXT_COLUMNS = 8;
+const REMOUNT_MS = 100;
 const STREAMED: ReadonlySet<LineWho> = new Set(["you", "voice"]);
 
 type PinnedStatus = Partial<PaneKey> & { claude_session_id?: string };
+type BandRow = { who: LineWho; text: string };
 
 const lines = atom(
   { plugin: "voice-call", key: "lines" } as const,
@@ -42,6 +45,14 @@ const generation = atom(
   { plugin: "voice-call", key: "generation" } as const,
   0,
   { shape: "generation-1" },
+);
+const bandEpoch = atom({ plugin: "voice-call", key: "bandEpoch" } as const, 0, {
+  shape: "band-epoch-1",
+});
+const isRemounting = atom(
+  { plugin: "voice-call", key: "isRemounting" } as const,
+  false,
+  { shape: "is-remounting-1" },
 );
 
 const LABELS: Record<LineWho, { tag: string; color: string }> = {
@@ -106,23 +117,31 @@ export const register: Register = (on) => {
     text: await runCommand($, e.args.trim()),
   }));
 
-  on("ui.render", { component: "Pane", requestId: PANE_ID }, async ($, e) => {
-    const { Box, Text } = $.ui.resolve(e);
+  on("ui.render", { component: "AbovePrompt" }, async ($, e, next) => {
     const view = await read($, call);
-    const room = Math.max(1, (e.viewport?.rows ?? 24) - 3);
-    const shown = (await read($, lines)).slice(-room);
+    if (!view || e.props.hasSurvey || e.props.maxRows < 1) return next(e);
+    if (await read($, isRemounting)) return next(e);
+
+    const { Box, Text } = $.ui.resolve(e);
+    const room = Math.min(BAND_ROWS, e.props.maxRows) - 1;
+    const rows = newestRows(
+      bandRows(await read($, lines), e.props.bodyColumns),
+      room,
+    );
 
     return (
-      <Box flexDirection="column">
-        <Text bold color="cyan">
-          {view ? `● ${view.state} · ${view.model}` : "○ not pinned"}
+      <Box key={`band-${await read($, bandEpoch)}`} flexDirection="column">
+        <Text bold color="cyan" wrap="truncate-end">
+          {`● ${view.state} · ${view.model}`}
         </Text>
-        {shown.length === 0 && (
-          <Text dimColor>Speak; the transcript appears here.</Text>
+        {rows.length === 0 && room > 0 && (
+          <Text dimColor wrap="truncate-end">
+            Speak; the transcript appears here.
+          </Text>
         )}
-        {shown.map((line) => (
-          <Text color={LABELS[line.who].color}>
-            {LABELS[line.who].tag} {line.text.trim()}
+        {rows.map((row) => (
+          <Text color={LABELS[row.who].color} wrap="truncate-end">
+            {row.text}
           </Text>
         ))}
       </Box>
@@ -216,6 +235,8 @@ async function handleEvent($: Engine, event: WaitEvent): Promise<void> {
       return showPinned($, event.call, event.model);
     case "unpinned":
       return hidePinned($);
+    case "show":
+      return remountBand($);
     case "line":
       return appendLine($, event.who, event.text, event.ts * 1000);
     case "call":
@@ -227,6 +248,7 @@ async function handleEvent($: Engine, event: WaitEvent): Promise<void> {
 
 async function setCallState($: Engine, state: string): Promise<void> {
   await update($, call, (view) => (view ? { ...view, state } : view));
+  if (isPinned) showNotice($, state);
 }
 
 async function showPinned(
@@ -236,14 +258,70 @@ async function showPinned(
 ): Promise<void> {
   isPinned = true;
   await update($, call, () => ({ state, model }));
-  await $.ui.open({ id: PANE_ID, title: PANE_TITLE });
+  showNotice($, state);
   await appendLine($, "system", "pinned: the voice follows this session");
 }
 
 async function hidePinned($: Engine): Promise<void> {
   isPinned = false;
   await update($, call, () => null);
-  await $.ui.close({ id: PANE_ID });
+  $.ui.status(undefined);
+}
+
+/** The status line stays visible while the band is collapsed, so it names the key that brings the band back. */
+function showNotice($: Engine, state: string): void {
+  $.ui.status(`voice: ${state} · ⌥⌘V expands it`);
+}
+
+/** A band the person collapsed stays collapsed across redraws; one render that passes, then a new root key, remounts it. */
+async function remountBand($: Engine): Promise<void> {
+  await update($, isRemounting, () => true);
+  await $.clock.sleep(REMOUNT_MS);
+  await update($, bandEpoch, (epoch) => epoch + 1);
+  await update($, isRemounting, () => false);
+}
+
+/** Every transcript line word-wrapped to the band's width, one entry per terminal row, oldest first. */
+function bandRows(list: readonly Line[], columns: number): BandRow[] {
+  return list.flatMap((line) => lineRows(line, columns));
+}
+
+function newestRows(rows: readonly BandRow[], room: number): BandRow[] {
+  return room > 0 ? rows.slice(-room) : [];
+}
+
+function lineRows(line: Line, columns: number): BandRow[] {
+  const prefix = `${LABELS[line.who].tag} `;
+  const indent = " ".repeat(prefix.length);
+  const width = Math.max(MIN_TEXT_COLUMNS, columns - prefix.length);
+
+  return wrapWords(line.text.trim(), width).map((text, index) => ({
+    who: line.who,
+    text: (index === 0 ? prefix : indent) + text,
+  }));
+}
+
+function wrapWords(text: string, width: number): string[] {
+  const rows: string[] = [];
+  let row = "";
+  for (const word of text.split(/\s+/).flatMap((one) => chunk(one, width))) {
+    if (row && row.length + 1 + word.length > width) {
+      rows.push(row);
+      row = word;
+      continue;
+    }
+    row = row ? `${row} ${word}` : word;
+  }
+
+  return [...rows, row];
+}
+
+function chunk(word: string, width: number): string[] {
+  const pieces: string[] = [];
+  for (let at = 0; at < word.length; at += width)
+    pieces.push(word.slice(at, at + width));
+
+  return pieces;
 }
 
 async function appendLine(

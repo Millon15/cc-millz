@@ -8,7 +8,8 @@ Talk with a third, full-duplex voice about ONE Claude Code session while you are
 
 ## Core ideas
 
-- **One pinned pane, chosen by a hotkey.** `⌥⌘V` in a Claude pane pins the voice to it; pressed in a Codex pane of a split, it pins the sibling Claude pane. It stays pinned while you browse other sessions, until you press `⌥⌘V` somewhere else.
+- **One pinned pane, chosen by a hotkey.** `⌥⌘V` in a Claude pane pins the voice to it; pressed in a Codex pane of a split, it pins the sibling Claude pane. It stays pinned while you browse other sessions, until you press `⌥⌘V` somewhere else. Once the call is live, the voice says hello and sums up the conversation so far.
+- **A slim transcript above the prompt.** The transcript is a band of at most six rows directly above Claude's prompt, never a side pane. `⌥⌘V` on the pinned pane redraws it without restarting the call.
 - **Everything else stays silent.** Turns from unpinned sessions are never spoken, however many agents are running.
 - **The voice has the whole session.** OpenAI GPT-Live delegates to a Responses model with five tools: `search_transcript`, `read_turn`, `session_overview`, `read_workspace_rules` and `send_to_claude`. Ask "what was the second option?" and the voice answers it without bothering Claude.
 - **The voice looks rules up instead of carrying them.** `read_workspace_rules` searches the pinned session's `CLAUDE.md` files, `.claude/rules/**`, your `~/.claude` rules and the session's auto-memory notes, and returns sections with `path:line`. The call opens with a one-line primer naming the repo; the rules themselves are read on demand and treated as reference, never as commands.
@@ -19,14 +20,14 @@ Talk with a third, full-duplex voice about ONE Claude Code session while you are
 ## Security
 
 - Claude's output and the transcript are untrusted text the voice reads. A forward never starts with `/` or `!` and reaches Claude framed as a voice-call message, so Claude's permission prompts still apply.
-- Nothing checks that a forward came from your own words: text in Claude's output can talk the voice into forwarding it. Every forward shows as `→ cc` in the side pane; mute the mic or hang up when you step away.
+- Nothing checks that a forward came from your own words: text in Claude's output can talk the voice into forwarding it. Every forward shows as `→ cc` in the transcript band; mute the mic or hang up when you step away.
 - A repository's `.voice-call.json` can change the backend, model and voice. The first line of each call names the profile in use.
 
 ## Components
 
 | Component | What it does |
 |-----------|-------------|
-| mod `hooks/register.tsx` | Runs in every Claude session: registers the pane with the daemon, draws the **Voice call** side pane when pinned, forwards finished turns and typed prompts, and delivers `send_to_claude` |
+| mod `hooks/register.tsx` | Runs in every Claude session: registers the pane with the daemon, draws the transcript band above the prompt when pinned, forwards finished turns and typed prompts, and delivers `send_to_claude` |
 | `scripts/voice-call` | The CLI and daemon: one per Mac, mic and speaker over GPT-Live or Realtime, HTTP over `~/.local/state/voice-call/voice.sock`, call logs in `~/.local/state/voice-call/calls/` |
 | `scripts/keymap.conf.snippet` | The three agterm hotkeys, appended to `~/.config/agterm/keymap.conf` by `install` |
 | `/voice-call` | Status; `/voice-call setup` runs `install`; `/voice-call hangup` ends the call |
