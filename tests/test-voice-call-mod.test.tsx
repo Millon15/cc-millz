@@ -139,7 +139,7 @@ test("a pinned event draws the band, opens no pane, and the next turn is forward
   await clock.advance(0);
 
   expect(daemon.opened).toEqual([]);
-  expect(daemon.statuses).toContain("voice: live · ⌥⌘V expands it");
+  expect(daemon.statuses).toContain("voice: live · ⌥⌘V expand · ⇧⌥⌘V hang up · ⌥⌘. interrupt");
   const ui = await $.ui.mount({ ...band(), surface: "terminal" });
   expect(await ui.find({ type: "Text", text: /· gpt-live-1/ })).toBeDefined();
   await ui.unmount();
@@ -318,7 +318,7 @@ test("a daemon restart that lost the pin clears the band on reconnect", async ($
 
   await $.session.start({ cwd: "/", surface: "terminal", isInteractive: true });
   await clock.advance(0);
-  expect(daemon.statuses.at(-1)).toContain("⌥⌘V expands it");
+  expect(daemon.statuses.at(-1)).toContain("⌥⌘V expand");
   await clock.advance(2000);
 
   expect(daemon.posted.filter((one) => one.path === "/register").length).toBeGreaterThan(1);
@@ -396,21 +396,22 @@ test("the band yields to a survey", async ($, on) => {
   await ui.unmount();
 });
 
-test("a show event remounts the band: one pass, then a redraw, and opens no pane", async ($, on) => {
+test("an expand failure switches the notice to the click hint; a show restores it; neither hides the band", async ($, on) => {
   mock.env(on, AGTERM);
   const clock = mock.clock(on);
-  const daemon = fakeDaemon(on, [[pinned], [{ kind: "show" }]]);
+  const daemon = fakeDaemon(on, [[pinned, { kind: "expand_failed" }], [{ kind: "show" }]]);
 
   await $.session.start({ cwd: "/", surface: "terminal", isInteractive: true });
   await clock.advance(0);
 
-  const during = await $.ui.mount({ ...band(), surface: "terminal" });
-  expect(await during.find({ type: "Text", text: /gpt-live-1/ })).toBeUndefined();
-  await during.unmount();
-  await clock.advance(100);
+  const shown = daemon.statuses.filter((text): text is string => text !== undefined);
+  const failed = shown.findIndex((text) => text.includes("click ▸ to show the band"));
+  expect(failed).toBeGreaterThan(-1);
+  expect(shown[failed]).toBe("voice: live · click ▸ to show the band · ⇧⌥⌘V hang up · ⌥⌘. interrupt");
+  expect(shown.slice(failed + 1).some((text) => text.includes("⌥⌘V expand"))).toBe(true);
 
-  const after = await $.ui.mount({ ...band(), surface: "terminal" });
-  expect(await after.find({ type: "Text", text: /· gpt-live-1/ })).toBeDefined();
-  await after.unmount();
+  const ui = await $.ui.mount({ ...band(), surface: "terminal" });
+  expect(await ui.find({ type: "Text", text: /· gpt-live-1/ })).toBeDefined();
+  await ui.unmount();
   expect(daemon.opened).toEqual([]);
 });

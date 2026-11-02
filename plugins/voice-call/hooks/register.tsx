@@ -25,7 +25,7 @@ const MAX_SEEN_SUBMITS = 200;
 const MERGE_GAP_MS = 2500;
 const BAND_ROWS = 6;
 const MIN_TEXT_COLUMNS = 8;
-const REMOUNT_MS = 100;
+const CALL_KEYS = "⇧⌥⌘V hang up · ⌥⌘. interrupt";
 const STREAMED: ReadonlySet<LineWho> = new Set(["you", "voice"]);
 
 type PinnedStatus = Partial<PaneKey> & { claude_session_id?: string };
@@ -46,14 +46,6 @@ const generation = atom(
   0,
   { shape: "generation-1" },
 );
-const bandEpoch = atom({ plugin: "voice-call", key: "bandEpoch" } as const, 0, {
-  shape: "band-epoch-1",
-});
-const isRemounting = atom(
-  { plugin: "voice-call", key: "isRemounting" } as const,
-  false,
-  { shape: "is-remounting-1" },
-);
 
 const LABELS: Record<LineWho, { tag: string; color: string }> = {
   you: { tag: "you  ", color: "yellow" },
@@ -67,6 +59,7 @@ let pane: PaneKey | undefined;
 let socketPath = "";
 let isPinned = false;
 let isBusy = false;
+let isExpandFailed = false;
 const seenSubmits = new Set<string>();
 
 export const register: Register = (on) => {
@@ -120,7 +113,6 @@ export const register: Register = (on) => {
   on("ui.render", { component: "AbovePrompt" }, async ($, e, next) => {
     const view = await read($, call);
     if (!view || e.props.hasSurvey || e.props.maxRows < 1) return next(e);
-    if (await read($, isRemounting)) return next(e);
 
     const { Box, Text } = $.ui.resolve(e);
     const room = Math.min(BAND_ROWS, e.props.maxRows) - 1;
@@ -130,7 +122,7 @@ export const register: Register = (on) => {
     );
 
     return (
-      <Box key={`band-${await read($, bandEpoch)}`} flexDirection="column">
+      <Box key="band" flexDirection="column">
         <Text bold color="cyan" wrap="truncate-end">
           {`● ${view.state} · ${view.model}`}
         </Text>
@@ -236,7 +228,9 @@ async function handleEvent($: Engine, event: WaitEvent): Promise<void> {
     case "unpinned":
       return hidePinned($);
     case "show":
-      return remountBand($);
+      return markExpand($, false);
+    case "expand_failed":
+      return markExpand($, true);
     case "line":
       return appendLine($, event.who, event.text, event.ts * 1000);
     case "call":
@@ -248,6 +242,7 @@ async function handleEvent($: Engine, event: WaitEvent): Promise<void> {
 
 async function setCallState($: Engine, state: string): Promise<void> {
   await update($, call, (view) => (view ? { ...view, state } : view));
+  isExpandFailed = false;
   if (isPinned) showNotice($, state);
 }
 
@@ -258,6 +253,7 @@ async function showPinned(
 ): Promise<void> {
   isPinned = true;
   await update($, call, () => ({ state, model }));
+  isExpandFailed = false;
   showNotice($, state);
   await appendLine($, "system", "pinned: the voice follows this session");
 }
@@ -268,17 +264,17 @@ async function hidePinned($: Engine): Promise<void> {
   $.ui.status(undefined);
 }
 
-/** The status line stays visible while the band is collapsed, so it names the key that brings the band back. */
-function showNotice($: Engine, state: string): void {
-  $.ui.status(`voice: ${state} · ⌥⌘V expands it`);
+/** On ⌥⌘V the daemon types the expand chord into a collapsed band; when the band stays hidden, the notice points at a click on the ▸ line. */
+async function markExpand($: Engine, hasFailed: boolean): Promise<void> {
+  isExpandFailed = hasFailed;
+  const view = await read($, call);
+  if (view) showNotice($, view.state);
 }
 
-/** A band the person collapsed stays collapsed across redraws; one render that passes, then a new root key, remounts it. */
-async function remountBand($: Engine): Promise<void> {
-  await update($, isRemounting, () => true);
-  await $.clock.sleep(REMOUNT_MS);
-  await update($, bandEpoch, (epoch) => epoch + 1);
-  await update($, isRemounting, () => false);
+/** The status line stays visible while the band is collapsed, so it carries the call's hotkeys. */
+function showNotice($: Engine, state: string): void {
+  const expand = isExpandFailed ? "click ▸ to show the band" : "⌥⌘V expand";
+  $.ui.status(`voice: ${state} · ${expand} · ${CALL_KEYS}`);
 }
 
 /** Every transcript line word-wrapped to the band's width, one entry per terminal row, oldest first. */

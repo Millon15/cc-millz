@@ -14,6 +14,7 @@ export type WaitEvent =
   | { kind: "pinned"; call: string; model: string }
   | { kind: "unpinned" }
   | { kind: "show" }
+  | { kind: "expand_failed" }
   | { kind: "line"; who: "you" | "voice" | "system"; text: string; ts: number }
   | { kind: "submit"; id: string; text: string }
   | { kind: "call"; state: string };
@@ -26,8 +27,6 @@ declare module "claude-code" {
       lines: Shaped<Line[]>;
       call: Shaped<CallView | null>;
       generation: Shaped<number>;
-      bandEpoch: Shaped<number>;
-      isRemounting: Shaped<boolean>;
     };
   }
 }

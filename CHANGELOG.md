@@ -1,5 +1,15 @@
 # Changelog
 
+## voice-call v0.1.6 - 2026-11-01
+
+### Fixed
+
+- `⌥⌘V` tries to expand a transcript band collapsed with `[-]`. The daemon reads the pinned pane's screen, and only when Claude Code's `▸ plugin panel hidden` line sits right above the prompt does it type ctrl+x ctrl+a into that pane. Likely cause of the 0.1.5 failure: agterm's ctrl+a leader key swallows the chord when it is pressed by hand. The 0.1.5 remount, which could not expand anything, is gone.
+
+### Changed
+
+- The status line lists the call's hotkeys: `voice: live · ⌥⌘V expand · ⇧⌥⌘V hang up · ⌥⌘. interrupt`. When the typed chord does not take, it says `click ▸ to show the band` instead.
+
 ## voice-call v0.1.5 - 2026-11-01
 
 ### Added

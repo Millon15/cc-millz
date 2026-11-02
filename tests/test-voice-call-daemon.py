@@ -65,6 +65,7 @@ class DaemonTests(unittest.IsolatedAsyncioTestCase):
         async def provider():
             return tree()
         self.daemon = vc.Daemon(dict(vc.DEFAULTS, backend="fake"), self.temp.name, provider)
+        self.daemon.band_expander = Mock()
         self.a = registration()
         self.b = registration("s2", claude="c2")
         await self.daemon.register(self.a)
@@ -83,6 +84,45 @@ class DaemonTests(unittest.IsolatedAsyncioTestCase):
         result = await self.pin()
         self.assertEqual(result["pinned"]["pane"], "left")
         self.assertEqual(result["pinned"]["claude_session_id"], "c1")
+
+    async def test_expansion_scheduled_after_live_and_on_show_with_stale_identity_guard(self):
+        await self.pin()
+        schedule = self.daemon.band_expander.schedule
+        schedule.assert_called_once()
+        pane, token, valid, failed, delay = schedule.call_args.args
+        self.assertEqual((pane, token, delay), (vc.Pane.parse(self.a), "surface", 1))
+        self.assertEqual(self.daemon.call, "live")
+        self.assertTrue(valid())
+        await failed()
+        self.assertEqual(self.daemon.bus.events[-1][1:], (pane, dict(kind="expand_failed")))
+        await self.pin()
+        self.assertEqual(schedule.call_count, 2)
+        self.assertEqual(schedule.call_args.args[-1], 0)
+        self.daemon.registered[pane]["pane_id"] = "replacement"
+        self.assertFalse(valid())
+        self.daemon.registered[pane]["pane_id"] = token
+        self.daemon.registered[pane]["claude_session_id"] = "replacement"
+        self.assertFalse(valid())
+        self.daemon.registered[pane]["claude_session_id"] = self.a["claude_session_id"]
+        await self.daemon.hangup_generation(self.daemon.generation)
+        self.assertFalse(valid())
+        self.assertTrue(self.daemon.band_expander.cancel.called)
+
+    async def test_pending_expansion_does_not_block_pin_or_hangup(self):
+        started = asyncio.Event()
+        async def blocked_request(*args, **kwargs):
+            started.set()
+            await asyncio.Event().wait()
+        self.daemon.band_expander = vc.BandExpander(blocked_request)
+        with patch.object(vc, "EXPAND_START_DELAY", 0):
+            await asyncio.wait_for(self.pin(), .2)
+        await asyncio.wait_for(started.wait(), .2)
+        task = self.daemon.band_expander.task
+        await asyncio.wait_for(self.pin(), .2)
+        self.assertIs(self.daemon.band_expander.task, task)
+        await asyncio.wait_for(self.daemon.hangup_generation(self.daemon.generation), .2)
+        await asyncio.gather(task, return_exceptions=True)
+        self.assertTrue(task.cancelled())
 
     async def test_no_claude_does_not_disrupt_existing_pin(self):
         await self.pin()
@@ -464,6 +504,192 @@ class DaemonTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(self.daemon.call, "live")
         self.assertIn("first open", self.daemon.log.path.read_text())
         self.assertEqual(operations.count("open"), 2)
+
+
+HIDDEN_SCREEN = "Answer above\n▸ plugin panel hidden · ctrl+x ctrl+a or click to show\n\n──── demo-session ─\n❯ \n────────\nstatus"
+VISIBLE_SCREEN = "voice live\n──── demo-session ─\n❯ \n────────\nstatus"
+
+
+class BandExpansionTests(unittest.IsolatedAsyncioTestCase):
+    async def asyncSetUp(self):
+        self.temp = tempfile.TemporaryDirectory(prefix="voice-panel-")
+        self.directory = Path(self.temp.name)
+        self.script = self.directory / "agtermctl"
+        self.script.write_text("#!" + sys.executable + "\n" + '''
+import json, os, pathlib, sys, time
+root = pathlib.Path(os.environ['FAKE_AGTERM_DIR'])
+args = sys.argv[1:]
+data = sys.stdin.buffer.read() if '--stdin' in args else b''
+with (root/'calls').open('a') as stream:
+    stream.write(json.dumps({'args': args, 'stdin': list(data), 'pid': os.getpid()}) + '\\n')
+config = json.loads((root/'config').read_text())
+if config.get('delay_at') == args[:2]:
+    time.sleep(10)
+if config.get('error_at') == args[:2]:
+    print(json.dumps({'ok': False, 'error': 'unavailable'}))
+    sys.exit(1)
+if args[:2] == ['window', 'list']:
+    result = {'windows': [{'id': 'other', 'open': True}, {'id': 'closed', 'open': False}, {'id': 'owner', 'open': True}]}
+elif args[0] == 'tree':
+    result = {'tree': {'sessions': [{'id': 's1' if args[args.index('--window')+1] == 'owner' else 'elsewhere', 'split': True}]}}
+elif args[:2] == ['session', 'text']:
+    result = {'text': config['after' if (root/'typed').exists() else 'before']}
+elif args[:2] == ['session', 'type']:
+    (root/'typed').touch()
+    result = {}
+else:
+    raise RuntimeError(args)
+print(json.dumps({'ok': True, 'result': result}))
+''')
+        self.script.chmod(0o700)
+        self.env = patch.dict(os.environ, PATH=str(self.directory) + os.pathsep + os.environ['PATH'],
+                              FAKE_AGTERM_DIR=str(self.directory))
+        self.env.start()
+        self.verify_delay = patch.object(vc, "EXPAND_VERIFY_DELAY", 0)
+        self.verify_delay.start()
+        self.expander = vc.BandExpander()
+        self.failed = AsyncMock()
+        self.configure()
+
+    async def asyncTearDown(self):
+        task = self.expander.task
+        self.expander.cancel()
+        if task:
+            await asyncio.gather(task, return_exceptions=True)
+        self.verify_delay.stop()
+        self.env.stop()
+        self.temp.cleanup()
+
+    def configure(self, before=HIDDEN_SCREEN, after=VISIBLE_SCREEN, **extra):
+        (self.directory / 'config').write_text(json.dumps(dict(before=before, after=after, **extra)))
+
+    def calls(self):
+        path = self.directory / 'calls'
+        return [json.loads(line) for line in path.read_text().splitlines()] if path.exists() else []
+
+    async def run_expansion(self, token="stable", valid=lambda: True):
+        self.expander.schedule(vc.Pane("s1", "right"), token, valid, self.failed)
+        await self.expander.task
+
+    async def test_marker_types_exact_chord_to_stable_target_and_rereads(self):
+        await self.run_expansion()
+        calls = self.calls()
+        sessions = [call for call in calls if call['args'][0] == 'session']
+        self.assertEqual([call['args'][1] for call in sessions], ['text', 'type', 'text'])
+        for call in sessions:
+            args = call['args']
+            self.assertEqual(args[args.index('--target') + 1], 's1')
+            self.assertEqual(args[args.index('--window') + 1], 'owner')
+            self.assertEqual(args[args.index('--pane-id') + 1], 'stable')
+            self.assertNotIn('--pane', args)
+        self.assertEqual(sessions[1]['stdin'], [24, 1])
+        self.assertIn('--stdin', sessions[1]['args'])
+        self.assertFalse(any('closed' in call['args'] for call in calls))
+        self.failed.assert_not_awaited()
+
+    async def test_marker_remaining_emits_one_failure_and_no_retry(self):
+        self.configure(after=HIDDEN_SCREEN)
+        await self.run_expansion(token="")
+        writes = [call for call in self.calls() if call['args'][:2] == ['session', 'type']]
+        self.assertEqual(len(writes), 1)
+        self.assertIn('--pane', writes[0]['args'])
+        self.assertEqual(writes[0]['args'][writes[0]['args'].index('--pane') + 1], 'right')
+        self.failed.assert_awaited_once()
+
+    async def test_visible_or_quoted_marker_never_types(self):
+        for text in (VISIBLE_SCREEN, HIDDEN_SCREEN + '\nReal answer\n' + VISIBLE_SCREEN,
+                     'echo "' + vc.HIDDEN_BAND_MARKER + '"\n' + VISIBLE_SCREEN):
+            with self.subTest(screen=text):
+                self.configure(before=text)
+                await self.run_expansion()
+        self.assertFalse(any(call['args'][:2] == ['session', 'type'] for call in self.calls()))
+        self.failed.assert_not_awaited()
+
+    async def test_command_error_or_timeout_is_nonfatal_and_does_not_type(self):
+        for extra in ({'error_at': ['session', 'text']}, {'delay_at': ['session', 'text']}):
+            with self.subTest(extra=extra), patch.object(vc, 'AGTERM_TIMEOUT', .1), redirect_stderr(io.StringIO()):
+                self.configure(**extra)
+                await self.run_expansion()
+        self.assertFalse(any(call['args'][:2] == ['session', 'type'] for call in self.calls()))
+        self.failed.assert_not_awaited()
+        for call in self.calls():
+            with self.assertRaises(ProcessLookupError):
+                os.kill(call['pid'], 0)
+
+    async def test_overlapping_requests_coalesce_and_cancellation_reaps_process(self):
+        self.configure(delay_at=['session', 'text'])
+        self.expander.schedule(vc.Pane('s1', 'right'), 'stable', lambda: True, self.failed)
+        task = self.expander.task
+        self.expander.schedule(vc.Pane('s1', 'right'), 'stable', lambda: True, self.failed)
+        self.assertIs(self.expander.task, task)
+        for _ in range(100):
+            if any(call['args'][:2] == ['session', 'text'] for call in self.calls()):
+                break
+            await asyncio.sleep(.01)
+        self.assertTrue(any(call['args'][:2] == ['session', 'text'] for call in self.calls()))
+        self.expander.cancel()
+        await asyncio.gather(task, return_exceptions=True)
+        self.assertTrue(task.cancelled())
+        self.assertFalse(any(call['args'][:2] == ['session', 'type'] for call in self.calls()))
+        for call in self.calls():
+            with self.assertRaises(ProcessLookupError):
+                os.kill(call['pid'], 0)
+
+    async def test_write_failure_or_failed_verification_never_retries_or_reports_success(self):
+        for fail_step in ("write", "verify"):
+            with self.subTest(fail_step=fail_step), redirect_stderr(io.StringIO()):
+                reads = 0
+                async def request(*args, **kwargs):
+                    nonlocal reads
+                    if args[:2] == ('session', 'type') and fail_step == 'write':
+                        raise TimeoutError()
+                    if args[:2] == ('session', 'text'):
+                        reads += 1
+                        if reads == 2 and fail_step == 'verify':
+                            raise ValueError('unreadable response')
+                    return await vc.agterm_request(*args, **kwargs)
+                self.expander = vc.BandExpander(request)
+                self.configure()
+                before = len(self.calls())
+                await self.run_expansion()
+                writes = [call for call in self.calls()[before:] if call['args'][:2] == ['session', 'type']]
+                self.assertEqual(len(writes), 0 if fail_step == 'write' else 1)
+                self.failed.assert_not_awaited()
+
+    async def test_stale_pin_never_types_or_reports_failure(self):
+        for stale_after in ('read', 'type'):
+            with self.subTest(stale_after=stale_after):
+                valid = True
+                async def request(*args, **kwargs):
+                    nonlocal valid
+                    if args[:2] == ('session', 'text') and stale_after == 'read':
+                        valid = False
+                    if args[:2] == ('session', 'type'):
+                        valid = False
+                    return await vc.agterm_request(*args, **kwargs)
+                self.expander = vc.BandExpander(request)
+                self.configure(after=HIDDEN_SCREEN)
+                before = len(self.calls())
+                await self.run_expansion(valid=lambda: valid)
+                writes = [call for call in self.calls()[before:] if call['args'][:2] == ['session', 'type']]
+                self.assertEqual(len(writes), 0 if stale_after == 'read' else 1)
+                self.failed.assert_not_awaited()
+
+
+class BandMarkerTests(unittest.TestCase):
+    def test_only_marker_above_last_prompt_block_counts(self):
+        for text, expected in [
+            (HIDDEN_SCREEN, True),
+            (HIDDEN_SCREEN.replace('──── demo-session ─', '────────'), True),
+            (HIDDEN_SCREEN.replace('❯ ', 'not a prompt'), False),
+            (HIDDEN_SCREEN.replace('──── demo-session ─', 'ordinary prose'), False),
+            (HIDDEN_SCREEN.replace(vc.HIDDEN_BAND_MARKER, '> ' + vc.HIDDEN_BAND_MARKER), False),
+            (HIDDEN_SCREEN + '\n' + VISIBLE_SCREEN, False),
+            (VISIBLE_SCREEN + '\n' + vc.HIDDEN_BAND_MARKER, False),
+            ('', False),
+        ]:
+            with self.subTest(text=text):
+                self.assertEqual(vc.hidden_band_at_prompt(text), expected)
 
 
 class TranscriptTests(unittest.TestCase):
