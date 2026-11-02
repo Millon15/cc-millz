@@ -1,5 +1,5 @@
 import asyncio
-from contextlib import redirect_stdout
+from contextlib import redirect_stdout, redirect_stderr
 import importlib.util
 import io
 import json
@@ -9,11 +9,13 @@ import sys
 import subprocess
 import tempfile
 import time
+from types import SimpleNamespace
 import unittest
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock, Mock, patch
 
 ROOT = Path(__file__).resolve().parents[1]
 SCRIPT = ROOT / "plugins/voice-call/scripts/voice_call.py"
+sys.path.insert(0, str(SCRIPT.parent))
 spec = importlib.util.spec_from_file_location("voice_call", SCRIPT)
 vc = importlib.util.module_from_spec(spec)
 sys.modules[spec.name] = vc
@@ -36,6 +38,10 @@ def tree():
 class DaemonTests(unittest.IsolatedAsyncioTestCase):
     async def asyncSetUp(self):
         self.temp = tempfile.TemporaryDirectory(prefix="voice-call-")
+        self.rules_mock = patch.object(vc, "WorkspaceRules")
+        self.rules_type = self.rules_mock.start()
+        self.rules_type.return_value.primer.return_value = "Workspace: test. Use read_workspace_rules."
+        self.rules_type.return_value.catalog.return_value = {"files": [], "truncated": False}
         async def provider():
             return tree()
         self.daemon = vc.Daemon(dict(vc.DEFAULTS, backend="fake"), self.temp.name, provider)
@@ -46,6 +52,7 @@ class DaemonTests(unittest.IsolatedAsyncioTestCase):
 
     async def asyncTearDown(self):
         await self.daemon.hangup_generation(self.daemon.generation)
+        self.rules_mock.stop()
         self.temp.cleanup()
 
     async def pin(self):
@@ -228,6 +235,83 @@ class DaemonTests(unittest.IsolatedAsyncioTestCase):
             self.assertEqual(command.await_count, 2)
             self.assertEqual(command.await_args.args[-1], "open-window")
 
+    async def test_workspace_tool_catalog_search_and_primer_follow_pin(self):
+        await self.pin()
+        rules = self.rules_type.return_value
+        rules.search.return_value = {"matches": [{"path":"CLAUDE.md", "line":1, "text":"Rules"}], "truncated":False}
+        self.assertEqual(await self.daemon.run_tool("read_workspace_rules", {}), rules.catalog.return_value)
+        self.assertEqual(await self.daemon.run_tool("read_workspace_rules", {"query":"deploy"}), rules.search.return_value)
+        rules.search.assert_called_once_with("deploy")
+        self.assertIn("Workspace: test", self.daemon.log.path.read_text())
+        first = self.daemon.workspace_rules
+        self.rules_type.return_value = Mock(primer=Mock(return_value="Workspace: second"))
+        await self.daemon.pin(self.b)
+        self.assertIsNot(first, self.daemon.workspace_rules)
+        await self.daemon.hangup_generation(self.daemon.generation)
+        self.assertIsNone(self.daemon.workspace_rules)
+
+    async def test_workspace_results_are_discarded_when_pin_changes_during_read(self):
+        await self.pin()
+        started, finish = vc.threading.Event(), vc.threading.Event()
+        def read():
+            started.set()
+            finish.wait(2)
+            return {"files": [{"path":"old-workspace"}], "truncated": False}
+        self.rules_type.return_value.catalog.side_effect = read
+        task = asyncio.create_task(self.daemon.run_tool("read_workspace_rules", {}))
+        try:
+            await asyncio.to_thread(started.wait, 2)
+            await self.daemon.pin(self.b)
+        finally:
+            finish.set()
+        self.assertEqual((await task)["status"], "refused")
+
+    async def test_workspace_query_schema_matches_helper_limit(self):
+        await self.pin()
+        with self.assertRaises(vc.CallError):
+            await self.daemon.run_tool("read_workspace_rules", {"query":"x" * 201})
+        tool = next(tool for tool in vc.tool_specs() if tool["name"] == "read_workspace_rules")
+        self.assertEqual(tool["parameters"]["properties"]["query"]["maxLength"], 200)
+
+    async def test_two_audio_failures_preserve_first_error_and_report_final_devices(self):
+        audio_api, operations = fake_audio_api([PortAudioError("first open"), PortAudioError("second open")])
+        class Backend(vc.FakeBackend):
+            def __init__(inner, config, emit, tool, log):
+                super().__init__(config, emit, tool, log)
+                inner.audio = vc.Audio()
+            async def start(inner):
+                await inner.audio.start(lambda raw: None, report=lambda message: inner.emit("system", message))
+            async def close(inner):
+                inner.audio.close()
+        self.daemon.backend_factory = lambda name, emit, tool, log: Backend(self.daemon.config, emit, tool, log)
+        with patch.dict(sys.modules, {"sounddevice":audio_api}), patch.object(vc.asyncio, "sleep", new=AsyncMock()) as sleep, redirect_stderr(io.StringIO()) as stderr:
+            with self.assertRaises(vc.CallError) as caught:
+                await self.pin()
+        self.assertEqual(caught.exception.code, "PortAudioError")
+        sleep.assert_awaited_once_with(1)
+        self.assertEqual(operations.count("open"), 2)
+        self.assertIn("first open", stderr.getvalue())
+        self.assertIn("Call failed: PortAudioError: open: second open", stderr.getvalue())
+        self.assertIn("(in: Test Microphone, out: Test Speakers)", stderr.getvalue())
+        logs = "".join(path.read_text() for path in Path(self.temp.name, "calls").glob("*.jsonl"))
+        self.assertIn("first open", logs)
+        self.assertIn("Call failed: PortAudioError", logs)
+
+    async def test_audio_retry_success_leaves_call_live(self):
+        audio_api, operations = fake_audio_api([PortAudioError("first open"), None])
+        class Backend(vc.FakeBackend):
+            async def start(inner):
+                inner.audio = vc.Audio()
+                await inner.audio.start(lambda raw: None, report=lambda message: inner.emit("system", message))
+            async def close(inner):
+                inner.audio.close()
+        self.daemon.backend_factory = lambda name, emit, tool, log: Backend(self.daemon.config, emit, tool, log)
+        with patch.dict(sys.modules, {"sounddevice":audio_api}), patch.object(vc.asyncio, "sleep", new=AsyncMock()), redirect_stderr(io.StringIO()):
+            await self.pin()
+        self.assertEqual(self.daemon.call, "live")
+        self.assertIn("first open", self.daemon.log.path.read_text())
+        self.assertEqual(operations.count("open"), 2)
+
 
 class TranscriptTests(unittest.TestCase):
     def test_only_user_and_assistant_text_are_searchable(self):
@@ -302,6 +386,23 @@ class TranscriptTests(unittest.TestCase):
                     with self.assertRaises(vc.CallError):
                         vc.load_profile(folder)
 
+    def test_audio_selectors_are_user_only_and_require_strings(self):
+        with tempfile.TemporaryDirectory() as folder, patch.dict(os.environ, {"VOICE_CALL_CONFIG": str(Path(folder, "config.toml"))}):
+            Path(folder, "config.toml").write_text('input_device = "Test Microphone"\n')
+            profile = vc.load_profile(folder)
+            self.assertEqual(profile["values"]["input_device"], "Test Microphone")
+            self.assertEqual(profile["sources"]["input_device"], "user")
+            self.assertEqual(profile["sources"]["output_device"], "default")
+            for key in ("input_device", "output_device"):
+                Path(folder, ".voice-call.json").write_text(json.dumps({key:""}))
+                with self.subTest(key=key), self.assertRaises(vc.CallError) as error:
+                    vc.load_profile(folder)
+                self.assertEqual(error.exception.code, "invalid_profile")
+            Path(folder, ".voice-call.json").write_text("{}")
+            Path(folder, "config.toml").write_text('input_device = 42\n')
+            with self.assertRaises(vc.CallError):
+                vc.load_profile(folder)
+
     def test_template_parses_to_the_builtin_voice_and_seeds_once(self):
         template = SCRIPT.with_name("config.toml.template")
         self.assertEqual(vc.tomllib.loads(template.read_text()), {"voice": vc.DEFAULTS["voice"]})
@@ -311,6 +412,96 @@ class TranscriptTests(unittest.TestCase):
             target.write_text('voice = "ballad"\n')
             vc.seed_user_config(template)
             self.assertEqual(target.read_text(), 'voice = "ballad"\n')
+
+class PortAudioError(Exception):
+    pass
+
+
+def fake_audio_api(outcomes, *, start_error=None, stop_error=None):
+    operations = []
+    devices = [dict(name="Test Microphone", max_input_channels=1, max_output_channels=0, default_samplerate=48000),
+               dict(name="Test Speakers", max_input_channels=0, max_output_channels=2, default_samplerate=48000)]
+    class Stream:
+        def start(self):
+            operations.append("start")
+            if start_error and operations.count("start") == 1:
+                raise start_error
+        def stop(self):
+            operations.append("stop")
+            if stop_error:
+                raise stop_error
+        def close(self):
+            operations.append("close")
+    def open_stream(**kwargs):
+        operations.append("open")
+        result = outcomes.pop(0)
+        if result:
+            raise result
+        return Stream()
+    def query():
+        operations.append("resolve")
+        return devices
+    api = SimpleNamespace(PortAudioError=PortAudioError, default=SimpleNamespace(device=(0, 1)),
+                          query_devices=Mock(side_effect=query), RawStream=Mock(side_effect=open_stream),
+                          _terminate=Mock(side_effect=lambda: operations.append("terminate")),
+                          _initialize=Mock(side_effect=lambda: operations.append("initialize")))
+    return api, operations
+
+
+class AudioTests(unittest.IsolatedAsyncioTestCase):
+    async def test_retry_closes_partial_start_before_refresh_and_resolves_again(self):
+        api, operations = fake_audio_api([None, None], start_error=PortAudioError("start failed"), stop_error=RuntimeError("cleanup failed"))
+        async def delay(seconds):
+            operations.append("sleep")
+        audio = vc.Audio()
+        with patch.dict(sys.modules, {"sounddevice":api}), patch.object(vc.asyncio, "sleep", new=AsyncMock(side_effect=delay)) as sleep, redirect_stderr(io.StringIO()) as stderr:
+            await audio.start(lambda raw: None)
+            audio.close()
+        sleep.assert_awaited_once_with(1)
+        self.assertEqual(operations[:10], ["resolve", "open", "start", "stop", "close", "sleep", "terminate", "initialize", "resolve", "open"])
+        self.assertIn("start: start failed", stderr.getvalue())
+        self.assertIn("cleanup failed", stderr.getvalue())
+        self.assertEqual(api.RawStream.call_args.kwargs["device"], (0, 1))
+        self.assertEqual(api.RawStream.call_args.kwargs["samplerate"], 24000)
+
+    async def test_non_portaudio_error_is_not_retried(self):
+        api, operations = fake_audio_api([RuntimeError("callback setup failed")])
+        with patch.dict(sys.modules, {"sounddevice":api}), patch.object(vc.asyncio, "sleep", new=AsyncMock()) as sleep, redirect_stderr(io.StringIO()):
+            with self.assertRaises(vc.CallError) as caught:
+                await vc.Audio().start(lambda raw: None)
+        self.assertEqual(caught.exception.code, "RuntimeError")
+        self.assertIn("callback setup failed", caught.exception.detail)
+        sleep.assert_not_awaited()
+        api._terminate.assert_not_called()
+        self.assertEqual(operations.count("open"), 1)
+
+    async def test_resolver_is_directional_unique_and_case_insensitive(self):
+        api, _ = fake_audio_api([])
+        source, destination = vc.resolve_audio_devices("MICROPHONE", "speakers", api)
+        self.assertEqual((source.index, destination.index), (0, 1))
+        for query, expected in [("Test", "several"), ("Missing", "none")]:
+            devices = [vc.AudioDevice(0, "Test A", 1, 0, 48000), vc.AudioDevice(1, "Test B", 1, 0, 48000)]
+            with self.subTest(query=query), self.assertRaises(vc.CallError) as caught:
+                vc.select_audio_device(devices, "input", query, 0)
+            self.assertEqual(caught.exception.code, "audio_device")
+            self.assertIn("matches " + expected, caught.exception.detail)
+            self.assertIn("Test A", caught.exception.detail)
+            self.assertIn("Test B", caught.exception.detail)
+
+    async def test_devices_cli_json_and_portaudio_failure_exit(self):
+        api, _ = fake_audio_api([])
+        with patch.dict(sys.modules, {"sounddevice":api}), redirect_stdout(io.StringIO()) as output:
+            self.assertEqual(vc.main(["devices"]), 0)
+        listing = json.loads(output.getvalue())
+        self.assertEqual(listing["default_input"], "Test Microphone")
+        self.assertEqual(listing["default_output"], "Test Speakers")
+        self.assertEqual(set(listing["devices"][0]), {"index", "name", "inputs", "outputs", "default_samplerate"})
+        api.query_devices.side_effect = PortAudioError("device enumeration failed")
+        with patch.dict(sys.modules, {"sounddevice":api}), redirect_stdout(io.StringIO()) as output, redirect_stderr(io.StringIO()) as stderr:
+            self.assertEqual(vc.main(["devices"]), 1)
+        self.assertEqual(output.getvalue(), "")
+        self.assertIn("device enumeration failed", stderr.getvalue())
+
 
 class BackendProtocolTests(unittest.IsolatedAsyncioTestCase):
     async def asyncSetUp(self):
@@ -335,6 +526,31 @@ class BackendProtocolTests(unittest.IsolatedAsyncioTestCase):
         await self.backend.close()
         self.log.close()
         self.temp.cleanup()
+
+    async def test_network_start_awaits_audio_with_user_device_selectors(self):
+        self.backend.config.update(input_device="Chosen Mic", output_device="Chosen Speaker")
+        websocket = self.backend.ws
+        transport = SimpleNamespace(connect=AsyncMock(return_value=websocket))
+        with patch.dict(sys.modules, {"websockets":transport}), patch.object(vc, "read_key", return_value="test-key"), \
+             patch.object(self.backend, "handshake", new=AsyncMock()), \
+             patch.object(self.backend.audio, "start", new=AsyncMock()) as start:
+            await self.backend.start()
+        start.assert_awaited_once()
+        self.assertEqual(start.call_args.kwargs["input_device"], "Chosen Mic")
+        self.assertEqual(start.call_args.kwargs["output_device"], "Chosen Speaker")
+        self.assertTrue(callable(start.call_args.kwargs["report"]))
+
+    async def test_start_cleanup_error_does_not_replace_original_failure(self):
+        transport = SimpleNamespace(connect=AsyncMock(return_value=self.backend.ws))
+        original = vc.CallError("PortAudioError", "open: original device error", 502)
+        with patch.dict(sys.modules, {"websockets":transport}), patch.object(vc, "read_key", return_value="test-key"), \
+             patch.object(self.backend, "handshake", new=AsyncMock()), \
+             patch.object(self.backend.audio, "start", new=AsyncMock(side_effect=original)), \
+             patch.object(self.backend, "close", new=AsyncMock(side_effect=RuntimeError("cleanup"))), \
+             redirect_stderr(io.StringIO()):
+            with self.assertRaises(vc.CallError) as caught:
+                await self.backend.start()
+        self.assertIs(caught.exception, original)
 
     async def test_live_completed_items_drive_one_tool_continuation(self):
         await self.backend.handle({"type":"response.event","event":{

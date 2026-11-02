@@ -1,5 +1,17 @@
 # Changelog
 
+## voice-call v0.1.4 - 2026-11-01
+
+### Added
+
+- `input_device` and `output_device` in the machine config pick the microphone and speaker by name; no match or several matches fail the call with the candidates listed. A repo's `.voice-call.json` may not set them.
+- `voice-call devices` lists the audio devices and the current defaults.
+- `read_workspace_rules`, a fifth voice tool: a bounded, literal search over the pinned session's `CLAUDE.md` files, `.claude/rules/**`, `~/.claude` rules and auto-memory notes (`scripts/workspace_rules.py`).
+
+### Fixed
+
+- A failed audio open names the PortAudio message and both devices instead of only `PortAudioError`, and is retried once after PortAudio re-reads the device list.
+
 ## voice-call v0.1.3 - 2026-11-01
 
 ### Added

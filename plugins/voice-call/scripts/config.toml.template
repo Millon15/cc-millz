@@ -12,6 +12,12 @@ voice = "ripple"
 # brain_model = "gpt-5.6"
 # idle_hangup_min = 15      # 1 to 120
 
+# Audio devices, by a case-insensitive part of the name; empty = the macOS default.
+# `voice-call devices` lists them. A name that matches no device or several fails the call
+# with the candidates listed. Only this file may set them, never a repo's .voice-call.json.
+# input_device = ""        # e.g. "AirPods" or "MacBook Pro Microphone"
+# output_device = ""       # e.g. "AirPods" or "MacBook Pro Speakers"
+
 # Built-in GPT-Live voices. Pitch and brightness were measured on one audition
 # sample each (median F0, spectral centroid); "sex" follows the pitch, so a voice
 # in the 135-170 Hz band can read either way. Listen before trusting a label.

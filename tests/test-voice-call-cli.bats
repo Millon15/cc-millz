@@ -34,6 +34,18 @@ teardown() { teardown_tmp; }
     assert_explain_source "$output" voice profile
 }
 
+@test "voice-call device selectors come from the machine config only" {
+    printf 'input_device = "MacBook"\n' > "$VOICE_CALL_CONFIG"
+    run "$ENTRY" --explain
+    [ "$status" -eq 0 ]
+    assert_explain_source "$output" input_device user
+    assert_explain_source "$output" output_device default
+    mkdir .git
+    printf '%s\n' '{"input_device":"AirPods"}' > .voice-call.json
+    run "$ENTRY" --explain
+    [ "$status" -eq 2 ]
+}
+
 @test "voice-call explain reads project profile from nested directory" {
     mkdir .git nested
     printf '%s\n' '{"backend":"realtime","idle_hangup_min":3}' > .voice-call.json
