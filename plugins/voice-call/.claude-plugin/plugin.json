@@ -1,7 +1,7 @@
 {
   "name": "voice-call",
   "description": "Full-duplex voice companion pinned to one Claude Code pane in agterm: an OpenAI GPT-Live voice (Realtime fallback) summarizes each Claude turn aloud, answers questions from the session's full transcript, and forwards your spoken instructions to Claude while the raw output stays on screen.",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "author": {
     "name": "Millon15"
   },

@@ -562,7 +562,6 @@ class Daemon:
         self.generation = 0
         self.lifecycle = asyncio.Lock()
         self.last_speech = time.monotonic()
-        self.last_user_transcript_at = None
         self.turn_ids = set()
         self.submit_timeout = 10
         self.recent_submits = {}
@@ -624,8 +623,6 @@ class Daemon:
                 return
             if who in ("you", "activity"):
                 self.last_speech = time.monotonic()
-            if who == "you" and text.strip():
-                self.last_user_transcript_at = time.monotonic()
             if who == "failure":
                 await self.line("system", text)
                 asyncio.create_task(self.hangup_generation(generation))
@@ -682,8 +679,6 @@ class Daemon:
         if not isinstance(arguments, dict):
             raise CallError("invalid_arguments", "Tool arguments must be an object")
         if name == "send_to_claude":
-            if not self.has_recent_user_speech():
-                return dict(status="refused", reason="no recent user speech")
             return await self.send_to_claude(text_field(arguments, "text", 8192))
         if name == "session_overview":
             return self.overview()
@@ -703,15 +698,10 @@ class Daemon:
             return dict(turns[index], text=turns[index]["text"][:48000])
         raise CallError("unknown_tool", "Unknown voice-call tool")
 
-    def has_recent_user_speech(self):
-        return self.last_user_transcript_at is not None and 0 <= time.monotonic() - self.last_user_transcript_at <= 30
-
     async def send_to_claude(self, text):
         pane, generation = self.pinned, self.generation
         if resolve_pane(await self.tree_provider(), pane) != pane or generation != self.generation:
             return dict(status="refused", reason="Pinned Claude pane is no longer available")
-        if not self.has_recent_user_speech():
-            return dict(status="refused", reason="no recent user speech")
         identifier = str(uuid.uuid4())
         future = asyncio.get_running_loop().create_future()
         self.pending[identifier] = future
@@ -782,7 +772,6 @@ class Daemon:
 
     async def hangup_locked(self):
         self.generation += 1
-        self.last_user_transcript_at = None
         pane = self.pinned
         self.pinned, self.call = None, "ended"
         for future in self.pending.values():

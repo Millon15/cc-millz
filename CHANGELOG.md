@@ -1,5 +1,11 @@
 # Changelog
 
+## voice-call v0.1.2 - 2026-11-01
+
+### Changed
+
+- `send_to_claude` no longer needs the user's transcribed speech in the last 30 s. The voice forwards whenever it decides to; the `/` and `!` refusal, the voice-call framing and Claude's permission prompts stay.
+
 ## voice-call v0.1.1 - 2026-11-01
 
 ### Security

@@ -17,8 +17,8 @@ Talk with a third, full-duplex voice about ONE Claude Code session while you are
 
 ## Security
 
-- Claude's output and the transcript are untrusted text the voice reads. A forward needs your own transcribed speech in the last 30 s, never starts with `/` or `!`, and reaches Claude framed as a voice-call message, so Claude's permission prompts still apply.
-- The 30 s gate narrows prompt injection; it does not prove the instruction was yours. Every forward shows as `→ cc` in the side pane.
+- Claude's output and the transcript are untrusted text the voice reads. A forward never starts with `/` or `!` and reaches Claude framed as a voice-call message, so Claude's permission prompts still apply.
+- Nothing checks that a forward came from your own words: text in Claude's output can talk the voice into forwarding it. Every forward shows as `→ cc` in the side pane; mute the mic or hang up when you step away.
 - A repository's `.voice-call.json` can change the backend, model and voice. The first line of each call names the profile in use.
 
 ## Components
