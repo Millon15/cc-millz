@@ -26,10 +26,11 @@ import subprocess
 import sys
 import threading
 import time
+import tomllib
 from urllib.parse import parse_qs, urlencode, urlsplit
 import uuid
 
-DEFAULTS = dict(backend="auto", model="gpt-live-1", brain_model="gpt-5.6", voice="marin", idle_hangup_min=15)
+DEFAULTS = dict(backend="auto", model="gpt-live-1", brain_model="gpt-5.6", voice="ripple", idle_hangup_min=15)
 BACKENDS = ("auto", "gpt-live", "realtime", "fake")
 AUTH_ERRORS = {"missing_scope", "invalid_api_key", "authentication_error", "permission_denied", "unauthorized"}
 INSTRUCTIONS = (
@@ -57,20 +58,33 @@ def socket_path():
     return state_dir() / "voice.sock"
 
 
+def user_config_path():
+    if os.environ.get("VOICE_CALL_CONFIG"):
+        return Path(os.environ["VOICE_CALL_CONFIG"])
+    base = os.environ.get("XDG_CONFIG_HOME") or Path.home() / ".config"
+    return Path(base) / "voice-call/config.toml"
+
+
+def read_settings(path, parse):
+    if not path.exists():
+        return {}
+    try:
+        custom = parse(path.read_text())
+    except (OSError, ValueError) as exc:
+        raise CallError("invalid_profile", f"Cannot read {path}: {type(exc).__name__}") from exc
+    if not isinstance(custom, dict) or set(custom) - set(DEFAULTS):
+        raise CallError("invalid_profile", f"{path} must contain only supported configuration keys")
+    return custom
+
+
 def load_profile(cwd=None):
     start = Path(cwd or Path.cwd()).resolve()
     root = next((p for p in (start, *start.parents) if (p / ".git").exists()), start)
-    profile = root / ".voice-call.json"
+    profile, user = root / ".voice-call.json", user_config_path()
     values, sources = dict(DEFAULTS), dict.fromkeys(DEFAULTS, "default")
-    if profile.exists():
-        try:
-            custom = json.loads(profile.read_text())
-        except (OSError, ValueError) as exc:
-            raise CallError("invalid_profile", f"Cannot read {profile}: {type(exc).__name__}") from exc
-        if not isinstance(custom, dict) or set(custom) - set(DEFAULTS):
-            raise CallError("invalid_profile", "Profile must contain only supported configuration keys")
+    for source, custom in (("user", read_settings(user, tomllib.loads)), ("profile", read_settings(profile, json.loads))):
         values.update(custom)
-        sources.update(dict.fromkeys(custom, "profile"))
+        sources.update(dict.fromkeys(custom, source))
     if values["backend"] not in BACKENDS:
         raise CallError("invalid_profile", "backend must be auto, gpt-live, realtime or fake")
     for name in ("model", "brain_model", "voice"):
@@ -82,7 +96,11 @@ def load_profile(cwd=None):
     if values["backend"] == "realtime" and sources["model"] == "default":
         values["model"] = "gpt-realtime-2.1"
     return dict(plugin="voice-call", profile_file=str(profile) if profile.exists() else None,
-                values=values, sources=sources)
+                user_file=str(user) if user.exists() else None, values=values, sources=sources)
+
+
+def config_label(profile):
+    return " + ".join(path for path in (profile["user_file"], profile["profile_file"]) if path) or None
 
 
 def read_key():
@@ -975,10 +993,19 @@ def install_link():
     return entry, link
 
 
+def seed_user_config(template):
+    target = user_config_path()
+    if target.exists():
+        return
+    target.parent.mkdir(parents=True, exist_ok=True)
+    target.write_text(template.read_text())
+
+
 def install(link_only=False):
     entry, link = install_link()
     if link_only:
         return
+    seed_user_config(entry.with_name("config.toml.template"))
     keymap = Path.home() / ".config/agterm/keymap.conf"
     keymap.parent.mkdir(parents=True, exist_ok=True)
     existing = keymap.read_text() if keymap.exists() else ""
@@ -1037,7 +1064,7 @@ def main(argv=None):
                 config["backend"] = args.backend
                 if args.backend == "realtime" and profile["sources"]["model"] == "default":
                     config["model"] = "gpt-realtime-2.1"
-            asyncio.run(serve(config, profile_file=profile["profile_file"]))
+            asyncio.run(serve(config, profile_file=config_label(profile)))
             return 0
         if args.verb == "bind":
             session = args.session or active_session()

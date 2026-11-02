@@ -1,5 +1,15 @@
 # Changelog
 
+## voice-call v0.1.3 - 2026-11-01
+
+### Added
+
+- A machine config, `~/.config/voice-call/config.toml`, layered between the built-in defaults and a repo's `.voice-call.json`. `install` seeds it from `scripts/config.toml.template`, which lists every GPT-Live voice with its measured pitch and brightness.
+
+### Changed
+
+- The built-in voice is `ripple` (was `marin`).
+
 ## voice-call v0.1.2 - 2026-11-01
 
 ### Changed

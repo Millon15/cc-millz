@@ -6,6 +6,7 @@ setup() {
     source "$ROOT/tests/helpers/common.bash"
     setup_tmp
     export VOICE_CALL_STATE_DIR="$TMP/state"
+    export VOICE_CALL_CONFIG="$TMP/config.toml"
     cd "$TMP"
 }
 
@@ -19,6 +20,18 @@ teardown() { teardown_tmp; }
     assert_explain_source "$output" model default
     [ "$(printf '%s' "$output" | jq '.values | keys')" = "$(printf '%s' "$output" | jq '.sources | keys')" ]
     [ ! -e "$VOICE_CALL_STATE_DIR" ]
+}
+
+@test "voice-call explain layers the machine config under the project profile" {
+    printf 'voice = "ballad"\n' > "$VOICE_CALL_CONFIG"
+    run "$ENTRY" --explain
+    [ "$status" -eq 0 ]
+    assert_explain_source "$output" voice user
+    [ "$(printf '%s' "$output" | jq -r .values.voice)" = ballad ]
+    mkdir .git
+    printf '%s\n' '{"voice":"cedar"}' > .voice-call.json
+    run "$ENTRY" --explain
+    assert_explain_source "$output" voice profile
 }
 
 @test "voice-call explain reads project profile from nested directory" {

@@ -1,0 +1,48 @@
+# voice-call settings for this machine.
+# Path: ~/.config/voice-call/config.toml ($XDG_CONFIG_HOME/voice-call/config.toml, or $VOICE_CALL_CONFIG).
+# Order, last wins: built-in defaults, this file, a repo's .voice-call.json.
+# Read when the daemon starts: after an edit, hang up (Option+Cmd+Shift+V) and press Option+Cmd+V again.
+# `voice-call --explain` shows every value and where it came from.
+
+# The voice is fixed for the whole call. Built-in default: "ripple".
+voice = "ripple"
+
+# backend = "auto"          # auto (GPT-Live, Realtime fallback) | gpt-live | realtime
+# model = "gpt-live-1"
+# brain_model = "gpt-5.6"
+# idle_hangup_min = 15      # 1 to 120
+
+# Built-in GPT-Live voices. Pitch and brightness were measured on one audition
+# sample each (median F0, spectral centroid); "sex" follows the pitch, so a voice
+# in the 135-170 Hz band can read either way. Listen before trusting a label.
+#   "stone"     male    deep         98 Hz   dark, warm
+#   "cinder"    male    deep         99 Hz   dark, warm
+#   "meridian"  male    deep         99 Hz   balanced
+#   "ripple"    male    deep        104 Hz   dark, warm
+#   "vesper"    male    low         105 Hz   dark, warm
+#   "echo"      male    low         107 Hz   balanced
+#   "ash"       male    low         108 Hz   bright
+#   "sillage"   male    low         111 Hz   balanced
+#   "tempo"     male    low         118 Hz   balanced
+#   "shida"     male    low         123 Hz   bright
+#   "flitz"     male    low         124 Hz   bright
+#   "beacon"    male    low         130 Hz   dark, warm
+#   "alloy"     either  middle      145 Hz   bright
+#   "verse"     either  middle      145 Hz   very bright, crisp
+#   "cedar"     either  middle      158 Hz   dark, warm
+#   "ballad"    either  middle      159 Hz   very bright, crisp
+#   "shimmer"   either  middle      159 Hz   balanced
+#   "nira"      either  middle      160 Hz   balanced
+#   "delta"     female  medium-high 174 Hz   balanced
+#   "nuri"      female  medium-high 176 Hz   balanced
+#   "marin"     female  medium-high 180 Hz   bright
+#   "sage"      female  medium-high 188 Hz   very bright, crisp
+#   "gleam"     female  medium-high 189 Hz   balanced
+#   "harema"    female  medium-high 189 Hz   bright
+#   "quartz"    female  medium-high 194 Hz   balanced
+#   "willow"    female  medium-high 195 Hz   balanced
+#   "brise"     female  high        205 Hz   balanced
+#   "juni"      female  high        207 Hz   balanced
+#   "noeul"     female  high        212 Hz   balanced
+#   "bossa"     female  high        216 Hz   dark, warm
+#   "coral"     female  high        220 Hz   very bright, crisp

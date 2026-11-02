@@ -46,7 +46,15 @@ Every Claude start repoints `~/.local/bin/voice-call` at the installed plugin ve
 
 ## Tuning
 
-`voice-call --explain` prints the resolved config. An optional committed `.voice-call.json` at a project root sets `backend` (`auto` · `gpt-live` · `realtime` · `fake`), `model`, `brain_model`, `voice` and `idle_hangup_min`.
+`voice-call --explain` prints the resolved config and where each value came from. Three layers, last wins:
+
+| Layer | File | Typical use |
+|-------|------|-------------|
+| built-in | `scripts/voice_call.py` `DEFAULTS` | voice `ripple`, model `gpt-live-1`, brain `gpt-5.6` |
+| machine | `~/.config/voice-call/config.toml` (`$XDG_CONFIG_HOME`, or `$VOICE_CALL_CONFIG`) | your voice; `/voice-call setup` writes it from `scripts/config.toml.template`, which lists all 31 GPT-Live voices with measured pitch and brightness |
+| project | committed `.voice-call.json` at a repo root | a per-repo override |
+
+Each layer may set `backend` (`auto` · `gpt-live` · `realtime` · `fake`), `model`, `brain_model`, `voice` and `idle_hangup_min`. The daemon reads them when it starts, so after an edit hang up (`⌥⌘⇧V`) and press `⌥⌘V` again.
 
 ---
 

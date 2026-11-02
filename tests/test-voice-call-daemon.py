@@ -277,6 +277,41 @@ class TranscriptTests(unittest.TestCase):
                         vc.load_profile(folder)
 
 
+    def test_default_voice_is_ripple_without_user_config(self):
+        with tempfile.TemporaryDirectory() as folder, patch.dict(os.environ, {"VOICE_CALL_CONFIG": str(Path(folder, "none.toml"))}):
+            profile = vc.load_profile(folder)
+            self.assertEqual((profile["values"]["voice"], profile["sources"]["voice"]), ("ripple", "default"))
+            self.assertIsNone(profile["user_file"])
+
+    def test_user_config_sits_under_repo_profile(self):
+        with tempfile.TemporaryDirectory() as folder, patch.dict(os.environ, {"VOICE_CALL_CONFIG": str(Path(folder, "config.toml"))}):
+            Path(folder, "config.toml").write_text('voice = "ballad"\nidle_hangup_min = 5\n')
+            profile = vc.load_profile(folder)
+            self.assertEqual((profile["values"]["voice"], profile["sources"]["voice"]), ("ballad", "user"))
+            Path(folder, ".voice-call.json").write_text('{"voice":"cedar"}')
+            profile = vc.load_profile(folder)
+            self.assertEqual((profile["values"]["voice"], profile["sources"]["voice"]), ("cedar", "profile"))
+            self.assertEqual((profile["values"]["idle_hangup_min"], profile["sources"]["idle_hangup_min"]), (5, "user"))
+            self.assertEqual(vc.config_label(profile), str(Path(folder, "config.toml")) + " + " + str(Path(folder).resolve() / ".voice-call.json"))
+
+    def test_invalid_user_config_is_rejected(self):
+        with tempfile.TemporaryDirectory() as folder, patch.dict(os.environ, {"VOICE_CALL_CONFIG": str(Path(folder, "config.toml"))}):
+            for body in ('voice = ', 'unknown = 1', 'idle_hangup_min = 500'):
+                with self.subTest(body=body):
+                    Path(folder, "config.toml").write_text(body)
+                    with self.assertRaises(vc.CallError):
+                        vc.load_profile(folder)
+
+    def test_template_parses_to_the_builtin_voice_and_seeds_once(self):
+        template = SCRIPT.with_name("config.toml.template")
+        self.assertEqual(vc.tomllib.loads(template.read_text()), {"voice": vc.DEFAULTS["voice"]})
+        with tempfile.TemporaryDirectory() as folder, patch.dict(os.environ, {"VOICE_CALL_CONFIG": str(Path(folder, "sub/config.toml"))}):
+            vc.seed_user_config(template)
+            target = Path(folder, "sub/config.toml")
+            target.write_text('voice = "ballad"\n')
+            vc.seed_user_config(template)
+            self.assertEqual(target.read_text(), 'voice = "ballad"\n')
+
 class BackendProtocolTests(unittest.IsolatedAsyncioTestCase):
     async def asyncSetUp(self):
         self.temp = tempfile.TemporaryDirectory()
