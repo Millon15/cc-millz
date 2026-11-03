@@ -1,0 +1,19 @@
+name: apm-export
+on:
+  push:
+    branches: [master]
+  pull_request:
+permissions:
+  contents: read
+jobs:
+  portable-skills:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: '1.4.2'
+      - name: Export contract tests
+        run: bun test tests/apm-export*.test.ts
+      - name: Committed export drift
+        run: scripts/apm-export.sh --check

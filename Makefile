@@ -7,12 +7,27 @@
 
 SHELL := /usr/bin/env bash
 
-.PHONY: help test test-bats test-ts test-python test-generated test-mods
+.PHONY: help test test-bats test-ts test-python test-generated test-mods export hooks
 
 help:
 	@echo 'make test       run every suite and generated-source checks'
 	@echo 'make test-bats  run the bats suites only'
 	@echo 'make test-ts    run the TypeScript suites only'
+	@echo 'make export     regenerate export/ from plugins/'
+	@echo 'make hooks      install the tracked pre-commit gate (core.hooksPath = .githooks)'
+
+# Generation stays a deliberate step; the pre-commit hook only checks the staged snapshot.
+export:
+	scripts/apm-export.sh
+
+# A foreign core.hooksPath is someone's deliberate choice: refuse to replace it.
+hooks:
+	@command -v bun >/dev/null 2>&1 || { echo 'bun not installed — see https://bun.sh'; exit 1; }
+	@command -v trash >/dev/null 2>&1 || { echo 'trash CLI not installed — the hook needs it to discard its snapshot'; exit 1; }
+	@current=$$(git config --get core.hooksPath || true); \
+	if [ -n "$$current" ] && [ "$$current" != .githooks ]; then \
+	echo "core.hooksPath is already '$$current'; unset it or chain .githooks/pre-commit from there"; exit 1; fi; \
+	git config core.hooksPath .githooks && echo 'core.hooksPath = .githooks'
 
 test: test-generated test-python test-bats test-ts test-mods
 

@@ -1,0 +1,4 @@
+name: "revmux-kit"
+version: "0.1.3"
+description: "Portable skills exported from the revmux-kit plugin."
+license: "MIT"

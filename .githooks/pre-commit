@@ -1,0 +1,33 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+for tool in bun trash; do
+    command -v "$tool" >/dev/null 2>&1 || { printf 'pre-commit: %s is required\n' "$tool" >&2; exit 1; }
+done
+
+common_dir=$(git rev-parse --path-format=absolute --git-common-dir)
+local_hook="$common_dir/hooks/pre-commit"
+
+check_staged_export() (
+    umask 022
+    snapshot=$(mktemp -d "${TMPDIR:-/tmp}/apm-export-index.XXXXXXXX") || exit "$?"
+
+    cleanup() {
+        local result=$? cleanup_result=0
+        trap - EXIT
+        trash "$snapshot" || cleanup_result=$?
+        if [ "$result" -eq 0 ]; then result=$cleanup_result; fi
+        exit "$result"
+    }
+
+    trap cleanup EXIT
+    trap 'exit 130' INT
+    trap 'exit 143' TERM
+    git checkout-index --all --prefix="$snapshot/" || exit "$?"
+    bash "$snapshot/scripts/apm-export.sh" --check
+)
+
+check_staged_export
+if [ -x "$local_hook" ] && ! [ "$local_hook" -ef "${BASH_SOURCE[0]}" ]; then
+    "$local_hook"
+fi

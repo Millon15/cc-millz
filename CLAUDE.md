@@ -13,6 +13,7 @@ Millon15 personal Claude Code plugin marketplace — skills, agents, (future) ho
 - MIT-licensed. Personal project by Millon15.
 - **No machine-specific paths** in shipped plugin content — use `${CLAUDE_PLUGIN_ROOT}` inside skills/hooks (plugin files copied to cache dir on install; relative paths break). Exception: openai-codex plugin cache refs resolved by Glob at runtime, documented in skills.
 - **Personal-taste plugins (essentials) default to user scope** — enabling in a project's versioned settings is a deliberate repo-owner decision, never a silent default.
+- **`export/` follows `plugins/`** — any change under `plugins/` ⇒ `make export` and commit `export/` in the same change. `make hooks` (once per clone) installs `.githooks/pre-commit`, which checks the STAGED snapshot with `scripts/apm-export.sh --check` and refuses a drifting commit; CI runs the same check and fails on drift. Never hand-edit `export/`; a skill that cannot be made portable is listed in `export/report.json` with its reason.
 
 ## Conventions
 
@@ -59,6 +60,7 @@ Millon15 personal Claude Code plugin marketplace — skills, agents, (future) ho
 - `plugins/statusline/` — two-line status line, self-installs into settings.json (1 SessionStart hook + scripts)
 - `plugins/toolsmith/` — agent dev-tool lifecycle (4 commands + 2 skills + scripts)
 - `plugins/unslop-kit/` — reply contract over a vendored pstack unslop (4 skills + 1 SessionStart hook + sync script)
+- `export/` — generated apm packages, one per plugin, for Codex and other apm targets (`scripts/apm-export.ts`, `tests/apm-export.test.ts`, `.github/workflows/apm-export.yml`)
 - `plugins/voice-call/` — full-duplex voice companion pinned to one Claude pane (1 mod + daemon/CLI script + agterm keymap snippet, macOS + agterm only)
 - `plugins/video-reader/` — fetch, transcribe and read one video of any length from a URL or file (1 skill + script)
 
