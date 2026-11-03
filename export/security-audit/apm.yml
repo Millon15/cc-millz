@@ -1,0 +1,4 @@
+name: "security-audit"
+version: "0.1.0"
+description: "Portable skills exported from the security-audit plugin."
+license: "MIT"

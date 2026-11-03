@@ -1,0 +1,4 @@
+name: "phpstorm"
+version: "0.2.2"
+description: "Portable skills exported from the phpstorm plugin."
+license: "MIT"

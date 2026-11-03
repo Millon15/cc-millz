@@ -1,0 +1,4 @@
+name: "video-reader"
+version: "1.0.0"
+description: "Portable skills exported from the video-reader plugin."
+license: "MIT"

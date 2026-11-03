@@ -1,0 +1,392 @@
+{
+  "format": 1,
+  "packages": [
+    {
+      "name": "agterm-lanes",
+      "version": "0.2.0",
+      "included": [],
+      "skipped": [],
+      "note": "No portable skills; no package emitted. Hooks and registered agents are not exported."
+    },
+    {
+      "name": "codex-delegation",
+      "version": "0.1.3",
+      "included": [],
+      "skipped": [
+        {
+          "source": "skills/codex-computer-use/SKILL.md",
+          "reason": "referenced skill codex-delegation:codex-delegate was skipped: SKILL.md: installed-plugin registry or cache dependency"
+        },
+        {
+          "source": "skills/codex-delegate/SKILL.md",
+          "reason": "SKILL.md: installed-plugin registry or cache dependency"
+        },
+        {
+          "source": "skills/codex-workflow-fanout/SKILL.md",
+          "reason": "registered agent codex-workflow-worker needs a native-host adapter"
+        }
+      ],
+      "note": "No portable skills; no package emitted. Hooks and registered agents are not exported."
+    },
+    {
+      "name": "essentials",
+      "version": "0.8.0",
+      "included": [
+        {
+          "source": "skills/code-style/SKILL.md",
+          "name": "essentials-code-style",
+          "assets": [
+            "LICENSE.apm-export",
+            "SKILL.md"
+          ]
+        },
+        {
+          "source": "skills/concise-writing/SKILL.md",
+          "name": "essentials-concise-writing",
+          "assets": [
+            "LICENSE.apm-export",
+            "SKILL.md"
+          ]
+        },
+        {
+          "source": "skills/q-sql/SKILL.md",
+          "name": "essentials-q-sql",
+          "assets": [
+            "LICENSE.apm-export",
+            "SKILL.md"
+          ]
+        },
+        {
+          "source": "skills/qsv/SKILL.md",
+          "name": "essentials-qsv",
+          "assets": [
+            "LICENSE.apm-export",
+            "SKILL.md"
+          ]
+        },
+        {
+          "source": "commands/e15.md",
+          "name": "essentials-e15",
+          "assets": [
+            "LICENSE.apm-export",
+            "SKILL.md"
+          ]
+        },
+        {
+          "source": "commands/recall.md",
+          "name": "essentials-recall",
+          "assets": [
+            "LICENSE.apm-export",
+            "SKILL.md"
+          ]
+        },
+        {
+          "source": "commands/tldr.md",
+          "name": "essentials-tldr",
+          "assets": [
+            "LICENSE.apm-export",
+            "SKILL.md"
+          ]
+        }
+      ],
+      "skipped": []
+    },
+    {
+      "name": "gws-workspace",
+      "version": "0.1.1",
+      "included": [
+        {
+          "source": "skills/gws-workspace/SKILL.md",
+          "name": "gws-workspace",
+          "assets": [
+            "LICENSE.apm-export",
+            "SKILL.md",
+            "references/gdocs-comments.md",
+            "references/gws-docs.md",
+            "references/gws-drive.md",
+            "references/gws-sheets.md",
+            "references/gws-slides.md",
+            "references/gws-tasks.md"
+          ]
+        }
+      ],
+      "skipped": []
+    },
+    {
+      "name": "idea-config",
+      "version": "0.1.0",
+      "included": [
+        {
+          "source": "skills/idea-config/SKILL.md",
+          "name": "idea-config",
+          "assets": [
+            "LICENSE.apm-export",
+            "SKILL.md",
+            "_plugin/scripts/idea-config.sh",
+            "_plugin/scripts/idea_config.py",
+            "references/corpus.md",
+            "references/debuggers.md",
+            "references/interpreters-sdks.md",
+            "references/project-model.md",
+            "references/run-configurations.md"
+          ]
+        }
+      ],
+      "skipped": []
+    },
+    {
+      "name": "merge-kit",
+      "version": "0.2.1",
+      "included": [
+        {
+          "source": "commands/resolve.md",
+          "name": "merge-kit-resolve",
+          "assets": [
+            "LICENSE.apm-export",
+            "SKILL.md",
+            "_plugin/scripts/merge-forensics.sh",
+            "_plugin/scripts/merge-kit.sh"
+          ]
+        },
+        {
+          "source": "commands/verify.md",
+          "name": "merge-kit-verify",
+          "assets": [
+            "LICENSE.apm-export",
+            "SKILL.md",
+            "_plugin/scripts/merge-forensics.sh",
+            "_plugin/scripts/merge-kit.sh"
+          ]
+        }
+      ],
+      "skipped": []
+    },
+    {
+      "name": "peer-chat",
+      "version": "0.7.2",
+      "included": [],
+      "skipped": [
+        {
+          "source": "skills/build/SKILL.md",
+          "reason": "relative dependency escapes the skill directory"
+        },
+        {
+          "source": "skills/peer-chat/SKILL.md",
+          "reason": "unresolved plugin-root discovery instruction"
+        }
+      ],
+      "note": "No portable skills; no package emitted. Hooks and registered agents are not exported."
+    },
+    {
+      "name": "peer-chat-bg",
+      "version": "0.1.2",
+      "included": [],
+      "skipped": [
+        {
+          "source": "skills/build/SKILL.md",
+          "reason": "relative dependency escapes the skill directory"
+        },
+        {
+          "source": "skills/peer-chat/SKILL.md",
+          "reason": "unresolved plugin-root discovery instruction"
+        }
+      ],
+      "note": "No portable skills; no package emitted. Hooks and registered agents are not exported."
+    },
+    {
+      "name": "phpstorm",
+      "version": "0.2.2",
+      "included": [
+        {
+          "source": "skills/phpstorm-debug/SKILL.md",
+          "name": "phpstorm-phpstorm-debug",
+          "assets": [
+            "LICENSE.apm-export",
+            "SKILL.md"
+          ]
+        },
+        {
+          "source": "skills/phpstorm-mcp/SKILL.md",
+          "name": "phpstorm-phpstorm-mcp",
+          "assets": [
+            "LICENSE.apm-export",
+            "SKILL.md"
+          ]
+        },
+        {
+          "source": "commands/setup-xdebug.md",
+          "name": "phpstorm-setup-xdebug",
+          "assets": [
+            "LICENSE.apm-export",
+            "SKILL.md",
+            "_plugin/scripts/xdebug-doctor.sh"
+          ]
+        }
+      ],
+      "skipped": []
+    },
+    {
+      "name": "plan",
+      "version": "0.3.0",
+      "included": [],
+      "skipped": [
+        {
+          "source": "skills/research/SKILL.md",
+          "reason": "registered agent answer-proover needs a native-host adapter"
+        },
+        {
+          "source": "commands/research.md",
+          "reason": "registered agent answer-proover needs a native-host adapter"
+        }
+      ],
+      "note": "No portable skills; no package emitted. Hooks and registered agents are not exported."
+    },
+    {
+      "name": "ralphex-revmux",
+      "version": "0.1.4",
+      "included": [],
+      "skipped": [
+        {
+          "source": "skills/ralphex-revmux/SKILL.md",
+          "reason": "registered agent ralphex-optimizer needs a native-host adapter"
+        },
+        {
+          "source": "commands/run.md",
+          "reason": "registered agent ralphex-optimizer needs a native-host adapter"
+        }
+      ],
+      "note": "No portable skills; no package emitted. Hooks and registered agents are not exported."
+    },
+    {
+      "name": "revmux-kit",
+      "version": "0.1.3",
+      "included": [
+        {
+          "source": "skills/revmux-kit/SKILL.md",
+          "name": "revmux-kit",
+          "assets": [
+            "LICENSE.apm-export",
+            "SKILL.md",
+            "scripts/bootstrap.sh",
+            "templates/config",
+            "templates/profile.md",
+            "templates/profiles/fable-final.md",
+            "templates/profiles/fable-panel.md",
+            "templates/profiles/sol-final.md",
+            "templates/profiles/sol-panel.md"
+          ]
+        }
+      ],
+      "skipped": []
+    },
+    {
+      "name": "security-audit",
+      "version": "0.1.0",
+      "included": [
+        {
+          "source": "commands/audit.md",
+          "name": "security-audit-audit",
+          "assets": [
+            "LICENSE.apm-export",
+            "SKILL.md"
+          ]
+        }
+      ],
+      "skipped": []
+    },
+    {
+      "name": "statusline",
+      "version": "0.2.1",
+      "included": [],
+      "skipped": [],
+      "note": "No portable skills; no package emitted. Hooks and registered agents are not exported."
+    },
+    {
+      "name": "toolsmith",
+      "version": "0.1.1",
+      "included": [],
+      "skipped": [
+        {
+          "source": "skills/dev-tool-authoring/SKILL.md",
+          "reason": "SKILL.md: source-layout dependency requires a dedicated portable adapter"
+        },
+        {
+          "source": "skills/skill-discovery/SKILL.md",
+          "reason": "SKILL.md: source-layout dependency requires a dedicated portable adapter"
+        },
+        {
+          "source": "commands/check.md",
+          "reason": "_plugin/scripts/find-skill.sh: runtime plugin-root dependency; script bytes must remain unchanged"
+        },
+        {
+          "source": "commands/create.md",
+          "reason": "_plugin/scripts/find-skill.sh: runtime plugin-root dependency; script bytes must remain unchanged"
+        },
+        {
+          "source": "commands/man.md",
+          "reason": "_plugin/scripts/find-skill.sh: runtime plugin-root dependency; script bytes must remain unchanged"
+        },
+        {
+          "source": "commands/retire.md",
+          "reason": "_plugin/scripts/find-skill.sh: runtime plugin-root dependency; script bytes must remain unchanged"
+        }
+      ],
+      "note": "No portable skills; no package emitted. Hooks and registered agents are not exported."
+    },
+    {
+      "name": "unslop-kit",
+      "version": "0.12.0",
+      "included": [
+        {
+          "source": "skills/human-brief/SKILL.md",
+          "name": "unslop-kit-human-brief",
+          "assets": [
+            "LICENSE.apm-export",
+            "SKILL.md"
+          ]
+        },
+        {
+          "source": "skills/unslop/SKILL.md",
+          "name": "unslop-kit-unslop",
+          "assets": [
+            "LICENSE.apm-export",
+            "SKILL.md"
+          ]
+        }
+      ],
+      "skipped": [
+        {
+          "source": "skills/cto-brief/SKILL.md",
+          "reason": "referenced skill unslop-kit:unslop-formatting was skipped: SKILL.md: requires the original host's Skill invocation tracking"
+        },
+        {
+          "source": "skills/unslop-formatting/SKILL.md",
+          "reason": "SKILL.md: requires the original host's Skill invocation tracking"
+        }
+      ]
+    },
+    {
+      "name": "video-reader",
+      "version": "1.0.0",
+      "included": [
+        {
+          "source": "skills/video-reader/SKILL.md",
+          "name": "video-reader",
+          "assets": [
+            "LICENSE.apm-export",
+            "SKILL.md",
+            "_plugin/scripts/video-read.sh"
+          ]
+        }
+      ],
+      "skipped": []
+    },
+    {
+      "name": "voice-call",
+      "version": "0.1.6",
+      "included": [],
+      "skipped": [],
+      "note": "No portable skills; no package emitted. Hooks and registered agents are not exported."
+    }
+  ]
+}

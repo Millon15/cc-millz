@@ -1,0 +1,4 @@
+name: "essentials"
+version: "0.8.0"
+description: "Portable skills exported from the essentials plugin."
+license: "MIT"
