@@ -77,7 +77,8 @@ Every plugin's portable skills, re-shaped as a self-contained [apm](https://gith
 
     apm install Millon15/cc-millz/export/idea-config#<commit>     # in a project; add --target claude,codex on a bare one
 
-- **Generated**: `scripts/apm-export.sh` (Bun 1.4.2) rewrites every plugin into `export/`; `scripts/apm-export.sh --check` fails on drift and CI runs it on every push and PR. Change a plugin ⇒ run the script and commit `export/` in the same change.
+- **Generated**: `make export` (`scripts/apm-export.sh`, Bun 1.4.2) rewrites every plugin into `export/`; `scripts/apm-export.sh --check` fails on drift and CI runs it on every push and PR. Change a plugin ⇒ `make export` and commit `export/` in the same change.
+- **Pre-commit gate**: `make hooks` once per clone points `core.hooksPath` at the tracked `.githooks/`; its `pre-commit` materialises the staged index with `git checkout-index` and runs that snapshot's `--check`, so a commit whose `export/` lags its `plugins/` is refused before CI sees it. It never regenerates or stages anything, and it chains the original `.git/hooks/pre-commit` when one exists. Needs `bun` and `trash`.
 - **Skill names**: `<plugin>-<skill>` (`merge-kit-resolve`, `essentials-code-style`), or the bare name when it equals the plugin (`idea-config`, `video-reader`).
 - **Scripts travel inside the skill**: copied under `_plugin/`; the exported SKILL.md sets `SKILL_DIR` and calls `${SKILL_DIR}/_plugin/scripts/…`; script bytes and executable bits are kept as they are.
 - **Commands**: a slash command becomes a Codex entry-point skill of the same name, body embedded.

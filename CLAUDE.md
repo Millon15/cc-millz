@@ -13,7 +13,7 @@ Millon15 personal Claude Code plugin marketplace — skills, agents, (future) ho
 - MIT-licensed. Personal project by Millon15.
 - **No machine-specific paths** in shipped plugin content — use `${CLAUDE_PLUGIN_ROOT}` inside skills/hooks (plugin files copied to cache dir on install; relative paths break). Exception: openai-codex plugin cache refs resolved by Glob at runtime, documented in skills.
 - **Personal-taste plugins (essentials) default to user scope** — enabling in a project's versioned settings is a deliberate repo-owner decision, never a silent default.
-- **`export/` follows `plugins/`** — any change under `plugins/` ⇒ run `scripts/apm-export.sh` and commit `export/` in the same change; CI runs `--check` and fails on drift. Never hand-edit `export/`; a skill that cannot be made portable is listed in `export/report.json` with its reason.
+- **`export/` follows `plugins/`** — any change under `plugins/` ⇒ `make export` and commit `export/` in the same change. `make hooks` (once per clone) installs `.githooks/pre-commit`, which checks the STAGED snapshot with `scripts/apm-export.sh --check` and refuses a drifting commit; CI runs the same check and fails on drift. Never hand-edit `export/`; a skill that cannot be made portable is listed in `export/report.json` with its reason.
 
 ## Conventions
 
