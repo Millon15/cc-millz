@@ -237,3 +237,12 @@ two_day_candidate() {
 	[ -f "$card" ]
 	[ "$(jq -s '[.[] | select(.event == "promoted")] | length' "$STORE/ledger.jsonl")" = 1 ]
 }
+
+@test "a global lesson seen in one project on two days stays a draft; a second project makes it a candidate" {
+	jq '.lessons[0].scope = "global"' "$FIX/valid.json" >"$TMP/input.json"
+	two_day_candidate
+	id="$(first_id)"
+	[ "$(view "$id" | jq -r .status)" = draft ]
+	"$SCRIPTS/sl-merge.sh" --store="$STORE" --session=s3 --project=project-b --digest="$TMP/digest.jsonl" <"$TMP/input.json"
+	[ "$(view "$id" | jq -r .status)" = candidate ]
+}

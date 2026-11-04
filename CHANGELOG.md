@@ -1,5 +1,15 @@
 # Changelog
 
+## session-learnings v0.2.1 - 2026-11-03
+
+### Fixed
+
+- The extractor and the dedup judge failed on every real run with `--json-schema is not a valid JSON Schema: no schema with key or ref "https://json-schema.org/draft/2020-12/schema"`: the Claude CLI rejects the `$schema` key. Both schemas drop it. The test suite fakes the model, so only the first live run after install caught it.
+
+### Changed
+
+- A global lesson becomes a candidate only after sightings in two projects. Before, two days in one repository were enough, and `recall` would then show that repository's lesson in every other project.
+
 ## session-learnings v0.2.0 - 2026-11-03
 
 ### Added

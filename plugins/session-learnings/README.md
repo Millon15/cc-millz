@@ -57,6 +57,7 @@ every worker run that sweeps: sl-usage.sh ──▶ sl-ledger.sh maintain (TTL, 
 | Rule | Value |
 |------|-------|
 | score | days + 0.5 × (projects − 1) + 0.5 if a human turn is evidence + applied_ok − 1.5 × applied_fail − 2 × open contradictions |
+| global candidate | also needs sightings in 2 projects, so recall never carries one repository's lesson into every other |
 | `ready` flag | candidate with 2 successful applications or sightings on 3 days; a global one also needs 2 projects |
 | `failing` flag | stable with 2 failed applications since promotion |
 | `stale` flag | stable with no skill usage and no application for 60 days |

@@ -4,7 +4,7 @@ Status, highest first:
     last review decision   promoted -> stable · rejected -> rejected · deprecated -> deprecated
     quarantine reason      quarantine
     expired after the last activity   expired (a later sighting revives the card)
-    distinct_days >= 2, score >= 2, no open contradiction   candidate
+    distinct_days >= 2, score >= 2, no open contradiction, global seen in 2+ projects   candidate
     otherwise              draft
 """
 
@@ -269,6 +269,7 @@ def is_candidate(view):
         counts["days"] >= CANDIDATE_MIN_DAYS
         and view["score"] >= CANDIDATE_MIN_SCORE
         and not counts["contradicted"]
+        and (view["scope"] != "global" or counts["projects"] >= GLOBAL_READY_MIN_PROJECTS)
     )
 
 

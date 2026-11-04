@@ -20,7 +20,7 @@ for digit, scope, slug, status, trigger, claim in definitions:
     days = [1, 0] if status in ('candidate', 'stable', 'rejected') else [0]
     for i, days_ago in enumerate(days):
         events.append(dict(event='seen' if i == 0 else 'confirmed', fingerprint=fingerprint,
-                           session='seed'+str(i), project=slug or project,
+                           session='seed'+str(i), project=slug or (project, '-another-project')[i],
                            ts=(now-datetime.timedelta(days=days_ago)).isoformat().replace('+00:00','Z'),
                            lesson=lesson, excerpt='Verified result.', **{'class':'human'},
                            reasons=['untrusted_evidence'] if status == 'quarantine' else []))

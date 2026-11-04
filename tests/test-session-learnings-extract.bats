@@ -87,3 +87,9 @@ PY
     assert_status 3
     assert_not_contains "$output" secret-result
 }
+
+@test "schemas passed to claude --json-schema carry no \$schema key; the CLI rejects the draft 2020-12 ref" {
+    for schema in candidates judge; do
+        jq -e 'has("$schema") | not' "${REPO_ROOT}/plugins/session-learnings/schema/${schema}.schema.json"
+    done
+}
