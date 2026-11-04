@@ -296,18 +296,19 @@
     },
     {
       "name": "session-learnings",
-      "version": "0.1.0",
-      "included": [
+      "version": "0.2.0",
+      "included": [],
+      "skipped": [
+        {
+          "source": "skills/recall/SKILL.md",
+          "reason": "_plugin/scripts/sl-hook.sh: runtime plugin-root dependency; script bytes must remain unchanged"
+        },
         {
           "source": "commands/review.md",
-          "name": "session-learnings-review",
-          "assets": [
-            "LICENSE.apm-export",
-            "SKILL.md"
-          ]
+          "reason": "_plugin/scripts/sl-hook.sh: runtime plugin-root dependency; script bytes must remain unchanged"
         }
       ],
-      "skipped": []
+      "note": "No portable skills; no package emitted. Hooks and registered agents are not exported."
     },
     {
       "name": "statusline",

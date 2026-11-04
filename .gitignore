@@ -4,3 +4,4 @@ tmp/peer-chat-bg/
 
 # engine-laid mod types (claude-code, claude-code-tools, ...) beside a loaded mod
 plugins/*/.claude-plugin/types/
+tmp/

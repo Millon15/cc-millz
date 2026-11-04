@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# sl-worker.sh: drain the session queue: digest → signal → extract → merge, one job at a time.
+# sl-worker.sh: drain the session queue: apply scan → digest → signal → extract → dedup → merge, one job at a time.
 #
 # Run by launchd (QueueDirectories on queue/, plus an hourly StartInterval) or by hand.
 # Job lifecycle, all moves are renames inside the store:
@@ -7,13 +7,14 @@
 #                                 └──any failure──────────▶ failed/   (sweep re-queues while attempts < 3)
 # A job leaves queue/ in every outcome, otherwise launchd would re-fire forever.
 #
-# Flags: --no-sweep skips the missed-session sweep and the failed-job retry.
+# Flags: --no-sweep skips the sweep: failed-job retry, missed sessions, ledger maintenance, done/ rotation.
 set -euo pipefail
 
 SCRIPTS_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 STORE="${SESSION_LEARNINGS_HOME:-$HOME/.claude/learnings}"
 PROJECTS_DIR="${CLAUDE_CONFIG_DIR:-$HOME/.claude}/projects"
 MAX_ATTEMPTS=3
+DONE_KEEP_DAYS=30
 SWEEP_IDLE_MINUTES="${SESSION_LEARNINGS_SWEEP_IDLE_MINUTES:-60}"
 INTERACTIVE_ENTRYPOINTS='["cli","claude-desktop"]'
 
@@ -46,6 +47,8 @@ rerun_under_lock() {
 sweep() {
 	requeue_failed_jobs
 	enqueue_missed_sessions
+	maintain_ledger
+	rotate_done_jobs
 }
 
 drain_queue() {
@@ -90,6 +93,7 @@ run_pipeline() {
 		echo "skipped:non-interactive"
 		return 0
 	}
+	record_applications "$session_id" "$transcript"
 	"$SCRIPTS_DIR/sl-digest.sh" "$transcript" >"$digest" || {
 		echo "failed:digest"
 		return 1
@@ -103,21 +107,56 @@ run_pipeline() {
 }
 
 extract_and_merge() {
-	local session_id="$1" transcript="$2" digest="$3" candidates rc=0
+	local session_id="$1" transcript="$2" digest="$3" candidates links project rc=0
 	candidates="$STORE/work/$session_id.candidates.json"
+	project="$(project_slug "$transcript")"
 	CLAUDE_LEARN_SKIP=1 "$SCRIPTS_DIR/sl-extract.sh" --digest="$digest" >"$candidates" || rc=$?
 	[ "$rc" -eq 0 ] || {
 		echo "failed:extract-exit-$rc"
 		return 1
 	}
+	links="$(find_links "$session_id" "$project" "$candidates")"
 	"$SCRIPTS_DIR/sl-merge.sh" --store="$STORE" --session="$session_id" \
-		--project="$(project_slug "$transcript")" --digest="$digest" <"$candidates" || rc=$?
+		--project="$project" --digest="$digest" --links="$links" <"$candidates" || rc=$?
 	[ "$rc" -eq 0 ] || {
 		echo "failed:merge-exit-$rc"
 		return 1
 	}
-	discard "$digest" "$candidates"
+	discard "$digest" "$candidates" "$links"
 	echo "merged"
+}
+
+# Applications are telemetry: a failed scan is logged and never blocks learning from the session.
+record_applications() {
+	local events="$STORE/work/$1.applied.jsonl"
+	{ "$SCRIPTS_DIR/sl-apply.sh" --store="$STORE" --session="$1" --transcript="$2" >"$events" &&
+		"$SCRIPTS_DIR/sl-ledger.sh" events --store="$STORE" <"$events"; } || log "$1 apply-scan-failed"
+	discard "$events"
+}
+
+# A failed judge costs only links: the lessons still merge, as new cards.
+find_links() {
+	local links="$STORE/work/$1.links.json"
+	CLAUDE_LEARN_SKIP=1 "$SCRIPTS_DIR/sl-dedup.sh" --store="$STORE" --project="$2" <"$3" >"$links" || {
+		log "$1 dedup-failed"
+		echo '{"links":[]}' >"$links"
+	}
+	printf '%s\n' "$links"
+}
+
+maintain_ledger() {
+	local usage="$STORE/work/skill-usage.jsonl"
+	"$SCRIPTS_DIR/sl-usage.sh" >"$usage" || : >"$usage"
+	"$SCRIPTS_DIR/sl-ledger.sh" maintain --store="$STORE" --usage="$usage" || log "maintain-failed"
+	discard "$usage"
+}
+
+# Old done/ jobs fold into done.jsonl, which is_known_session still reads, so the sweep never re-queues them.
+rotate_done_jobs() {
+	local job
+	while IFS= read -r job; do
+		jq -c '{session_id, outcome, finished_at}' "$job" >>"$STORE/done.jsonl" && discard "$job"
+	done < <(find "$STORE/done" -name '*.json' -mtime "+$DONE_KEEP_DAYS" 2>/dev/null)
 }
 
 is_interactive_session() {
@@ -178,7 +217,7 @@ is_known_session() {
 	for bucket in queue processing "done" failed; do
 		[ -e "$STORE/$bucket/$1.json" ] && return 0
 	done
-	return 1
+	grep -qF "\"session_id\":\"$1\"," "$STORE/done.jsonl" 2>/dev/null
 }
 
 enqueue_swept() {

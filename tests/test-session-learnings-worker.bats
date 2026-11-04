@@ -18,6 +18,7 @@ setup() {
 	unset CLAUDE_LEARN_SKIP SL_WORKER_LOCKED
 	fake_extractor 0
 	fake_merger 0
+	fake_lane_scripts
 }
 
 teardown() { teardown_tmp; }
@@ -40,6 +41,25 @@ cat >/dev/null
 exit $1
 STUB
 	chmod +x "$PLUGIN/scripts/sl-merge.sh"
+}
+
+# fake_lane_scripts: apply scan, dedup and usage record their argv; tests override one at a time.
+fake_lane_scripts() {
+	stub_script sl-apply.sh 0 'echo "{\"type\":\"applied\",\"id\":\"lsn-x\",\"session\":\"s\"}"'
+	stub_script sl-dedup.sh 0 'echo "{\"links\":[{\"index\":0}]}"'
+	stub_script sl-usage.sh 0 'echo "{\"skill\":\"learned-x\",\"usageCount\":1,\"lastUsedAt\":1}"'
+	stub_script sl-ledger.sh 0 '[ "$1" = events ] && cat >>"$CALLS.stdin"; :'
+}
+
+# stub_script <name> <exit> <body>: a recording stand-in for one plugin script.
+stub_script() {
+	cat >"$PLUGIN/scripts/$1" <<STUB
+#!/usr/bin/env bash
+echo "$1 \$*" >>"\$CALLS"
+$3
+exit $2
+STUB
+	chmod +x "$PLUGIN/scripts/$1"
 }
 
 # enqueue <session-id> <fixture-name>: copies a fixture transcript under projects/-proj/ and queues it.
@@ -69,7 +89,7 @@ outcome() {
 	enqueue s2 short
 	"$WORKER" --no-sweep
 	[ "$(outcome done s2)" = skipped:no-signal ]
-	[ ! -e "$CALLS" ]
+	! grep -q '^extract' "$CALLS"
 }
 
 @test "a headless claude -p session is skipped by its entrypoint" {
@@ -183,7 +203,7 @@ STUB
 }
 
 @test "end to end with only the model faked: a draft for the exec_ok lesson, quarantine for the peer one" {
-	cp "${REPO_ROOT}/plugins/session-learnings/scripts/"{sl-extract.sh,sl-merge.sh} "$PLUGIN/scripts/"
+	cp "${REPO_ROOT}/plugins/session-learnings/scripts/"{sl-extract.sh,sl-merge.sh,sl-ledger.sh} "$PLUGIN/scripts/"
 	fake_model
 	enqueue s12 fix-cycle
 	run "$WORKER" --no-sweep
@@ -192,4 +212,74 @@ STUB
 	[ "$(find "$SESSION_LEARNINGS_HOME/global/drafts" -name 'lsn-*.md' | wc -l | tr -d ' ')" -eq 1 ]
 	[ "$(find "$SESSION_LEARNINGS_HOME/projects/-proj/quarantine" -name 'lsn-*.md' | wc -l | tr -d ' ')" -eq 1 ]
 	[ "$(wc -l <"$SESSION_LEARNINGS_HOME/ledger.jsonl" | tr -d ' ')" -eq 2 ]
+}
+
+@test "the apply scan runs before the signal gate and its events go to the ledger" {
+	enqueue s13 short
+	"$WORKER" --no-sweep
+	[ "$(outcome done s13)" = skipped:no-signal ]
+	grep -q -- "^sl-apply.sh --store=$SESSION_LEARNINGS_HOME --session=s13 --transcript=$CLAUDE_CONFIG_DIR/projects/-proj/s13.jsonl$" "$CALLS"
+	grep -q "^sl-ledger.sh events --store=$SESSION_LEARNINGS_HOME$" "$CALLS"
+	grep -q '"lsn-x"' "$CALLS.stdin"
+}
+
+@test "a failed apply scan is logged and the job still merges" {
+	stub_script sl-apply.sh 2 ''
+	enqueue s14 fix-cycle
+	"$WORKER" --no-sweep
+	[ "$(outcome done s14)" = merged ]
+	grep -q 's14 apply-scan-failed' "$SESSION_LEARNINGS_HOME/worker.log"
+	! grep -q '^sl-ledger.sh events' "$CALLS"
+}
+
+@test "dedup runs with the skip env between extract and merge; its links reach the merger" {
+	stub_script sl-dedup.sh 0 'echo "skip=${CLAUDE_LEARN_SKIP:-}" >>"$CALLS"; echo "{\"links\":[{\"index\":0}]}"'
+	fake_merger 0
+	enqueue s15 fix-cycle
+	"$WORKER" --no-sweep
+	grep -q -- "^sl-dedup.sh --store=$SESSION_LEARNINGS_HOME --project=-proj$" "$CALLS"
+	grep -q '^skip=1$' "$CALLS"
+	grep -q -- "--links=$SESSION_LEARNINGS_HOME/work/s15.links.json$" "$CALLS"
+	[ "$(outcome done s15)" = merged ]
+	[ -z "$(ls -A "$SESSION_LEARNINGS_HOME/work")" ]
+}
+
+@test "a failed dedup hands the merger an empty links file and the job merges" {
+	stub_script sl-dedup.sh 1 ''
+	cat >"$PLUGIN/scripts/sl-merge.sh" <<'STUB'
+#!/usr/bin/env bash
+cat >/dev/null
+for arg; do [[ "$arg" == --links=* ]] && cat "${arg#--links=}" >>"$CALLS"; done
+STUB
+	enqueue s16 fix-cycle
+	"$WORKER" --no-sweep
+	[ "$(outcome done s16)" = merged ]
+	grep -q '^{"links":\[\]}$' "$CALLS"
+	grep -q 's16 dedup-failed' "$SESSION_LEARNINGS_HOME/worker.log"
+}
+
+@test "the sweep feeds skill usage into ledger maintenance" {
+	"$WORKER"
+	grep -q '^sl-usage.sh $' "$CALLS"
+	grep -q -- "^sl-ledger.sh maintain --store=$SESSION_LEARNINGS_HOME --usage=$SESSION_LEARNINGS_HOME/work/skill-usage.jsonl$" "$CALLS"
+}
+
+@test "--no-sweep skips ledger maintenance" {
+	"$WORKER" --no-sweep
+	[ ! -e "$CALLS" ] || ! grep -q maintain "$CALLS"
+}
+
+@test "done/ jobs older than 30 days fold into done.jsonl and the sweep still knows them" {
+	mkdir -p "$CLAUDE_CONFIG_DIR/projects/-proj" "$SESSION_LEARNINGS_HOME/done"
+	touch -t "$(date -v-40d +%Y%m%d%H%M)" "$SESSION_LEARNINGS_HOME/.since"
+	cp "$FIXTURES/transcripts/short.jsonl" "$CLAUDE_CONFIG_DIR/projects/-proj/old.jsonl"
+	touch -t "$(date -v-35d +%Y%m%d%H%M)" "$CLAUDE_CONFIG_DIR/projects/-proj/old.jsonl"
+	echo '{"session_id":"old","outcome":"merged","finished_at":"x"}' >"$SESSION_LEARNINGS_HOME/done/old.json"
+	touch -t "$(date -v-31d +%Y%m%d%H%M)" "$SESSION_LEARNINGS_HOME/done/old.json"
+	"$WORKER"
+	[ ! -e "$SESSION_LEARNINGS_HOME/done/old.json" ]
+	[ "$(jq -r .outcome "$SESSION_LEARNINGS_HOME/done.jsonl")" = merged ]
+	"$WORKER"
+	[ ! -e "$SESSION_LEARNINGS_HOME/done/old.json" ]
+	[ "$(wc -l <"$SESSION_LEARNINGS_HOME/done.jsonl" | tr -d ' ')" = 1 ]
 }

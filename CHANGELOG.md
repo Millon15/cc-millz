@@ -1,5 +1,20 @@
 # Changelog
 
+## session-learnings v0.2.0 - 2026-11-03
+
+### Added
+
+- Lifecycle on top of the v0.1.0 ledger: draft → candidate (sightings on two distinct days and score ≥ 2) → stable (only through `/session-learnings:review` approval), plus quarantine, rejected, deprecated and expired. A card's status and score are derived from its ledger events every time, so a candidate whose score drops renders as a draft again.
+- `sl-ledger.sh` (`event`, `events`, `list`, `maintain`): review decisions and applications are ledger events; `list` prints one JSONL row per card; `maintain` expires drafts and quarantine idle for 90 days and candidates idle for 180, and flags a stable card `stale` after 60 days without skill usage or an application.
+- Semantic dedup between extraction and merge: an exact normalized match links deterministically, every other match with trigram Jaccard ≥ 0.35 goes to a tool-less judge (same, refines, contradicts, different). A judge failure only costs links. Quarantined lessons never link and quarantine cards are never targets.
+- `recall` skill: `sl-recall.sh` returns up to five unreviewed candidates for the current project and global scope; drafts, quarantine and archived cards never reach a session.
+- Apply tracking: `sl-apply.sh` scans every interactive transcript, before the signal gate, for real `sl-recall.sh` runs and for Skill calls of promoted lessons, and records `applied`, `applied_ok` or `applied_fail` (the error that preceded the recall recurs). `sl-usage.sh` reads `skillUsage` from `.claude.json` for the stale check.
+- `done/` jobs older than 30 days fold into `done.jsonl`.
+
+### Changed
+
+- `/session-learnings:review` lists ready candidates first, then contradicted, failing and stale stable cards, and records promoted, rejected and deprecated through `sl-ledger.sh` instead of leaving the ledger untouched.
+
 ## session-learnings v0.1.0 - 2026-11-03
 
 ### Added

@@ -1,7 +1,7 @@
 {
   "name": "session-learnings",
-  "description": "Learn from finished Claude Code sessions: a SessionEnd hook queues the transcript, a launchd worker extracts candidate lessons with a tool-less claude -p into draft cards Claude never loads, and /session-learnings:review turns approved ones into skills. Stage 0: drafts only, no automatic promotion. macOS.",
-  "version": "0.1.0",
+  "description": "Learn from finished Claude Code sessions: a SessionEnd hook queues the transcript, a launchd worker extracts lessons with a tool-less claude -p into a ledger that scores them draft → candidate, a recall skill shows only candidates, applications and skill usage feed the score, and /session-learnings:review promotes to a skill only after your approval. macOS.",
+  "version": "0.2.0",
   "author": {
     "name": "Millon15"
   }
