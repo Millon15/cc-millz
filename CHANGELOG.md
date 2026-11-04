@@ -1,5 +1,14 @@
 # Changelog
 
+## session-learnings v0.1.0 - 2026-11-03
+
+### Added
+
+- New plugin, stage 0 of a draft → stable learning loop. A SessionEnd hook queues the ended session in under 100 ms; a launchd worker (`QueueDirectories` plus an hourly run) builds a redacted digest whose row classes come from the transcript, skips sessions without a failure→fix cycle or human correction, and runs a tool-less `claude -p --safe-mode --no-session-persistence --tools "" --output-format json --json-schema` extractor.
+- A deterministic merger validates the candidates, scrubs secrets, and writes draft cards under `~/.claude/learnings/` only for lessons whose evidence line is a human turn or a successful Bash run; everything else is quarantined. The ledger records provenance and makes replays idempotent.
+- `/session-learnings:review` shows drafts against a quality rubric and writes a project or global skill only after an explicit approval of the exact content.
+- `sl-install.sh` loads or unloads the worker; installing the plugin alone never calls a model.
+
 ## voice-call v0.1.6 - 2026-11-01
 
 ### Fixed

@@ -1,0 +1,24 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["lessons"],
+  "properties": {
+    "lessons": {
+      "type": "array", "maxItems": 5,
+      "items": {
+        "type": "object", "additionalProperties": false,
+        "required": ["op", "scope", "kind", "trigger", "claim", "evidence_line", "proof"],
+        "properties": {
+          "op": {"type": "string", "enum": ["add"]},
+          "scope": {"type": "string", "enum": ["project", "global"]},
+          "kind": {"type": "string", "enum": ["gotcha", "procedure", "convention", "tool-quirk"]},
+          "trigger": {"type": "string", "minLength": 1, "maxLength": 300},
+          "claim": {"type": "string", "minLength": 1, "maxLength": 300},
+          "evidence_line": {"type": "integer", "minimum": 1},
+          "proof": {"type": "string", "minLength": 1, "maxLength": 400}
+        }
+      }
+    }
+  }
+}

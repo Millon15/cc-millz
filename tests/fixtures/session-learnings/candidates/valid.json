@@ -1,0 +1,1 @@
+{"lessons":[{"op":"add","scope":"project","kind":"gotcha","trigger":"When package tests omit generated modules","claim":"Generate modules before running the package tests.","evidence_line":4,"proof":"The human confirmed generation fixed the tests."}]}

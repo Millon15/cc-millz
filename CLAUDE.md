@@ -57,6 +57,7 @@ Millon15 personal Claude Code plugin marketplace — skills, agents, (future) ho
 - `plugins/ralphex-revmux/` — revmux as ralphex's external reviewer (1 skill + 1 command + 2 agents + scripts)
 - `plugins/revmux-kit/` — revmux project layer bootstrap (1 skill + templates)
 - `plugins/security-audit/` — pre-adoption security audit of a repo, MCP server or package (1 command)
+- `plugins/session-learnings/` — SessionEnd learning pipeline: queue hook, launchd worker, tool-less extractor, deterministic merger, review command (1 hook + 1 command + scripts, macOS)
 - `plugins/statusline/` — two-line status line, self-installs into settings.json (1 SessionStart hook + scripts)
 - `plugins/toolsmith/` — agent dev-tool lifecycle (4 commands + 2 skills + scripts)
 - `plugins/unslop-kit/` — reply contract over a vendored pstack unslop (4 skills + 1 SessionStart hook + sync script)

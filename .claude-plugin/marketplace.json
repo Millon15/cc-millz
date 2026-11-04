@@ -65,6 +65,11 @@
       "description": "Pre-adoption security audit of a repository, package, MCP server or raw script — nine adaptive phases across 21 target types, a terminal verdict plus a full report file with file:line evidence, and a final install/no-install banner. Every external tool is optional: Semgrep when it is on PATH, an IDE search surface when one is up, ripgrep otherwise. Extracted from a private monorepo."
     },
     {
+      "name": "session-learnings",
+      "source": "./plugins/session-learnings",
+      "description": "Learn from finished Claude Code sessions: a SessionEnd hook queues the transcript, a launchd worker extracts candidate lessons with a tool-less claude -p into draft cards Claude never loads, and /session-learnings:review turns approved ones into skills. Stage 0: drafts only. macOS."
+    },
+    {
       "name": "video-reader",
       "source": "./plugins/video-reader",
       "description": "Fetch, transcribe and read ONE video of any length from local artifacts and report what is said and visible, never what is guessed. scripts/video-read.sh runs a yt-dlp metadata preflight, acquires a URL from any yt-dlp site or a local file with provenance, picks the original-language caption track (English companion kept), falls back to a local whisper.cpp it already finds, samples at most 120 frames by input seek plus scene cuts into contact sheets with a timestamp index, and keeps chapters; --window and --zoom answer follow-ups without a second download. No limits by default. Every yt-dlp call ignores user config and never uses cookies or geo bypass, and nothing leaves the machine. Where the scratch tree lands is a three-rung ladder the tool prints on request: VIDEO_READER_DIR, a committed .video-reader.json, then the OS temp dir; a run directory is deleted only when it carries this tool's own marker file. Requires ffmpeg, ffprobe and jq; yt-dlp for URL input. Extracted from a private monorepo."

@@ -1,0 +1,2 @@
+{"type":"user","entrypoint":"cli","origin":{"kind":"human"},"message":{"role":"user","content":"hi"}}
+{"type":"assistant","message":{"role":"assistant","content":[{"type":"text","text":"hello"}]}}

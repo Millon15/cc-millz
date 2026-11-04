@@ -295,6 +295,21 @@
       "skipped": []
     },
     {
+      "name": "session-learnings",
+      "version": "0.1.0",
+      "included": [
+        {
+          "source": "commands/review.md",
+          "name": "session-learnings-review",
+          "assets": [
+            "LICENSE.apm-export",
+            "SKILL.md"
+          ]
+        }
+      ],
+      "skipped": []
+    },
+    {
       "name": "statusline",
       "version": "0.2.1",
       "included": [],
