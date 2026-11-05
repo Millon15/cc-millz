@@ -93,9 +93,11 @@ queued() {
 
 @test "install writes worker overrides into the plist, launchd does not inherit the installer's env" {
 	stub launchctl 'exit 0'
-	SESSION_LEARNINGS_MODEL=override-model SESSION_LEARNINGS_DIGEST_BUDGET=2000 SESSION_LEARNINGS_LAUNCH_AGENTS="$TMP/agents" "$INSTALL"
+	SESSION_LEARNINGS_MODEL=override-model SESSION_LEARNINGS_DIGEST_BUDGET=2000 SESSION_LEARNINGS_NOTIFY=off \
+		SESSION_LEARNINGS_LAUNCH_AGENTS="$TMP/agents" "$INSTALL"
 	local plist="$TMP/agents/io.github.millon15.session-learnings.plist"
 	[ "$(plutil -extract EnvironmentVariables.SESSION_LEARNINGS_MODEL raw "$plist")" = override-model ]
+	[ "$(plutil -extract EnvironmentVariables.SESSION_LEARNINGS_NOTIFY raw "$plist")" = off ]
 	[ "$(plutil -extract EnvironmentVariables.SESSION_LEARNINGS_DIGEST_BUDGET raw "$plist")" = 2000 ]
 }
 

@@ -7,7 +7,7 @@
 #                                 └──any failure──────────▶ failed/   (sweep re-queues while attempts < 3)
 # A job leaves queue/ in every outcome, otherwise launchd would re-fire forever.
 #
-# Flags: --no-sweep skips the sweep: failed-job retry, missed sessions, ledger maintenance, done/ rotation.
+# Flags: --no-sweep skips retries, missed sessions, maintenance, notification and cleanup.
 set -euo pipefail
 
 SCRIPTS_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -46,9 +46,20 @@ rerun_under_lock() {
 
 sweep() {
 	requeue_failed_jobs
+	best_effort fold-final-failures housekeeping fold-failures
 	enqueue_missed_sessions
 	maintain_ledger
-	rotate_done_jobs
+	best_effort compact "$SCRIPTS_DIR/sl-ledger.sh" compact --store="$STORE"
+	best_effort notify-ready notify_ready
+	best_effort rotate-done rotate_done_jobs
+	best_effort clean-work housekeeping clean-work
+	best_effort rotate-logs housekeeping rotate-logs
+}
+
+best_effort() {
+	local label="$1"
+	shift
+	"$@" >/dev/null || log "$label-failed" || :
 }
 
 drain_queue() {
@@ -153,10 +164,40 @@ maintain_ledger() {
 
 # Old done/ jobs fold into done.jsonl, which is_known_session still reads, so the sweep never re-queues them.
 rotate_done_jobs() {
-	local job
+	local job rc=0
 	while IFS= read -r job; do
-		jq -c '{session_id, outcome, finished_at}' "$job" >>"$STORE/done.jsonl" && discard "$job"
+		{ jq -c '{session_id, outcome, finished_at}' "$job" >>"$STORE/done.jsonl" && discard "$job"; } || rc=1
 	done < <(find "$STORE/done" -name '*.json' -mtime "+$DONE_KEEP_DAYS" 2>/dev/null)
+	return "$rc"
+}
+
+housekeeping() {
+	local verb="$1"
+	shift
+	PYTHONDONTWRITEBYTECODE=1 python3 "$SCRIPTS_DIR/lib/sl_housekeeping.py" "$verb" --store="$STORE" "$@"
+}
+
+notify_ready() {
+	[ "${SESSION_LEARNINGS_NOTIFY:-}" = off ] && return 0
+	local ready seen fresh count noun tmp
+	ready="$("$SCRIPTS_DIR/sl-ledger.sh" list --store="$STORE" --status=candidate |
+		jq -r 'select(.flags | index("ready")) | .id | select(test("^lsn-[0-9a-f]{64}$"))' | LC_ALL=C sort -u)" || return 1
+	[ -n "$ready" ] || return 0
+	seen="$(cat "$STORE/.notified-ready" 2>/dev/null || true)"
+	fresh="$(LC_ALL=C comm -23 <(printf '%s\n' "$ready" | LC_ALL=C sort -u) \
+		<(printf '%s\n' "$seen" | sed '/^$/d' | LC_ALL=C sort -u))" || return 1
+	[ -n "$fresh" ] || return 0
+	count="$(printf '%s\n' "$fresh" | wc -l | tr -d ' ')"
+	noun=lessons
+	[ "$count" -eq 1 ] && noun=lesson
+	housekeeping notify --body="$count $noun ready: /session-learnings:review" || return 1
+	tmp="$(mktemp "$STORE/tmp/notified.XXXXXX")" || return 1
+	if printf '%s\n%s\n' "$seen" "$fresh" | sed '/^$/d' | LC_ALL=C sort -u >"$tmp" &&
+		mv -f "$tmp" "$STORE/.notified-ready"; then
+		return 0
+	fi
+	rm -f "$tmp"
+	return 1
 }
 
 is_interactive_session() {
@@ -217,7 +258,8 @@ is_known_session() {
 	for bucket in queue processing "done" failed; do
 		[ -e "$STORE/$bucket/$1.json" ] && return 0
 	done
-	grep -qF "\"session_id\":\"$1\"," "$STORE/done.jsonl" 2>/dev/null
+	grep -Eq "\"session_id\"[[:space:]]*:[[:space:]]*\"$1\"[[:space:]]*[,}]" \
+		"$STORE/done.jsonl" "$STORE/failed.jsonl" 2>/dev/null
 }
 
 enqueue_swept() {

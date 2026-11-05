@@ -5,6 +5,13 @@ exec python3 - "$0" "$@" <<'PY'
 import argparse, json, os, pathlib, shutil, subprocess, sys, tempfile
 
 root = pathlib.Path(sys.argv[1]).resolve().parent.parent
+DEFAULT_MODEL = 'claude-opus-5-5'
+def write_usage(target, wrapper):
+    if not target or not isinstance(wrapper, dict):
+        return
+    usage = {key: wrapper.get(key) for key in ('total_cost_usd', 'duration_ms')}
+    pathlib.Path(target).write_text(json.dumps(usage) + '\n')
+
 def strict_object(pairs):
     result = {}
     for key, value in pairs:
@@ -14,6 +21,8 @@ def strict_object(pairs):
 
 parser = argparse.ArgumentParser()
 parser.add_argument('--digest', required=True)
+parser.add_argument('--prompt', default=str(root / 'prompts/extract.md'))
+parser.add_argument('--usage')
 args = parser.parse_args(sys.argv[2:])
 try:
     path = pathlib.Path(args.digest)
@@ -33,10 +42,10 @@ try:
     if not executable:
         raise ValueError('extractor unavailable')
     executable = str(pathlib.Path(executable).resolve())
-    argv = [executable, '-p', '--model', os.environ.get('SESSION_LEARNINGS_MODEL', 'claude-haiku-5-5'),
+    argv = [executable, '-p', '--model', os.environ.get('SESSION_LEARNINGS_MODEL', DEFAULT_MODEL),
             '--safe-mode', '--no-session-persistence', '--tools', '', '--output-format', 'json',
             '--json-schema', (root / 'schema/candidates.schema.json').read_text(),
-            '--system-prompt', (root / 'prompts/extract.md').read_text()]
+            '--system-prompt', pathlib.Path(args.prompt).read_text()]
     env = dict(os.environ, CLAUDE_LEARN_SKIP='1')
     env.pop('CLAUDECODE', None)
     timeout = int(env.get('SESSION_LEARNINGS_TIMEOUT', '120'))
@@ -49,6 +58,7 @@ try:
         raise ValueError('result too large')
     # CLI JSON mode wrappers are accepted only when they contain structured_output.
     candidate = json.loads(result.stdout, object_pairs_hook=strict_object)
+    write_usage(args.usage, candidate)
     if isinstance(candidate, dict) and 'structured_output' in candidate:
         if candidate.get('is_error') is True:
             raise ValueError('model error')

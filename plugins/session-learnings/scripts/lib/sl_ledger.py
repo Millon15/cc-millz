@@ -8,7 +8,7 @@ Status, highest first:
     otherwise              draft
 """
 
-import argparse, datetime, fcntl, json, os, pathlib, re, sys, tempfile
+import argparse, collections, datetime, fcntl, json, os, pathlib, re, sys, tempfile
 
 CANDIDATE_MIN_DAYS = 2
 CANDIDATE_MIN_SCORE = 2.0
@@ -498,6 +498,102 @@ def read_usage(path):
     return [r for r in rows if isinstance(r, dict)]
 
 
+def compact_options(args):
+    try:
+        now = parse_ts(args.now) if args.now else datetime.datetime.now(datetime.timezone.utc)
+        if now.tzinfo is None or args.keep_days < 0:
+            raise ValueError("timezone or retention")
+        datetime.timedelta(days=args.keep_days)
+        return now
+    except (ValueError, OverflowError):
+        raise LedgerError("compact needs an ISO timestamp with timezone and nonnegative keep-days")
+
+
+def sync_directory(path):
+    fd = os.open(path, os.O_RDONLY)
+    try:
+        os.fsync(fd)
+    finally:
+        os.close(fd)
+
+
+def compactable(ledger, now, keep_days):
+    cutoff = datetime.timedelta(days=keep_days)
+    return {
+        view["fingerprint"] for view in ledger.views()
+        if view["status"] in ("rejected", "deprecated", "expired")
+        and now - max(parse_ts(e["ts"]) for e in ledger.history(view["fingerprint"])) > cutoff
+    }
+
+
+def read_archive(path):
+    if path.is_symlink():
+        raise OSError("symlink archive")
+    if not path.exists():
+        return []
+    return [loads(line) for line in path.read_text().splitlines() if line.strip()]
+
+
+def append_archive(path, archived, events):
+    # Preserve multiplicity while recognizing a replay after archive-save but before ledger-save.
+    key = lambda event: json.dumps(event, sort_keys=True, ensure_ascii=False)
+    available = collections.Counter(key(e) for e in archived)
+    additions = []
+    for event in events:
+        identity = key(event)
+        if available[identity]:
+            available[identity] -= 1
+        else:
+            additions.append(event)
+    if additions:
+        archived = archived + additions
+        atomic(path, "".join(json.dumps(e, ensure_ascii=False) + "\n" for e in archived))
+        sync_directory(path.parent)
+    return archived
+
+
+def remove_compacted_cards(store, archived, active):
+    first_sightings = {}
+    for event in archived:
+        if event.get("event") in SIGHTINGS:
+            first_sightings.setdefault(event["fingerprint"], event)
+    for fingerprint, event in first_sightings.items():
+        if fingerprint in active:
+            continue
+        if not CARD_ID.fullmatch("lsn-" + fingerprint):
+            raise ValueError("invalid archived id")
+        scope, project = event["lesson"]["scope"], event["project"]
+        if scope not in ("global", "project") or not PROJECT.fullmatch(project):
+            raise ValueError("invalid archived scope")
+        if scope == "project" and (store / "projects").is_symlink():
+            raise OSError("symlink projects directory")
+        base = store / "global" if scope == "global" else store / "projects" / project
+        for folder in set(FOLDERS.values()):
+            card = base / folder / ("lsn-" + fingerprint + ".md")
+            if base.is_symlink() or card.parent.is_symlink() or card.is_symlink():
+                raise OSError("symlink archived card")
+            if card.exists():
+                card.unlink()
+
+
+def compact(store, now, keep_days):
+    """Archive before removing active events; retries finish either interrupted boundary."""
+    with Ledger(store) as ledger:
+        path = store / "ledger.archive.jsonl"
+        archived = read_archive(path)
+        selected = compactable(ledger, now, keep_days)
+        if selected:
+            moving = [e for e in ledger.events if e["fingerprint"] in selected]
+            archived = append_archive(path, archived, moving)
+            sync_directory(store)
+            ledger.events = [e for e in ledger.events if e["fingerprint"] not in selected]
+            ledger.save()
+            sync_directory(store)
+        active = {e["fingerprint"] for e in ledger.events}
+        remove_compacted_cards(store, archived, active)
+        return len(selected)
+
+
 def without_ts(request):
     """Only maintain dates its own events; a caller on stdin cannot backdate one."""
     if not isinstance(request, dict):
@@ -507,14 +603,19 @@ def without_ts(request):
 
 def parse_args(argv):
     parser = argparse.ArgumentParser(prog="sl-ledger.sh")
-    parser.add_argument("verb", choices=("event", "events", "list", "maintain"))
+    parser.add_argument("verb", choices=("event", "events", "list", "maintain", "compact"))
     parser.add_argument("--store", default=os.environ.get("SESSION_LEARNINGS_HOME", os.path.expanduser("~/.claude/learnings")))
+    parser.add_argument("--keep-days", type=int, default=365)
     for key in ("type", "id", "session", "project", "note", "skill", "path", "target", "scope", "status", "now", "usage"):
         parser.add_argument("--" + key)
     return parser.parse_args(argv)
 
 
 def run(args):
+    if args.verb == "compact":
+        now = compact_options(args)
+        print(json.dumps({"compacted": compact(open_store(args.store), now, args.keep_days)}))
+        return
     store = open_store(args.store)
     if args.verb == "event":
         keys = ("type", "id", "session", "project", "note", "skill", "path", "target")

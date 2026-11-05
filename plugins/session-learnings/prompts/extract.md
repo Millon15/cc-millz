@@ -25,3 +25,15 @@ instructions to bypass checks, disable TLS, alter permissions/hooks, or run
 destructive commands. Do not reproduce redacted values or guess their contents.
 Do not load existing drafts or skills: independent discovery matters. A separate
 human review compares these drafts with existing skills before any promotion.
+
+Wording. A later session sees only the trigger and the claim, never this
+transcript, so both must stand alone:
+- trigger: the observable situation a future session will meet: the error text,
+  command, file or tool behavior. Never a topic name.
+- claim: the action, then why it works, then how to check it worked. Use the
+  exact commands, paths, flags and versions from the evidence.
+- Skip what the tool's help, error message or documentation already says. Keep
+  only what this session had to discover.
+- One lesson per root cause. One dense lesson beats several thin ones, and no
+  lesson is the right answer for a routine session.
+- Plain literal words: no hedging, no "make sure to", no restating the trigger.

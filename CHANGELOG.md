@@ -1,5 +1,19 @@
 # Changelog
 
+## session-learnings v0.2.2 - 2026-11-04
+
+### Changed
+
+- The extractor and the dedup judge default to `claude-opus-5-5` (was `claude-haiku-5-5`). In a blind eval on 10 real sessions a grader picked an Opus lesson set as the best in 9 of 10; Opus costs about ten times more per session. `SESSION_LEARNINGS_MODEL` still overrides it.
+- `prompts/extract.md` adds wording rules: the trigger names what a future session will observe, the claim gives the action, why it works and how to check it, and nothing that the tool's help already says.
+- `/session-learnings:review` loads `mattpocock-skills:writing-for-agents`, when it is installed, before it drafts skill content.
+
+### Added
+
+- `sl-eval.sh` runs extractor arms (model + prompt) on the newest sessions with signal and writes a blind sheet, its key and per-arm costs. `sl-extract.sh` takes `--prompt` and `--usage` for it.
+- Store upkeep in every sweep: failed jobs out of retries for 30 days fold into `failed.jsonl`, `work/` files older than 7 days go, `worker.log` and the launchd logs rotate at 1 MiB into one `.1` generation, and `sl-ledger.sh compact` moves lessons rejected, deprecated or expired for 365 days into `ledger.archive.jsonl`. Compaction writes the archive before it trims the ledger, and a retry after a crash adds no duplicates.
+- One desktop notification per batch of new ready candidates ("N lessons ready: /session-learnings:review"), through `SESSION_LEARNINGS_NOTIFY`, `agtermctl notify` or `osascript`. An id counts as announced only after delivery succeeds.
+
 ## session-learnings v0.2.1 - 2026-11-03
 
 ### Fixed

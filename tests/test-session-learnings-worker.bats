@@ -15,6 +15,7 @@ setup() {
 	export SESSION_LEARNINGS_HOME="$TMP/store"
 	export CLAUDE_CONFIG_DIR="$TMP/claude"
 	export CALLS="$TMP/calls.log"
+	export SESSION_LEARNINGS_NOTIFY=off
 	unset CLAUDE_LEARN_SKIP SL_WORKER_LOCKED
 	fake_extractor 0
 	fake_merger 0
@@ -22,6 +23,23 @@ setup() {
 }
 
 teardown() { teardown_tmp; }
+
+ready_fixture() {
+	export READY_ROWS="$TMP/ready.jsonl" NOTIFICATIONS="$TMP/notifications"
+	printf '{"id":"lsn-%s","status":"candidate","flags":["ready"]}\n' \
+		"$(printf 'a%.0s' {1..64})" "$(printf 'b%.0s' {1..64})" >"$READY_ROWS"
+	stub_script sl-ledger.sh 0 'case "$1" in list) cat "$READY_ROWS";; events) cat >/dev/null;; esac'
+}
+
+make_old_failure() {
+	python3 - "$SESSION_LEARNINGS_HOME/failed/$1.json" "$2" "$3" <<'PY'
+import datetime, json, pathlib, sys
+path, attempts, days = pathlib.Path(sys.argv[1]), int(sys.argv[2]), int(sys.argv[3])
+path.parent.mkdir(parents=True, exist_ok=True)
+stamp=(datetime.datetime.now(datetime.timezone.utc)-datetime.timedelta(days=days)).isoformat()
+path.write_text(json.dumps({'session_id':path.stem,'transcript_path':'/gone','attempts':attempts,'outcome':'failed:test','finished_at':stamp}))
+PY
+}
 
 fake_extractor() {
 	cat >"$PLUGIN/scripts/sl-extract.sh" <<STUB
@@ -282,4 +300,118 @@ STUB
 	"$WORKER"
 	[ ! -e "$SESSION_LEARNINGS_HOME/done/old.json" ]
 	[ "$(wc -l <"$SESSION_LEARNINGS_HOME/done.jsonl" | tr -d ' ')" = 1 ]
+}
+
+@test "final failures use finished_at age, archive once, and remain known to the sweep" {
+	make_old_failure exhausted 3 31
+	make_old_failure recent 3 5
+	make_old_failure retryable 2 31
+	mkdir -p "$CLAUDE_CONFIG_DIR/projects/-proj"
+	cp "$FIXTURES/transcripts/short.jsonl" "$CLAUDE_CONFIG_DIR/projects/-proj/exhausted.jsonl"
+	touch -t "$(date -v-40d +%Y%m%d%H%M)" "$SESSION_LEARNINGS_HOME/.since"
+	touch -t "$(date -v-35d +%Y%m%d%H%M)" "$CLAUDE_CONFIG_DIR/projects/-proj/exhausted.jsonl" "$SESSION_LEARNINGS_HOME/failed/recent.json"
+	"$WORKER"
+	[ ! -e "$SESSION_LEARNINGS_HOME/failed/exhausted.json" ]
+	[ -e "$SESSION_LEARNINGS_HOME/failed/recent.json" ]
+	[ "$(outcome done retryable)" = skipped:no-transcript ]
+	[ "$(jq -r .session_id "$SESSION_LEARNINGS_HOME/failed.jsonl")" = exhausted ]
+	"$WORKER"
+	[ ! -e "$SESSION_LEARNINGS_HOME/done/exhausted.json" ]
+	[ "$(wc -l <"$SESSION_LEARNINGS_HOME/failed.jsonl" | tr -d ' ')" = 1 ]
+}
+
+@test "work cleanup removes old files and keeps recent files; no-sweep leaves both alone" {
+	mkdir -p "$SESSION_LEARNINGS_HOME/work"
+	touch "$SESSION_LEARNINGS_HOME/work/old.digest" "$SESSION_LEARNINGS_HOME/work/recent.digest"
+	touch -t "$(date -v-8d +%Y%m%d%H%M)" "$SESSION_LEARNINGS_HOME/work/old.digest"
+	"$WORKER" --no-sweep
+	[ -f "$SESSION_LEARNINGS_HOME/work/old.digest" ]
+	"$WORKER"
+	[ ! -e "$SESSION_LEARNINGS_HOME/work/old.digest" ]
+	[ -f "$SESSION_LEARNINGS_HOME/work/recent.digest" ]
+}
+
+@test "log rotation keeps one generation and preserves active launchd file descriptors" {
+	mkdir -p "$SESSION_LEARNINGS_HOME"
+	python3 - "$WORKER" "$SESSION_LEARNINGS_HOME" <<'PY'
+import os, pathlib, subprocess, sys
+worker, store = sys.argv[1], pathlib.Path(sys.argv[2])
+names = ('worker.log','launchd.out','launchd.err')
+for name in names:
+    (store/name).write_bytes(b'x'*(1024*1024+1))
+    (store/(name+'.1')).write_text('old generation')
+inodes={name:(store/name).stat().st_ino for name in names}
+with (store/'launchd.out').open('ab') as live:
+    subprocess.run([worker],check=True,stdin=subprocess.DEVNULL)
+    live.write(b'after rotation\n'); live.flush()
+for name in names:
+    assert (store/name).stat().st_ino == inodes[name]
+    assert (store/(name+'.1')).read_bytes() == b'x'*(1024*1024+1)
+assert (store/'launchd.out').read_text() == 'after rotation\n'
+PY
+}
+
+@test "compaction and cleanup failures are logged without failing the worker" {
+	stub_script sl-ledger.sh 1 ''
+	make_old_failure broken 3 31
+	printf 'invalid archive' >"$SESSION_LEARNINGS_HOME/failed.jsonl"
+	run "$WORKER"
+	[ "$status" -eq 0 ]
+	[ -e "$SESSION_LEARNINGS_HOME/failed/broken.json" ]
+	grep -q fold-final-failures-failed "$SESSION_LEARNINGS_HOME/worker.log"
+	grep -q compact-failed "$SESSION_LEARNINGS_HOME/worker.log"
+}
+
+@test "two new ready candidates notify once and are acknowledged only after success" {
+	ready_fixture
+	stub notify 'printf "%s\n" "$1" >>"$NOTIFICATIONS"'
+	export SESSION_LEARNINGS_NOTIFY="$STUB_BIN/notify"
+	"$WORKER"
+	"$WORKER"
+	[ "$(wc -l <"$NOTIFICATIONS" | tr -d ' ')" = 1 ]
+	[ "$(cat "$NOTIFICATIONS")" = '2 lessons ready: /session-learnings:review' ]
+	[ "$(wc -l <"$SESSION_LEARNINGS_HOME/.notified-ready" | tr -d ' ')" = 2 ]
+	printf '{"id":"lsn-%s","status":"candidate","flags":["ready"]}\n' "$(printf 'c%.0s' {1..64})" >>"$READY_ROWS"
+	"$WORKER"
+	[ "$(tail -1 "$NOTIFICATIONS")" = '1 lesson ready: /session-learnings:review' ]
+	[ "$(wc -l <"$NOTIFICATIONS" | tr -d ' ')" = 2 ]
+}
+
+@test "failed notification is logged and retried; off never acknowledges ready ids" {
+	ready_fixture
+	"$WORKER"
+	[ ! -e "$SESSION_LEARNINGS_HOME/.notified-ready" ]
+	stub notify 'exit 7'
+	export SESSION_LEARNINGS_NOTIFY="$STUB_BIN/notify"
+	run "$WORKER"
+	[ "$status" -eq 0 ]
+	[ ! -e "$SESSION_LEARNINGS_HOME/.notified-ready" ]
+	grep -q notify-ready-failed "$SESSION_LEARNINGS_HOME/worker.log"
+	stub notify 'printf "%s\n" "$1" >>"$NOTIFICATIONS"'
+	"$WORKER"
+	[ -e "$SESSION_LEARNINGS_HOME/.notified-ready" ]
+}
+
+@test "notifier is one executable and slow notification cannot stall the worker" {
+	ready_fixture
+	export SESSION_LEARNINGS_NOTIFY="notify; touch $TMP/injected"
+	run "$WORKER"
+	[ "$status" -eq 0 ]
+	[ ! -e "$TMP/injected" ]
+	stub slow-notify 'exec sleep 30'
+	export SESSION_LEARNINGS_NOTIFY="$STUB_BIN/slow-notify"
+	run "$WORKER"
+	[ "$status" -eq 0 ]
+	[ ! -e "$SESSION_LEARNINGS_HOME/.notified-ready" ]
+}
+
+@test "default notification tries agterm then osascript with the body as an argument" {
+	ready_fixture
+	unset SESSION_LEARNINGS_NOTIFY
+	stub agtermctl 'printf "%s\n" "$*" >>"$NOTIFICATIONS.agterm"; exit 1'
+	stub osascript 'printf "%s\n" "$*" >>"$NOTIFICATIONS.osascript"'
+	"$WORKER"
+	grep -q 'notify 2 lessons ready: /session-learnings:review --title session-learnings' "$NOTIFICATIONS.agterm"
+	grep -q '2 lessons ready: /session-learnings:review' "$NOTIFICATIONS.osascript"
+	[ -e "$SESSION_LEARNINGS_HOME/.notified-ready" ]
 }

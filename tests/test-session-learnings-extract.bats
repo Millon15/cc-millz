@@ -93,3 +93,30 @@ PY
         jq -e 'has("$schema") | not' "${REPO_ROOT}/plugins/session-learnings/schema/${schema}.schema.json"
     done
 }
+
+@test "--prompt swaps the system prompt and --usage records cost and duration from the CLI envelope" {
+    printf 'custom prompt\n' > "$TMP/prompt.md"
+    stub extractor 'printf "%s\n" "$@" > "$TMP/args"; jq '\''{type:"result",is_error:false,total_cost_usd:0.05,duration_ms:900,structured_output:.}'\'' "$FIX/valid.json"'
+    run "$EXTRACT" --digest "$FIX/digest.jsonl" --prompt "$TMP/prompt.md" --usage "$TMP/usage.json"
+    assert_status 0
+    grep -qx 'custom prompt' "$TMP/args"
+    [ "$(jq -c . "$TMP/usage.json")" = '{"total_cost_usd":0.05,"duration_ms":900}' ]
+}
+
+@test "the prompt carries the wording rules: observable trigger, action + why + check, skip tool help" {
+    local prompt="${REPO_ROOT}/plugins/session-learnings/prompts/extract.md"
+    grep -q 'observable situation' "$prompt"
+    grep -q 'the action, then why it works, then how to check' "$prompt"
+    grep -q "Skip what the tool's help" "$prompt"
+}
+
+@test "review loads writing-for-agents before drafting skill content" {
+    grep -q 'mattpocock-skills:writing-for-agents' "${REPO_ROOT}/plugins/session-learnings/commands/review.md"
+}
+
+@test "without SESSION_LEARNINGS_MODEL the extractor asks for claude-opus-5-5" {
+    unset SESSION_LEARNINGS_MODEL
+    run "$EXTRACT" --digest "$FIX/digest.jsonl"
+    assert_status 0
+    [ "$(jq -r '.argv[2]' "$TMP/call.json")" = claude-opus-5-5 ]
+}

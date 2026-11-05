@@ -63,7 +63,7 @@ def judge(pending):
     payload = json.dumps({'candidates': pending}, ensure_ascii=False)
     clean = subprocess.run([str(SCRIPTS/'sl-redact.sh'), '--jsonl'], input=payload,
                            text=True, capture_output=True, check=True, timeout=15).stdout
-    argv = [str(pathlib.Path(executable).resolve()), '-p', '--model', os.environ.get('SESSION_LEARNINGS_MODEL', 'claude-haiku-5-5'),
+    argv = [str(pathlib.Path(executable).resolve()), '-p', '--model', os.environ.get('SESSION_LEARNINGS_MODEL', 'claude-opus-5-5'),
             '--safe-mode', '--no-session-persistence', '--tools', '', '--output-format', 'json',
             '--json-schema', (ROOT/'schema/judge.schema.json').read_text(),
             '--system-prompt', (ROOT/'prompts/judge.md').read_text()]

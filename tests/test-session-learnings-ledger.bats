@@ -246,3 +246,100 @@ two_day_candidate() {
 	"$SCRIPTS/sl-merge.sh" --store="$STORE" --session=s3 --project=project-b --digest="$TMP/digest.jsonl" <"$TMP/input.json"
 	[ "$(view "$id" | jq -r .status)" = candidate ]
 }
+
+old_rejected() {
+	merge old-session
+	OLD_ID="$(first_id)"
+	ledger event --type=rejected --id="$OLD_ID" --note=obsolete
+	age_ledger 400
+}
+
+@test "compact archives old terminal cards and preserves recent and active cards byte-identically" {
+	old_rejected
+	jq '.lessons[0].trigger="recent rejected lesson"' "$FIX/valid.json" >"$TMP/input.json"
+	merge recent-session
+	recent="$(card_id 'recent rejected lesson')"
+	ledger event --type=rejected --id="$recent" --note=obsolete
+	jq -c --arg fp "${recent#lsn-}" 'if .fingerprint==$fp then .ts |= ((sub("\\.[0-9]+Z$"; "Z") | fromdate) - 100*86400 | todate) else . end' "$STORE/ledger.jsonl" >"$TMP/recent-age"
+	mv "$TMP/recent-age" "$STORE/ledger.jsonl"
+	jq '.lessons[0].trigger="active lesson"' "$FIX/valid.json" >"$TMP/input.json"
+	merge active-session
+	find "$STORE" -name 'lsn-*.md' ! -name "$OLD_ID.md" -exec shasum -a 256 {} \; >"$TMP/before"
+	run ledger compact
+	assert_status 0
+	[ "$(jq .compacted <<<"$output")" = 1 ]
+	[ -z "$(find "$STORE" -name "$OLD_ID.md")" ]
+	[ "$(jq -s length "$STORE/ledger.archive.jsonl")" = 2 ]
+	[ "$(ledger list | jq -s length)" = 2 ]
+	find "$STORE" -name 'lsn-*.md' -exec shasum -a 256 {} \; >"$TMP/after"
+	diff "$TMP/before" "$TMP/after"
+	run ledger compact
+	assert_status 0
+	[ "$(jq .compacted <<<"$output")" = 0 ]
+	[ "$(jq -s length "$STORE/ledger.archive.jsonl")" = 2 ]
+}
+
+@test "a new sighting after compaction starts a fresh draft instead of reviving the old decision" {
+	old_rejected
+	ledger compact
+	merge new-session
+	[ "$(view "$OLD_ID" | jq -r .status)" = draft ]
+	[ "$(view "$OLD_ID" | jq .counts.sessions)" = 1 ]
+	ledger compact
+	[ "$(view "$OLD_ID" | jq -r .status)" = draft ]
+	[ "$(cards_in drafts)" = 1 ]
+}
+
+@test "compact rejects invalid retention and timestamps before creating a store" {
+	for option in --keep-days=-1 --keep-days=invalid --now=not-a-date --now=2026-01-01; do
+		run "$SCRIPTS/sl-ledger.sh" compact --store="$TMP/missing" "$option"
+		assert_status 2
+		[ ! -e "$TMP/missing" ]
+	done
+}
+
+@test "compaction replay repairs both crash boundaries without duplicating archived events" {
+	for boundary in archive ledger; do
+		STORE="$TMP/$boundary"
+		old_rejected
+		PYTHONDONTWRITEBYTECODE=1 python3 - "$SCRIPTS/lib/sl_ledger.py" "$STORE" "$boundary" <<'PY'
+import datetime, importlib.util, pathlib, sys
+spec=importlib.util.spec_from_file_location('ledger_test',sys.argv[1]); m=importlib.util.module_from_spec(spec); spec.loader.exec_module(m)
+def crash(*args): raise OSError('simulated process interruption')
+if sys.argv[3]=='archive': m.Ledger.save=crash
+else: m.remove_compacted_cards=crash
+try: m.compact(pathlib.Path(sys.argv[2]),datetime.datetime.now(datetime.timezone.utc),365)
+except OSError: pass
+else: raise AssertionError('fault injection did not fire')
+PY
+		[ "$(jq -s length "$STORE/ledger.archive.jsonl")" = 2 ]
+		[ -n "$(find "$STORE" -name "$OLD_ID.md")" ]
+		run ledger compact
+		assert_status 0
+		[ "$(jq -s length "$STORE/ledger.archive.jsonl")" = 2 ]
+		[ -z "$(find "$STORE" -name "$OLD_ID.md")" ]
+		[ -z "$(ledger list)" ]
+	done
+}
+
+@test "an archive failure leaves the active ledger and card intact" {
+	old_rejected
+	before="$(shasum -a 256 "$STORE/ledger.jsonl")"
+	printf keep >"$TMP/sentinel"
+	ln -s "$TMP/sentinel" "$STORE/ledger.archive.jsonl"
+	run ledger compact
+	assert_status 1
+	[ "$(shasum -a 256 "$STORE/ledger.jsonl")" = "$before" ]
+	[ -n "$(find "$STORE" -name "$OLD_ID.md")" ]
+	[ "$(cat "$TMP/sentinel")" = keep ]
+}
+
+@test "compaction never removes cards through a symlinked projects directory" {
+	old_rejected
+	mv "$STORE/projects" "$TMP/outside-projects"
+	ln -s "$TMP/outside-projects" "$STORE/projects"
+	run ledger compact
+	assert_status 1
+	[ -f "$TMP/outside-projects/project-a/archive/$OLD_ID.md" ]
+	[ "$(jq -s length "$STORE/ledger.archive.jsonl")" = 2 ]
+}

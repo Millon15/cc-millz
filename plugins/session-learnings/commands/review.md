@@ -24,6 +24,12 @@ Apply this rubric before proposing any decision:
 - Inspect contradictions and proposed revisions. A refines judgment does not
   authorize overwriting the stored claim. Explain unresolved uncertainty.
 
+Before drafting skill content, load the `mattpocock-skills:writing-for-agents`
+skill with the Skill tool when it is listed; the extractor's 300-character claim
+is raw material, not the final wording. Without that skill, write to the same
+standard: a description that says when to load the skill, imperative steps, exact
+commands and paths, no filler.
+
 Prepare the complete proposed content and an exact destination and a diff before
 approval. Prefer `.claude/skills/learned-<topic>/SKILL.md` for project lessons;
 global `~/.claude/skills/learned-<topic>/SKILL.md` requires explicit global-scope

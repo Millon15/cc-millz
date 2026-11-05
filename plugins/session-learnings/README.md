@@ -75,7 +75,24 @@ Flags only order the review queue. Nothing but an approved review decision write
     projects/<slug>/{drafts,candidates,stable,quarantine,archive}/lsn-<hash>.md
     queue/ processing/ done/ failed/ work/          worker state
     done.jsonl                                     done/ jobs older than 30 days
-    worker.log
+    failed.jsonl                                   failed/ jobs out of retries for 30 days
+    ledger.archive.jsonl                           events of lessons compacted out of ledger.jsonl
+    .notified-ready                                ready ids a notification already announced
+    worker.log  launchd.out  launchd.err  (+ .1)
+
+Every hourly sweep keeps the store bounded:
+
+- failed jobs out of retries for 30 days fold into `failed.jsonl`, and the sweep never re-queues their sessions;
+- files in `work/` older than 7 days are removed;
+- `worker.log`, `launchd.out` and `launchd.err` over 1 MiB rotate into one `.1` generation (copy, then truncate in
+  place, so launchd keeps its open descriptors);
+- `sl-ledger.sh compact` moves the events of rejected, deprecated or expired lessons whose last event is older than
+  365 days into `ledger.archive.jsonl` and removes their cards; a later sighting starts a fresh draft. `--keep-days`
+  and `--now` run it by hand;
+- new ready candidates trigger one desktop notification, "N lessons ready: /session-learnings:review". An id counts
+  as announced only after delivery succeeds, so a failed notification is retried on the next sweep.
+
+A failed cleanup step is logged and the run goes on.
 
 A card is markdown with JSON frontmatter (valid YAML): id, scope, kind, status, flags, score, trigger, claim, fingerprint, evidence (session, transcript line, excerpt, source class, model proof), counts, proposed revisions, first/last seen, quarantine reasons, and skill and path once promoted.
 
@@ -84,12 +101,32 @@ A card is markdown with JSON frontmatter (valid YAML): id, scope, kind, status, 
 | Variable | Default | Meaning |
 |----------|---------|---------|
 | `SESSION_LEARNINGS_HOME` | `~/.claude/learnings` | store root |
-| `SESSION_LEARNINGS_MODEL` | `claude-haiku-5-5` | extractor and dedup judge model |
+| `SESSION_LEARNINGS_MODEL` | `claude-opus-5-5` | extractor and dedup judge model, see below |
 | `SESSION_LEARNINGS_EXTRACTOR` | `claude` | extractor executable, one path, never shell-evaluated |
 | `SESSION_LEARNINGS_TIMEOUT` | `120` | extractor timeout, seconds (1-3600) |
 | `SESSION_LEARNINGS_MIN_HUMAN` | `3` | human turns a session needs before extraction |
 | `SESSION_LEARNINGS_DIGEST_BUDGET` | `300000` | digest size in bytes; over it, human and Bash rows are kept before reads and prose |
+| `SESSION_LEARNINGS_NOTIFY` | unset | notifier executable, called with the message as its one argument; `off` disables. Unset: `agtermctl notify`, then `osascript` |
 | `CLAUDE_LEARN_SKIP` | unset | `1` turns the hook and the worker off for that process |
+
+### Choosing the model
+
+The default is Opus because a blind eval preferred it. On the 10 most recent sessions with signal, Haiku 5.5 and
+Opus 5.5 extracted lessons from the same digests, and a grader from another model family, who never saw the arm
+names, picked an Opus set as the best one in 9 of 10 sessions. Haiku costs a tenth as much per session ($0.10 vs
+about $1.00 at API prices, with digests of 30-300 KB), and its share of lessons that are useful, non-obvious and
+backed by the evidence was close: 70% against 72%. On a subscription a `claude -p` call spends plan quota, not
+dollars.
+
+Re-run the comparison on your own sessions before you change the default:
+
+```bash
+scripts/sl-eval.sh --out=/tmp/sl-eval --sessions=10 \
+  --arm=haiku:claude-haiku-5-5:prompts/extract.md --arm=opus:claude-opus-5-5:prompts/extract.md
+```
+
+It writes `blind.md` (arms under shuffled labels), `key.json` and `costs.tsv`; grade `blind.md` before you open the
+key. Then set `SESSION_LEARNINGS_MODEL` and run `sl-install.sh` again, which writes it into the launchd agent.
 
 ## 🛡 Safety
 

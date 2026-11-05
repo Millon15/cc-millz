@@ -42,7 +42,7 @@ change_claim() { jq --arg claim "$1" '.lessons[0].claim=$claim' "$TMP/candidates
     python3 - "$JUDGE_LOG" "$REPO_ROOT" <<'PY'
 import json,pathlib,sys
 c=json.loads(pathlib.Path(sys.argv[1]).read_text()); r=pathlib.Path(sys.argv[2])/'plugins/session-learnings'
-assert c['argv']==['-p','--model','claude-haiku-5-5','--safe-mode','--no-session-persistence','--tools','','--output-format','json','--json-schema',(r/'schema/judge.schema.json').read_text(),'--system-prompt',(r/'prompts/judge.md').read_text()]
+assert c['argv']==['-p','--model','claude-opus-5-5','--safe-mode','--no-session-persistence','--tools','','--output-format','json','--json-schema',(r/'schema/judge.schema.json').read_text(),'--system-prompt',(r/'prompts/judge.md').read_text()]
 assert c['skip']=='1' and c['nested'] is None and c['empty']
 assert not pathlib.Path(c['cwd']).exists()
 assert len(c['payload']['candidates'][0]['options']) <= 5
