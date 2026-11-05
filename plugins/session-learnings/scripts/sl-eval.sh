@@ -22,6 +22,15 @@ main() {
 	write_costs
 	write_blind_sheet
 	echo "sl-eval: $(wc -l <"$OUT/sessions.tsv" | tr -d ' ') sessions x ${#ARMS[@]} arms in $OUT"
+	report_failures
+}
+
+report_failures() {
+	local failed
+	failed="$(awk -F'\t' 'NR > 1 && $3 == "failed"' "$OUT/costs.tsv" | wc -l | tr -d ' ')"
+	[ "$failed" -eq 0 ] && return 0
+	echo "sl-eval: $failed arm calls failed; they show as (extraction failed) in blind.md" >&2
+	return 1
 }
 
 usage() {
@@ -43,6 +52,15 @@ parse_args() {
 	[ -n "$OUT" ] && [ "${#ARMS[@]}" -ge 1 ] && [ "${#ARMS[@]}" -le "${#LABELS[@]}" ] || usage
 	[[ "$SESSIONS" =~ ^[1-9][0-9]?$ ]] || usage
 	check_arms
+	check_fresh_out
+}
+
+# Results are keyed by arm name and session, so a reused name or directory would mix two runs.
+check_fresh_out() {
+	[ ! -e "$OUT" ] || [ -z "$(ls -A "$OUT")" ] || {
+		echo "sl-eval: $OUT is not empty; give a fresh --out" >&2
+		exit 64
+	}
 }
 
 check_arms() {
@@ -54,6 +72,10 @@ check_arms() {
 			exit 64
 		}
 	done
+	[ -z "$(arm_names | sort | uniq -d)" ] || {
+		echo "sl-eval: arm names must be unique" >&2
+		exit 64
+	}
 }
 
 # Prints "session_id<TAB>project<TAB>transcript" for the newest sessions with signal.
@@ -125,6 +147,7 @@ write_costs() {
 cost_row() {
 	local base="$OUT/arms/$1.$2" usd
 	usd="$(jq -r '.total_cost_usd // "na"' "$base.usage.json" 2>/dev/null || echo na)"
+	jq -e '.failed' "$base.json" >/dev/null && usd=failed
 	printf '%s\t%s\t%s\t%s\t%s\n' "$1" "$2" "$usd" "$(cat "$base.seconds")" "$(jq '.lessons | length' "$base.json")"
 }
 
@@ -158,7 +181,7 @@ arm_names() {
 
 blind_arm() {
 	printf '\n### %s\n\n' "$1"
-	jq -r 'if (.lessons | length) == 0 then "(no lessons)" else
+	jq -r 'if .failed then "(extraction failed)" elif (.lessons | length) == 0 then "(no lessons)" else
 		.lessons | to_entries[] | "\(.key + 1). [\(.value.kind), \(.value.scope), line \(.value.evidence_line)]\n" +
 		"   trigger: \(.value.trigger)\n   claim: \(.value.claim)" end' "$2"
 }

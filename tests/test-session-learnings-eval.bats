@@ -57,3 +57,21 @@ run_eval() {
 	assert_status 64
 	[ ! -e "$TMP/calls" ]
 }
+
+@test "duplicate arm names and a non-empty --out are refused before any model call" {
+	run "$EVAL" --out="$TMP/out" --arm=same:model-a:"$TMP/p1.md" --arm=same:model-b:"$TMP/p2.md"
+	assert_status 64
+	mkdir -p "$TMP/used" && touch "$TMP/used/costs.tsv"
+	run "$EVAL" --out="$TMP/used" --arm=alpha:model-a:"$TMP/p1.md"
+	assert_status 64
+	[ ! -e "$TMP/calls" ]
+}
+
+@test "a failed arm call is marked failed in costs and the blind sheet, and the run exits 1" {
+	stub extractor 'exit 7'
+	run_eval
+	assert_status 1
+	[ "$(awk -F'\t' 'NR > 1 {print $3}' "$TMP/out/costs.tsv" | sort -u)" = failed ]
+	grep -q '(extraction failed)' "$TMP/out/blind.md"
+	! grep -q '(no lessons)' "$TMP/out/blind.md"
+}
