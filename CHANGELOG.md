@@ -1,5 +1,11 @@
 # Changelog
 
+## session-learnings v0.2.3 - 2026-11-05
+
+### Fixed
+
+- `sl-eval.sh` refuses repeated arm names and a non-empty `--out`, which let two arms overwrite each other's results or pick up a previous run's cost. A failed arm call shows as `failed` in `costs.tsv` and `(extraction failed)` in `blind.md`, and the run exits 1.
+
 ## session-learnings v0.2.2 - 2026-11-04
 
 ### Changed
