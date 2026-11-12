@@ -1,5 +1,17 @@
 # Changelog
 
+## peer-chat v0.7.3 - 2026-11-12
+
+### Changed
+
+- `/peer-chat:build` is model-invocable: `disable-model-invocation` is gone from `shared/peer-chat/build.md`, so a workflow command such as a project's `/feature` can call it through the `Skill` tool instead of stopping for the user to type it. Its opening line still requires an agreed design the user asked to implement.
+
+## peer-chat-bg v0.1.3 - 2026-11-12
+
+### Changed
+
+- `/peer-chat-bg:build` regenerated from the same source, also model-invocable.
+
 ## unslop-kit v0.13.0 - 2026-11-11
 
 ### Changed

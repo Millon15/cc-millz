@@ -7,7 +7,6 @@ description: >
   design is agreed in chat, a plan file or a ticket: "implement the design with the peer",
   "build this with codex", "pair on the implementation".
 argument-hint: "[<design file | ticket url or key>] [--slug <topic>] [--peer <harness[:model]>]"
-disable-model-invocation: true
 model: opus
 ---
 
