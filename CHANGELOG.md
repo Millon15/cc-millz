@@ -1,5 +1,14 @@
 # Changelog
 
+## unslop-kit v0.13.0 - 2026-11-11
+
+### Changed
+
+- `unslop-kit:human-brief` writes ONE paragraph in story order: verdict, cause with one count, change in plain mechanics, proof with units, bad news stated plainly, then an ask only when there is one. At most 90 words for a send, 180 for a command's closing paragraph before its report block. The headline, the five-label decision block and the facts list are gone from it: in 201 sends the decision block came back half filler (31% of Need lines said "nothing, FYI"), and every rewrite accepted after "too long" dropped the labels.
+- `unslop-kit:cto-brief` keeps its five bullets and gains `--long` (pass it in the Skill call's `args`): the former human-brief shape, a headline, the decision lines and at most 8 flat facts, except that a slot with nothing real behind it is dropped instead of filled. It also takes over the § Links table and the "facts only", "one by one" triggers.
+- Both briefs carry one ask rule: answer what you can find yourself before you write an ask, and ask the one person who holds the answer.
+- `unslop-kit:unslop-formatting` § Scope: a reply shaped with `human-brief` gets passes 1 and 2 only, like a `cto-brief` reply.
+
 ## session-learnings v0.3.0 - 2026-11-11
 
 ### Added

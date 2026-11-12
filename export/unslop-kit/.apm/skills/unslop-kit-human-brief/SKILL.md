@@ -1,89 +1,68 @@
 ---
 name: "unslop-kit-human-brief"
-description: "Shape a message for a human colleague as a headline, a decision block (decided, why it matters, what you need, by when, risk if wrong) and flat facts, with any proof in its own block after them. Use before any Slack, Jira or Linear body, a handoff or status message to a person, or a brief for another agent that will draft one; on \"for humans\", \"too much text\", \"facts only\", \"one by one\", \"state it, don't prove it\", \"add links\", \"what do you need from me\". A project outbound skill loads it as its shape step, after the cut and before the reword."
+description: "Shape a message for a human colleague as one paragraph that tells the story in order (verdict, cause, change, proof, bad news, ask), at most 90 words for a send and 180 for a command's closing paragraph, every openable noun linked. Use before any Slack, Jira or Linear body, a handoff or status message to a person, a command's closing paragraph before its report block; on \"for humans\", \"too much text\", \"one paragraph\", \"plain words\", \"explain it\". A project outbound skill loads it as its shape step, after the cut and before the reword; the `cto-brief` skill replaces it for a decider, and its `--long` form when the facts must stay listed."
 ---
 
 # human-brief
 
-The reader is a colleague on a phone between two meetings. The reading layer is the whole message; proof is a
-separate block they can skip. `essentials-concise-writing` keeps every fact; this pass drops the facts that prove
-instead of conclude. Run it after the cut and before `unslop-kit-unslop` and `review:writing-style`.
+The reader is a colleague between two meetings. One paragraph tells them what happened, what changed, how sure we
+are and what they do next, in the order they would ask. `essentials-concise-writing` keeps every fact; this pass
+keeps the facts that carry the story and moves the rest out. Run it after the cut and before `unslop-kit-unslop`
+and `review:writing-style`.
 
 ## Shape
 
-| Layer | Budget |
-| --- | --- |
-| Headline | 1-2 lines, the conclusion, first |
-| Decision block | right under the headline, one bullet per line below, bold label first, at most 15 words after it |
-| Facts | after a bold label line, at most 8 bullets, at most 15 words each, one fact per bullet, one list level |
-| Context | at most 1 clause inside a bullet when a human needs it: the job's name, who, when |
-| Links | on every noun the reader may open, several per bullet when it names several (§ Links) |
-| Proof block | optional, after the facts, heading "How to verify", fenced commands with the expected result |
+| Surface | Words | Sentences |
+| --- | --- | --- |
+| Send: Slack, DM, ticket comment, handoff (the default) | at most 90 | 3-6 |
+| Closer: a command's paragraph right before its rendered report | at most 180 | at most 12 |
 
-The decision block, in this order:
+One paragraph, no headline, label, bullet or heading. Sentences of 8-20 words, in this order; a step with nothing to
+carry is skipped, never filled:
 
-| Label | Carries |
-| --- | --- |
-| **Decided:** | the decision made, or the one you ask the reader to make |
-| **Why it matters:** | one number or scale the reader weighs: money, customers, %, a date, person-days |
-| **Need from you:** | `@person`, then the ask, verb first, with the options when there is a choice; or "nothing, FYI" |
-| **By:** | the date, and what happens with no reply |
-| **Risk if wrong:** | what breaks, costs or slips if the decision turns out wrong, with a number or scale |
+1. Verdict: the state now. "The fix is live and proven." "Nothing proves it works yet."
+2. Cause: the mechanism, with one count. "The report read 156,455 rows to find 71."
+3. Change: what is different now, in plain mechanics. Name what a human acts on (a job, a flag, a status), never the
+   method.
+4. Proof: what the check showed, numbers with units. Equivalence first, then the gain.
+5. Bad news: the result that went the wrong way, stated plainly, then one sentence on why the verdict still holds.
+6. Ask, only when there is one: a person, the ask, a date. Before you write an ask, answer what you can find yourself; ask the one person who holds the answer.
 
-An FYI ends the block at "**Need from you:** nothing, FYI." A message with no decision in play drops the Decided
-line. The facts follow under their own bold label line ("**What we know**"), so the two lists never merge.
+Voice: "I" for your own work, "you" for the reader. Past tense for the work and the proof, present for the state
+now. A guess carries its marker ("which I assume is 299 s"); every other sentence states.
 
-A bullet states a fact; it never proves one. Proof means file paths, `tmp/` artifacts, method and class names,
-queries, timings, cohort caveats and hedges ("does not establish", "may indicate"). Each moves to the proof block or
-the ticket. Add the proof block only when the reader asked how to verify, and the facts read without it.
+Paths, method and class names, queries, ids that only prove a sentence, and doubts only the team had leave the
+paragraph for a "How to verify" block after it or for the ticket. Add that block only when the reader asked how to
+verify; it holds fenced commands with the expected result.
 
 ## Links
 
-A link saves the reader a search, so add the ones nobody asked for. Before the send-check, walk every noun and id in
-the message and ask "would the reader open this?"; yes means link it.
-
-| Noun | Link to |
-| --- | --- |
-| A record the reader will check or edit: an account, an order, a config entry | the admin page that opens it, deep-linked to the tab or anchor where they act |
-| A ticket, PR, commit, alert, thread, dashboard, log query, doc | its own page |
-| A code file | nothing in the facts; a path is proof and goes to the proof block |
-
-A deep link not at hand gets built from the app's route; one that lands a click short still beats a bare id. A label
-counts toward the 15 words, its URL does not.
+Link every noun the reader may open, inside its sentence: a record they will check or edit goes to the admin page,
+deep-linked to where they act; a ticket, PR, alert, thread, dashboard or doc to its own page. A code path is proof,
+never a link in the paragraph. A deep link not at hand gets built from the app's route; one that lands a click
+short still beats a bare id. A closer whose report block already lists the links skips them.
 
 ## Example
 
-BEFORE, one bullet with its children, 3 lines: "For your 13:46 comment, [error 6a981e7b](url) contains staging
-hosts and `OrderNotificationMessage`, not evidence of a PROD consumer failure. The second provider applied webhooks
-through the shared hook, queue and consumer path during the gap. The count covers orders created from 12:48 UTC
-through 11:03 UTC; it does not establish zero webhook events processed during that period."
+BEFORE, the long-form example in the `cto-brief` skill: a headline, five labeled lines and three facts.
 
-AFTER, the headline, the decision block, then 3 facts:
+AFTER, 89 words:
 
 ```markdown
-The evidence rules out a total webhook-consumer outage; the provider-specific failure stays open.
-
-- **Decided:** the order-expiry job stays off until the fix in [ABC-457](url) ships.
-- **Why it matters:** [63 paid orders](url) are stuck pending while the provider holds the money.
-- **Need from you:** @dev, take the fix in [ABC-457](url).
-- **By:** Friday; with no reply, the job stays off another week.
-- **Risk if wrong:** truly unpaid orders stop expiring too and keep holding seats.
-
-**What we know**
-- [Error 6a981e7b](url) is from staging, not PROD.
-- The [second provider's webhooks](url) kept working during the gap.
-- No webhook was applied to [orders created between 12:48 and 11:03 UTC](url).
+[63 paid orders](url) are stuck pending because no webhook was applied to [orders created between 12:48 and
+11:03 UTC](url). The order-expiry job stays off until the fix in [ABC-457](url) ships, so none of those orders
+expire while the provider holds the money. The [second provider's webhooks](url) kept working and the [error
+alert](url) came from staging, so only one provider failed. The cost is that truly unpaid orders stop expiring too
+and keep holding seats. @dev, please take ABC-457 by Friday; with no reply, the job stays off another week.
 ```
 
-Nobody asked for the links on the last two facts: one opens the provider's webhook dashboard, the other the order
-list already filtered to the window, the two pages the reader would otherwise go looking for.
+The labels are gone, and so is "Why it matters": the first sentence already says it.
 
 ## Send-check
 
-- Headline first, the conclusion.
-- Decision block next, labels in table order; an FYI ends at "nothing, FYI"; each line at most 15 words.
-- An ask names a person and a date; Risk if wrong does not restate Why it matters.
-- At most 8 fact bullets under their own label line, one level, none over 15 words.
-- Every record, ticket, alert or page the reader may open is a link, deep-linked to where they act; no bare id.
-- No path, method name, query, timing, caveat or hedge above the proof block.
-- Proof block present only when the reader asked how to verify; the message reads without it.
+- One paragraph; no headline, label, bullet or heading inside it.
+- Within the surface budget: a send at most 90 words and 3-6 sentences, a closer at most 180 and 12.
+- The first sentence states the verdict; bad news is stated plainly, with why the verdict holds.
+- An ask names one person and a date, and asks for nothing you could find yourself; no ask means no ask sentence.
+- Every record, ticket, alert or page the reader may open is a link inside the sentence; no bare id.
+- No path, method name, query or hedge in the paragraph; a guess carries its marker.
