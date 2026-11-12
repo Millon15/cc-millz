@@ -50,7 +50,7 @@ AFTER, 89 words:
 
 ```markdown
 [63 paid orders](url) are stuck pending because no webhook was applied to [orders created between 12:48 and
-11:03 UTC](url). The order-expiry job stays off until the fix in [ABC-457](url) ships, so none of those orders
+11:03 UTC](url). The order-expiry job stays off until the fix in [ABC-457](url) ships. None of those orders
 expire while the provider holds the money. The [second provider's webhooks](url) kept working and the [error
 alert](url) came from staging, so only one provider failed. The cost is that truly unpaid orders stop expiring too
 and keep holding seats. @dev, please take ABC-457 by Friday; with no reply, the job stays off another week.

@@ -96,7 +96,7 @@ The three facts left: they settled doubts the team had, and the decider never ha
 
 | Surface | Output |
 | --- | --- |
-| A send (Slack, ticket, email) | the bullets alone, or the long form; the outbound skill adds its links and no figure |
+| A send (Slack, ticket, email) | default: the bullets alone, and the outbound skill adds its links and no figure; `--long`: the long form, and the outbound skill may add its figure and proofs after it |
 | Chat, "cto-brief this" | the bullets alone, ready to paste (`unslop-kit:unslop-formatting` § Scope) |
 
 ## Send-check
