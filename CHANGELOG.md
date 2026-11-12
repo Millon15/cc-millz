@@ -1,5 +1,18 @@
 # Changelog
 
+## session-learnings v0.3.0 - 2026-11-11
+
+### Added
+
+- `sl-stats.sh report` reads the last 7 days of transcripts, subagent transcripts included, and writes a weekly usage report to `usage/<year>-W<week>.json`: skill and slash-command loads, project script runs (also behind `bash`, `python3`, `node`), repeated hand-typed commands (the first word plus a subcommand or flag, never a URL, path or value), and reads of each project's knowledge paths per area through `Read`, `Grep`, `Glob` or shell readers. `.session-learnings.json` at a project root sets `knowledge_paths` and `script_dirs`; without it `docs/`, `bin/` and `scripts/` are detected. `--explain` prints the resolved config.
+- `sl-stats.sh proposals` turns the report into deterministic proposals (`knowledge-gap`, `unread-areas`, `dormant-skill`, `hand-rolled`) with stable `prp-` ids, at most 5 open per kind and project, and `sl-stats.sh decide` records accepted, rejected (hidden 90 days) or deferred (back next week) in `proposals.jsonl`.
+- `/session-learnings:review` opens with the week's usage table and ends with the open proposals, one decision each, writing an accepted change only after you approve its exact content.
+- `sl-install.sh --review-weekly` installs a second launchd agent, Monday 10:00 by default (`SESSION_LEARNINGS_REVIEW_WEEKDAY`, `SESSION_LEARNINGS_REVIEW_HOUR`, `SESSION_LEARNINGS_REVIEW_CWD`). `sl-review-launch.sh` refreshes the report and, when a proposal or a ready lesson is waiting, opens a background agterm session running `claude "/session-learnings:review"`. It skips when nothing waits or a review is already open, and falls back to a notification when agterm is unreachable.
+
+### Changed
+
+- `sl-install.sh --check` also checks the review agent when it is installed, and `--uninstall` removes both agents.
+
 ## session-learnings v0.2.3 - 2026-11-05
 
 ### Fixed

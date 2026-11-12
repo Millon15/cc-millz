@@ -8,6 +8,8 @@ Learn from finished Claude Code sessions without letting a single session teach 
 - **A ledger scores every lesson**: sightings on separate days, projects, human evidence and applications raise it, failed applications and contradictions lower it. Status is recomputed from the ledger each time, so demotion is automatic.
 - **Drafts are invisible to Claude**: they live in `~/.claude/learnings/`, a path Claude Code never loads. Only candidates surface, and only when Claude calls the `recall` skill, marked unreviewed.
 - **`/session-learnings:review`** walks ready candidates and challenged stable lessons with you, writes a skill only after you approve the exact content and destination, and records the decision in the ledger.
+- **A weekly usage report** counts skill and command loads, project script runs, repeated hand-typed commands and knowledge-path reads from the last 7 days of transcripts. Fixed rules turn it into proposals the same review walks, one decision each.
+- **An opt-in weekly agent** opens the review in a background agterm session when a proposal or a ready lesson is waiting.
 
 ## 📦 Install
 
@@ -19,9 +21,10 @@ Installing the plugin enables the hook, which only queues jobs. Nothing calls a 
 
 | Command | Effect |
 |---------|--------|
-| `sl-install.sh` | create the store, write the shim and the launchd plist, load the agent |
-| `sl-install.sh --check` | exit 0 when the agent is loaded |
-| `sl-install.sh --uninstall` | unload the agent and remove its plist; the store stays |
+| `sl-install.sh` | create the store, write the shim and the launchd plist, load the worker agent |
+| `sl-install.sh --review-weekly` | the same, plus the weekly review agent ([📊 Weekly usage review](#-weekly-usage-review)) |
+| `sl-install.sh --check` | exit 0 when the worker is loaded and the review agent, if installed, is too |
+| `sl-install.sh --uninstall` | unload both agents and remove their plists; the store stays |
 | `sl-install.sh --explain` | resolved config as JSON, no side effects |
 
 Requires macOS (launchd), `jq`, `perl`, Python 3 (standard library), and the `claude` CLI on the `PATH` captured at install.
@@ -66,6 +69,58 @@ Flags only order the review queue. Nothing but an approved review decision write
 
 `sl-ledger.sh list [--project=SLUG] [--status=a,b]` prints one JSONL row per card; `sl-ledger.sh event --type=promoted|rejected|deprecated --id=lsn-…` records a decision.
 
+## 📊 Weekly usage review
+
+```text
+transcripts, last 7 days ──sl-stats.sh report──▶ usage/<year>-W<week>.json
+                                                    │ fixed rules
+                                                    ▼
+proposals.jsonl decisions ──sl-stats.sh proposals──▶ open proposals ──▶ /session-learnings:review
+launchd, weekly ──sl-review-launch.sh──▶ agterm session: claude "/session-learnings:review"
+```
+
+| Command | Effect |
+|---------|--------|
+| `sl-stats.sh report [--days=7] [--if-stale]` | scan transcripts and subagent transcripts, write this ISO week's report, print its path; `--if-stale` keeps an existing one |
+| `sl-stats.sh proposals [--project=SLUG] [--status=open\|all]` | one JSONL row per proposal from the newest report and the recorded decisions |
+| `sl-stats.sh decide --id=prp-… --type=accepted\|rejected\|deferred [--note=…]` | record a decision |
+| `sl-stats.sh --explain [--project-dir=DIR]` | the knowledge paths and script dirs resolved for a project |
+| `sl-review-launch.sh [--dry-run]` | refresh the report, then open the review in agterm when something waits |
+
+A project lists what to count in `.session-learnings.json` at its root, committed:
+
+```json
+{"knowledge_paths": ["docs/"], "script_dirs": ["bin/"]}
+```
+
+Without the file, `docs/` is a knowledge path and `bin/` and `scripts/` are script dirs when they exist.
+
+A read is a `Read`, `Grep` or `Glob` call on a path under a knowledge path, or an `rg`, `grep`, `sed`, `cat`,
+`head`, `ls` or `find` argument there. A script run is a command starting with a file in a script dir or ending in
+`.sh`, `.py`, `.mjs` or `.ts`, also behind `bash`, `python3`, `node`, `bun` or `uv run`; inline code (`bash -c`,
+`python -c`) never counts as a script. A hand-rolled command is anything else, minus shell syntax, readers, text
+filters (`awk`, `cut`, `sort`, …), shell builtins, and interpreter calls without a matching project script
+(including inline code, `-m` modules and stdin); a command given as a path is counted by its file name.
+
+| Proposal | Rule |
+|----------|------|
+| `knowledge-gap` | a project with 10 or more sessions where under 25% read the knowledge path |
+| `unread-areas` | directories directly under a knowledge path that no session read |
+| `dormant-skill` | a skill with a usage counter whose last load is older than 30 days |
+| `hand-rolled` | a command head typed 10 or more times across 3 sessions; top 5 per project |
+
+The report stores counts and paths. A repeated command keeps its first word, plus the second only when it is a simple
+word or flag (letters, digits, `-`, `_`: `gh pr`, `docker exec`, `curl -H`); a URL- or path-shaped second word and
+every later word are dropped, but a plain-word value in second place is kept. `proposals` prints at
+most 5 open rows per kind and project (`dormant-skill`: 5 overall), dormant skills by lifetime loads and
+hand-rolled heads by runs, so the next ones surface as you decide these; `--status=all` lists every row. A proposal id is stable across weeks: `accepted` closes it,
+`rejected` hides it for 90 days, `deferred` brings it back next week.
+
+The weekly agent runs `sl-review-launch.sh`. When neither an open proposal nor a ready lesson waits, it does nothing.
+When a review session is already open (found by its command line, since a pane-labelling hook may rename it), it
+does nothing. Otherwise it opens a session in the agterm workspace `session-learnings` without taking focus, marks it
+blocked in the sidebar and sends one notification. When agterm is unreachable it only notifies.
+
 ## 🗂 Store
 
 `${SESSION_LEARNINGS_HOME:-~/.claude/learnings}`
@@ -78,7 +133,10 @@ Flags only order the review queue. Nothing but an approved review decision write
     failed.jsonl                                   failed/ jobs out of retries for 30 days
     ledger.archive.jsonl                           events of lessons compacted out of ledger.jsonl
     .notified-ready                                ready ids a notification already announced
+    usage/<year>-W<week>.json                      weekly usage reports
+    proposals.jsonl                                decisions on usage proposals
     worker.log  launchd.out  launchd.err  (+ .1)
+    review.out  review.err                         weekly review agent output
 
 Every hourly sweep keeps the store bounded:
 
@@ -107,7 +165,10 @@ A card is markdown with JSON frontmatter (valid YAML): id, scope, kind, status, 
 | `SESSION_LEARNINGS_MIN_HUMAN` | `3` | human turns a session needs before extraction |
 | `SESSION_LEARNINGS_DIGEST_BUDGET` | `300000` | digest size in bytes; over it, human and Bash rows are kept before reads and prose |
 | `SESSION_LEARNINGS_NOTIFY` | unset | notifier executable, called with the message as its one argument; `off` disables. Unset: `agtermctl notify`, then `osascript` |
-| `CLAUDE_LEARN_SKIP` | unset | `1` turns the hook and the worker off for that process |
+| `SESSION_LEARNINGS_REVIEW_WEEKDAY` | `1` | weekly review day for `--review-weekly`, launchd numbering (0 and 7 = Sunday) |
+| `SESSION_LEARNINGS_REVIEW_HOUR` | `10` | weekly review hour, local time |
+| `SESSION_LEARNINGS_REVIEW_CWD` | `$HOME` | directory the review session starts in, so project-scoped skills land in that repository |
+| `CLAUDE_LEARN_SKIP` | unset | `1` turns the hook, the worker and the review launcher off for that process |
 
 ### Choosing the model
 
