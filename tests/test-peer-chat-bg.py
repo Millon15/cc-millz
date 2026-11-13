@@ -247,6 +247,15 @@ class ProtocolTests(unittest.TestCase):
         self.check(state="failed")
         self.assertEqual(self.call("status")["confirmations"], {})
 
+    def test_refreeze_since_names_only_changed_files_and_a_tree(self):
+        (self.repo / "app.txt").write_text("version two\n")
+        (self.repo / "new.txt").write_text("new untracked\n")
+        refrozen = self.call("target", "--output", "tmp/peer-chat-bg/target-2.json", "--since", self.target)
+        self.assertEqual(refrozen["changed"], ["app.txt", "new.txt"])
+        self.assertRegex(refrozen["tree"], r"^[0-9a-f]{40}$")
+        self.call("target", "--output", "tmp/peer-chat-bg/target-3.json", "--since", "manifest:none.json#" + "0" * 64, status=2)
+        self.assertFalse((self.repo / "tmp/peer-chat-bg/target-3.json").exists())
+
     def test_modified_new_deleted_files_and_manifest_tampering_block_finalization(self):
         self.exchange()
         self.check()

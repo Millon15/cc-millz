@@ -1,5 +1,31 @@
 # Changelog
 
+## peer-chat v0.7.5 - 2026-11-12
+
+### Added
+
+- `peer-chat-freeze.py --slug <slug> [-- <paths>]` freezes a review target as one git tree sha, written through a scratch copy of the index with untracked files included, and prints the `git diff <previous> <tree>` the reviewer reads. A re-freeze after fixes sends only the new diff, never the whole lane again.
+- `peer-chat-fresh.sh --focus <text> --resume <line>` arms a detached watcher. After the turn ends it types `/compact`, waits for a new compact_boundary in the session transcript and an idle pane, then types the resume line. Each line is submitted by its own Return keystroke: a long line typed with its newline reads as a paste, and the newline stays in the composer as text. Exit 3 outside agterm or without a Claude Code session id.
+- The installer puts both scripts on PATH.
+
+### Changed
+
+- `/peer-chat:build` Phase 0 ends with a fresh context: after a long conversation it arms `peer-chat-fresh.sh` and the build resumes on the snapshot after `/compact`. Given an existing snapshot, Phase 0 counts as done.
+- Phase 3 batches review: every finding and its probe go in one message, the owner re-runs all probes and answers in one message, the reviewer re-verifies the round in one pass, and a lane gets at most two rounds before the open findings go to the user.
+- Phase 4 runs a security review in parallel with the suites (`Skill(skill="security-review")` in Claude Code). Each finding is fixed or declined before Phase 5.
+- The Codex manifest version matches the Claude one again.
+
+## peer-chat-bg v0.1.5 - 2026-11-12
+
+### Added
+
+- `target --since <previous token>` adds a `changed` list, the files whose entry differs from the earlier manifest, and validates that token before it writes the new one. Every `target` result also carries the tree sha. The full sha256 manifest is unchanged.
+
+### Changed
+
+- `/peer-chat-bg:build` regenerated: batched review rounds, the security review, and a re-freeze with `--since`.
+- The Codex manifest version matches the Claude one again.
+
 ## peer-chat v0.7.4 - 2026-11-12
 
 ### Changed

@@ -42,8 +42,14 @@ grow orchestration state. Every input form gets ONE task file, written by the in
 3. Open decisions: a reversible implementation choice takes the design's recommendation, else the
    safer default, listed as `defaults taken`. A decision the user's authorization does not cover
    goes to the user before the first send.
+4. Fresh context: Claude Code in agterm, after a long conversation. Run
+   `peer-chat-fresh.sh --focus "<slug> build, design at <absolute design path>" --resume
+   "/peer-chat:build <absolute design path> --slug <slug>"` and end the turn: once the turn is over it
+   types `/compact`, waits for the compaction, then types the resume line, each submitted by a
+   separate Return. Exit 3 (another harness, no agterm, no session id): continue in this context.
 
-Done when the file exists and `git status` shows the worktree you start from.
+Done when the file exists and `git status` shows the worktree you start from. Given an existing
+snapshot as `<design>`, Phase 0 is already done: continue at Phase 1.
 
 ## Phase 1: Split and get it accepted
 
@@ -79,21 +85,27 @@ until its owner accepts it.
   before any dependent edit; unrelated work continues meanwhile.
 - Self-check each lane with what the project has: typecheck, lint, the unit tests on its files.
 - Freeze a review target: the integrator commits it when the user's instructions and the project's
-  policy allow a commit now; otherwise the exact file list, untracked files included, each with its
-  `shasum -a 256`, edits paused until the findings arrive.
-  `🎯 lane <n> ready for review: <target>`.
+  policy allow a commit now; otherwise `peer-chat-freeze.py --slug <slug> -- <lane files>` (add
+  `--dir <task dir>` when the snapshot lives outside the repo) prints the tree sha, untracked files
+  included, and the `git diff <previous> <tree>` the reviewer reads. Edits pause until the findings
+  arrive. `🎯 lane <n> ready for review: <tree>` with that diff command; a re-freeze after fixes
+  sends only its new diff.
 
 ## Phase 3: Cross-review
 
 - Open each review with its coverage: `📎 coverage lane <n> @ <target>` and every file read, the
-  target being the sha or the hash list it was frozen at. A file of the target that no coverage
+  target being the sha or token it was frozen at. A file of the target that no coverage
   line names stays `pending`, never reviewed by silence; a re-freeze after fixes gets its own
   coverage line for the files it changed.
-- Review the peer's frozen target against the accepted contracts and the design: one `🎯` per
-  finding with a `🔎 path:line`, worst first; questions as `❓`.
-- The owner fixes its own files. "fixed" quotes the re-run of the reviewer's proof (skill
-  § Proofs),
-  otherwise `🎯 unproven:`.
+- Review the peer's frozen target against the accepted contracts and the design, then send the
+  whole round in ONE message: each finding its own `🎯` with a `🔎 path:line` and the probe that
+  shows it (a command, or a script under `tmp/peer-chat/<slug>/`), worst first; questions as `❓`.
+  A finding spotted after the send waits for the next round unless it blocks the lane.
+- The owner fixes its own files for the whole round, re-runs every probe of the round itself, and
+  answers in ONE message: per finding `fixed` quoting the probe's fresh output (skill § Proofs),
+  `🎯 unproven:`, or `declined(<why>)`. Then one re-freeze.
+- The reviewer re-verifies the round in one pass on the re-freeze's diff. At most two rounds per
+  lane: a finding still open after round two goes to the user with both positions, not to round three.
 
 Done when both coverage lines name every file of both targets, both targets have zero open
 findings and the ledger zero open asks. A `declined` closes an ask; the requirement behind it stays
@@ -105,6 +117,10 @@ open until fixed or accepted within the user's scope.
   derive one per lane from the design's "done" wording and send it as a `🎯` before running it.
 - The non-author runs a lane's check where the environment allows; the integrator runs anything
   stateful. Output lands under `tmp/peer-chat/<slug>/NN-<role>-<what>.out`, cited in a `📎`.
+- Security review, in parallel with the suites: Claude Code calls `Skill(skill="security-review")`
+  on the integrated diff; another host runs its own security review, or records the check
+  `incomplete`. Each finding is fixed by the owner of its file, or declined in chat with the reason,
+  before Phase 5.
 - A red check returns the lane to Phase 2 for its owner.
 
 Done when every acceptance check has a recorded outcome and every required one is green. A check
@@ -112,7 +128,7 @@ that could not run is `incomplete`, never green.
 
 ## Phase 5: Close
 
-- Both peers name the same final target: a sha, or the frozen list with hashes, unchanged since
+- Both peers name the same final target: a commit or tree sha, unchanged since
   the last green check and both confirmations. A confirmation sent before the last green check,
   or before the last fix landed, does not count: confirm again on the final target.
 - Commit and push only as the user's instructions and the project's policy allow, through the

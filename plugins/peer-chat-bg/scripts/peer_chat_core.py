@@ -5,7 +5,9 @@ from __future__ import annotations
 import fcntl
 import os
 import re
+import shutil
 import subprocess
+import tempfile
 import textwrap
 import unicodedata
 from contextlib import contextmanager, nullcontext
@@ -316,3 +318,30 @@ def plan_body(
         prepend_overdue(ledger, sender, plan, moment)
     plan.text = "\n".join(wrap_lines(plan.text.splitlines(), width))
     return plan
+
+
+def git_index_path(repo: Path) -> Path:
+    probe = subprocess.run(
+        ["git", "-C", str(repo), "rev-parse", "--path-format=absolute", "--git-path", "index"],
+        capture_output=True, text=True, check=True,
+    )
+    return Path(probe.stdout.strip())
+
+
+def git_with_index(repo: Path, index: Path, *args: str) -> str:
+    env = {**os.environ, "GIT_INDEX_FILE": str(index)}
+    done = subprocess.run(
+        ["git", "-C", str(repo), *args], env=env, capture_output=True, text=True, check=True
+    )
+    return done.stdout.strip()
+
+
+def freeze_tree(repo: Path, pathspecs: list[str] | None = None) -> str:
+    """Write the working tree as one git tree object through a scratch copy of the index; the real index is untouched."""
+    with tempfile.TemporaryDirectory(prefix="peer-chat-freeze.") as scratch:
+        index = Path(scratch) / "index"
+        real = git_index_path(repo)
+        if real.exists():
+            shutil.copyfile(real, index)
+        git_with_index(repo, index, "add", "-A", "--", *(pathspecs or ["."]))
+        return git_with_index(repo, index, "write-tree")

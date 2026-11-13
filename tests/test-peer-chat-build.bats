@@ -9,9 +9,9 @@ setup() {
     body="$(cat "${COMMAND}")"
 }
 
-@test "peer-chat build: skill requires user invocation and loads the peer-chat engine" {
+@test "peer-chat build: skill is model-invocable and loads the peer-chat engine" {
     frontmatter="$(sed -n '2,/^---$/p' "${COMMAND}" | sed '/^---$/q')"
-    assert_contains "${frontmatter}" "disable-model-invocation: true"
+    assert_not_contains "${frontmatter}" "disable-model-invocation"
     assert_contains "${body}" 'Skill(skill="peer-chat:peer-chat")'
 }
 
@@ -53,6 +53,17 @@ setup() {
         [ ! -e "${REPO_ROOT}/plugins/${plugin}/commands/build.md" ]
         skill="$(cat "${REPO_ROOT}/plugins/${plugin}/skills/build/SKILL.md")"
         assert_contains "${skill}" "argument-hint:"
-        assert_contains "${skill}" "disable-model-invocation: true"
+        assert_not_contains "${skill}" "disable-model-invocation"
     done
+}
+
+@test "peer-chat build: fresh context, freeze diff, batched rounds and security review" {
+    assert_contains "${body}" "peer-chat-fresh.sh --focus"
+    assert_contains "${body}" "peer-chat-freeze.py --slug <slug>"
+    assert_contains "${body}" "whole round in ONE message"
+    assert_contains "${body}" "At most two rounds per"
+    assert_contains "${body}" 'Skill(skill="security-review")'
+    bg="$(cat "${REPO_ROOT}/plugins/peer-chat-bg/skills/build/SKILL.md")"
+    assert_contains "${bg}" "--since <previous token>"
+    assert_not_contains "${bg}" "peer-chat-fresh.sh"
 }

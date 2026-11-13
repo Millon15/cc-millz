@@ -5,7 +5,8 @@
 #   peer-chat-install.sh --check  # report only; exit 0 when every piece is in place, 1 otherwise
 #
 # Three pieces, the same for every harness:
-#   1. peer-chat.py, its engine peer-chat-engine.py and peer-chat-paste.py on PATH — the skill
+#   1. peer-chat.py, its engine peer-chat-engine.py, peer-chat-paste.py, peer-chat-freeze.py and
+#      peer-chat-fresh.sh on PATH — the skill
 #      invokes them as bare commands. Copied, not symlinked: a symlink into the plugin cache dies on
 #      the next plugin version bump.
 #   2. the skill: Claude Code and Codex both load skills/peer-chat/SKILL.md from their plugin copy.
@@ -33,6 +34,8 @@ SRC_SCRIPT="$PLUGIN_ROOT/scripts/peer-chat.py"
 SRC_ENGINE="$PLUGIN_ROOT/scripts/vendor/peer-chat.py"
 SRC_PASTE="$PLUGIN_ROOT/scripts/peer-chat-paste.py"
 SRC_CORE="$PLUGIN_ROOT/scripts/peer_chat_core.py"
+SRC_FREEZE="$PLUGIN_ROOT/scripts/peer-chat-freeze.py"
+SRC_FRESH="$PLUGIN_ROOT/scripts/peer-chat-fresh.sh"
 SRC_SKILL="$PLUGIN_ROOT/skills/peer-chat/SKILL.md"
 RULE_PREPARE='prefix_rule(pattern=["peer-chat.py", "--prepare-message"], decision="allow")'
 RULE_SEND='prefix_rule(pattern=["peer-chat.py", "--to", "peer", "--message-file"], decision="allow")'
@@ -80,7 +83,9 @@ bin_copies() {
 		peer-chat.py "$SRC_SCRIPT" \
 		peer-chat-engine.py "$SRC_ENGINE" \
 		peer-chat-paste.py "$SRC_PASTE" \
-		peer_chat_core.py "$SRC_CORE"
+		peer_chat_core.py "$SRC_CORE" \
+		peer-chat-freeze.py "$SRC_FREEZE" \
+		peer-chat-fresh.sh "$SRC_FRESH"
 }
 
 # codex_plugin_enabled: config.toml has a [plugins."peer-chat@<marketplace>"] table with enabled = true.
@@ -229,7 +234,7 @@ write_stamp() {
 
 install_all() {
 	local source
-	for source in "$SRC_SCRIPT" "$SRC_ENGINE" "$SRC_PASTE" "$SRC_SKILL"; do
+	for source in "$SRC_SCRIPT" "$SRC_ENGINE" "$SRC_PASTE" "$SRC_FREEZE" "$SRC_FRESH" "$SRC_SKILL"; do
 		[ -f "$source" ] || die "missing $source; is this script inside the plugin?" 2
 	done
 	refuse_downgrade && return 0

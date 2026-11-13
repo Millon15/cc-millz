@@ -19,7 +19,7 @@ import uuid
 sys.dont_write_bytecode = True  # --explain must not populate the installed cache either.
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from peer_chat_core import (Ask, Ledger, LedgerRefusal, Plan, ASK_ID_RE,
-    clean_lines, is_ask, now_utc, parse_dispositions, peer_of, plan_body, stamp)
+    clean_lines, freeze_tree, is_ask, now_utc, parse_dispositions, peer_of, plan_body, stamp)
 
 ROLES = ("left", "right")
 SLUG = re.compile(r"[a-z0-9][a-z0-9-]{0,59}\Z")
@@ -119,7 +119,7 @@ def tree_snapshot(repo):
     return {"schema": 1, "repo": str(repo), "head": head.stdout.strip() if head.returncode == 0 else None, "files": files}
 
 
-def freeze_target(repo, value):
+def freeze_target(repo, value, since=None):
     path = Path(value)
     if not path.is_absolute():
         path = repo / path
@@ -127,6 +127,7 @@ def freeze_target(repo, value):
     require(path.is_relative_to(repo), "target manifest must be inside the project")
     ignored_path(repo, path)
     require(not path.exists(), "target manifest exists; freeze to a fresh file")
+    before = load_manifest(repo, since)["files"] if since else None
     frozen = tree_snapshot(repo)
     data = (json.dumps(frozen, sort_keys=True, ensure_ascii=False, indent=2) + "\n").encode()
     path.parent.mkdir(parents=True, exist_ok=True)
@@ -136,7 +137,10 @@ def freeze_target(repo, value):
         stream.flush()
         os.fsync(stream.fileno())
     token = "manifest:" + str(path.relative_to(repo)) + "#" + digest(data)
-    return {"target": token, "manifest": str(path), "files": len(frozen["files"])}
+    result = {"target": token, "manifest": str(path), "files": len(frozen["files"]), "tree": freeze_tree(repo)}
+    if before is not None:
+        result["changed"] = changed_files(before, frozen["files"])
+    return result
 
 
 def validate_target(repo, target):
@@ -165,6 +169,11 @@ def validate_target(repo, target):
             actual = hashlib.new(algorithm, b"blob " + str(len(data)).encode() + b"\0" + data).hexdigest()
             require(actual == object_id.decode(), "target file bytes changed: " + os.fsdecode(name))
         return
+    require(load_manifest(repo, target) == tree_snapshot(repo), "target working tree changed; freeze a new target and re-run checks")
+
+
+def load_manifest(repo, target):
+    """The frozen snapshot behind a manifest token, after its path and digest check out."""
     require(target.startswith("manifest:") and "#" in target, "target must come from target command, or git:<full-sha>")
     name, expected = target[len("manifest:"):].rsplit("#", 1)
     require(re.fullmatch(r"[0-9a-f]{64}", expected), "invalid manifest SHA256")
@@ -175,7 +184,12 @@ def validate_target(repo, target):
     ignored_path(repo, path)
     data = path.read_bytes()
     require(digest(data) == expected, "target manifest changed")
-    require(json.loads(data) == tree_snapshot(repo), "target working tree changed; freeze a new target and re-run checks")
+    return json.loads(data)
+
+
+def changed_files(before, after):
+    """Files whose frozen entry differs from the earlier manifest: the reviewer reads only these."""
+    return sorted(name for name in before.keys() | after.keys() if before.get(name) != after.get(name))
 
 
 def validate_evidence(record):
@@ -291,7 +305,7 @@ def mutate(args, state, repo):
     require(args.run == state["run_id"], "missing or stale --run identity; inspect status")
     require(state["phase"] == "active", "topic is finalized; use a fresh slug")
     if args.command == "target":
-        return freeze_target(repo, args.output)
+        return freeze_target(repo, args.output, args.since)
     if args.command == "bind":
         require(args.agent_id.strip(), "agent ID is empty")
         require(args.agent_id != state["bindings"]["left"]["agent_id"], "peer must not be the parent")
@@ -416,6 +430,7 @@ def parser():
     q.add_argument("--check", action="append", default=[])
     q = sub.add_parser("target")
     q.add_argument("--output", required=True)
+    q.add_argument("--since", help="an earlier manifest token; adds the changed files and keeps the full manifest")
     q = sub.add_parser("bind")
     q.add_argument("--role", choices=("right",), default="right")
     q.add_argument("--agent-id", required=True)

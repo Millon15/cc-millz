@@ -9,6 +9,38 @@ ROOT = Path(__file__).resolve().parent.parent
 SKILL_DESCRIPTION = "Implement an agreed design with a peer through accepted lanes, frozen cross-review targets and recorded QA."
 
 
+FRESH = {
+    "peer-chat": (
+        "Claude Code in agterm, after a long conversation. Run\n"
+        "   `peer-chat-fresh.sh --focus \"<slug> build, design at <absolute design path>\" --resume\n"
+        "   \"/peer-chat:build <absolute design path> --slug <slug>\"` and end the turn: once the turn is over it\n"
+        "   types `/compact`, waits for the compaction, then types the resume line, each submitted by a\n"
+        "   separate Return. Exit 3 (another harness, no agterm, no session id): continue in this context."
+    ),
+    "peer-chat-bg": (
+        "none in this engine; after a long conversation the user may run `/compact`, then this\n"
+        "   command again on the snapshot."
+    ),
+}
+
+FREEZE = {
+    "peer-chat": (
+        "- Freeze a review target: the integrator commits it when the user's instructions and the project's\n"
+        "  policy allow a commit now; otherwise `peer-chat-freeze.py --slug <slug> -- <lane files>` (add\n"
+        "  `--dir <task dir>` when the snapshot lives outside the repo) prints the tree sha, untracked files\n"
+        "  included, and the `git diff <previous> <tree>` the reviewer reads. Edits pause until the findings\n"
+        "  arrive. `🎯 lane <n> ready for review: <tree>` with that diff command; a re-freeze after fixes\n"
+        "  sends only its new diff."
+    ),
+    "peer-chat-bg": (
+        "- Freeze a review target: the integrator commits it when the user's instructions and the project's\n"
+        "  policy allow a commit now; otherwise the engine's `target --output <fresh path>`, with\n"
+        "  `--since <previous token>` on a re-freeze so its `changed` list names the only files to re-read.\n"
+        "  Edits pause until the findings arrive. `🎯 lane <n> ready for review: <token>`."
+    ),
+}
+
+
 def invocation_keys(frontmatter):
     """Top-level frontmatter lines minus the multi-line description."""
     kept, in_description = [], False
@@ -43,6 +75,8 @@ def outputs():
             .replace("@PEER@", peer)
             .replace("@ENGINE@", engine)
             .replace("@LIFECYCLE@", lifecycle)
+            .replace("@FRESH@", FRESH[plugin])
+            .replace("@FREEZE@", FREEZE[plugin])
         )
         rendered = rendered.replace(
             "@ARTIFACT_ROOT@",
@@ -56,7 +90,7 @@ def outputs():
                 "The paths below use the default `tmp/peer-chat-bg`. Substitute `values.state_dir` from `BG --explain` when configured. The ask/message ledger is `<state_dir>/<slug>/state.json`, not a TSV file. Use the engine's target/check/finalize commands to validate the unchanged integrated tree and close both peer confirmations.\n\n## Input",
             )
             rendered = rendered.replace(
-                "a sha, or the frozen list with hashes",
+                "a commit or tree sha",
                 "a validated `git:<full-sha>` token on a clean HEAD, or the `manifest:<path>#<sha256>` token returned by the engine's `target --output` command",
             )
         header = "<!-- Generated from shared/peer-chat/build.md; edit the source and run scripts/sync-peer-chat-protocol.py. -->\n\n"
