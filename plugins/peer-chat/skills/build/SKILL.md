@@ -85,14 +85,19 @@ until its owner accepts it.
 
 ## Phase 3: Cross-review
 
+- Open each review with its coverage: `📎 coverage lane <n> @ <target>` and every file read, the
+  target being the sha or the hash list it was frozen at. A file of the target that no coverage
+  line names stays `pending`, never reviewed by silence; a re-freeze after fixes gets its own
+  coverage line for the files it changed.
 - Review the peer's frozen target against the accepted contracts and the design: one `🎯` per
   finding with a `🔎 path:line`, worst first; questions as `❓`.
 - The owner fixes its own files. "fixed" quotes the re-run of the reviewer's proof (skill
   § Proofs),
   otherwise `🎯 unproven:`.
 
-Done when both targets have zero open findings and the ledger zero open asks. A `declined` closes
-an ask; the requirement behind it stays open until fixed or accepted within the user's scope.
+Done when both coverage lines name every file of both targets, both targets have zero open
+findings and the ledger zero open asks. A `declined` closes an ask; the requirement behind it stays
+open until fixed or accepted within the user's scope.
 
 ## Phase 4: Prove
 
@@ -108,7 +113,8 @@ that could not run is `incomplete`, never green.
 ## Phase 5: Close
 
 - Both peers name the same final target: a sha, or the frozen list with hashes, unchanged since
-  the last green check and both confirmations.
+  the last green check and both confirmations. A confirmation sent before the last green check,
+  or before the last fix landed, does not count: confirm again on the final target.
 - Commit and push only as the user's instructions and the project's policy allow, through the
   project's commit command or agent when one exists; the command grants no publish authority.
 - `🏁` from both sides: commits, proof paths, leftovers and why. Report to the user: lanes,

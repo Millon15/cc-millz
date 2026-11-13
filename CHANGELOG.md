@@ -1,5 +1,18 @@
 # Changelog
 
+## peer-chat v0.7.4 - 2026-11-12
+
+### Changed
+
+- `/peer-chat:build` Phase 3 asks each review to open with a coverage line: the files read and the frozen target they were read at. A file no coverage line names stays `pending` instead of passing by silence, and Phase 3 ends only when both coverage lines name every file of both targets.
+- Phase 5 discards a confirmation sent before the last green check or the last fix: both peers confirm again on the final target.
+
+## peer-chat-bg v0.1.4 - 2026-11-12
+
+### Changed
+
+- `/peer-chat-bg:build` regenerated from the same source.
+
 ## peer-chat v0.7.3 - 2026-11-12
 
 ### Changed
