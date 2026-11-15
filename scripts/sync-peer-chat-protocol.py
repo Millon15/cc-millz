@@ -60,7 +60,7 @@ def outputs():
             "peer in the other pane",
             '1. `Skill(skill="peer-chat:peer-chat")`, then its Preflight.\n'
             '2. Peer: the skill\'s spawn step; `--peer <harness[:model]>` passes through. `"state":"already"` is fine.',
-            "Continue independent work after sending; otherwise end the turn and let the reply resume it. Never poll a pane.",
+            "Continue independent work after sending; otherwise end the turn and let the reply resume it. An ask the next step needs arms the skill's timer (§ A stalled ask); never poll a pane.",
         ),
         (
             "peer-chat-bg",

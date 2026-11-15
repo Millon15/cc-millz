@@ -38,6 +38,14 @@ declined(<why>)` for each new ask, or it is refused. Ledgers written before the 
 identity keep their `#claude-NNN` / `#codex-NNN` ids, read as asked by left / right. A deferral past PEER_CHAT_DEFER_MINUTES is prepended to the deferrer's
 next send as `overdue: #id`. There is no length cap: prose lines are wrapped at PEER_CHAT_WRAP
 columns on word boundaries so the pane never breaks a word, and a token with no spaces stays whole.
+
+Every send with --slug first records the exact pasted text in `outbox-<session>-<pane>.msg` beside
+the ledger, keyed by the receiving session and pane. `--recover-delivery --slug <topic>` runs in the
+receiving pane, under the ledger lock every send of the topic takes: it presses Return on its own
+composer only when two reads, the second right before the key, both show exactly the recorded
+message, whitespace aside. A collapsed paste marker hides its text, so it is never matched; any
+other text stays untouched. Exit 0 Return pressed, 1 left untouched, 3 nothing to recover; one
+JSON line on stdout.
 """
 
 from __future__ import annotations
@@ -79,6 +87,8 @@ QUEUE_KEY = "\t"
 TURN_WORKING = "working"
 TURN_IDLE = "idle"
 TURN_UNKNOWN = "unknown"
+RECOVER_NOTHING = 3
+SESSION_ID_RE = re.compile(r"[A-Za-z0-9-]+")
 TIMER = r"\((?:\d+h\s)?(?:\d+m\s)?\d+s\s"
 # Claude Code mid-turn: a spinner line `✻ Pouncing… (5m 3s · ↓ 19.7k tokens)` (the glyph cycles and
 # the idle summary `✻ Baked for 1m 59s · done 23:38` reuses it, so the `…` plus the timer is the
@@ -304,6 +314,8 @@ def send(t: dict[str, Any], args: argparse.Namespace, body: str) -> int:
         for warning in plan.warnings:
             print(warning, file=sys.stderr)
         message = profile.label + plan.text
+        if args.slug:
+            record_outbox(args.slug, sid, profile.pane, message)
         warn_if_mid_turn(peer_turn(t, sid, profile, window))
         status = deliver(t, sid, profile, window, message, args.queue)
         if status != 0:
@@ -312,6 +324,85 @@ def send(t: dict[str, Any], args: argparse.Namespace, body: str) -> int:
             ledger.record(sender, plan, moment)
         report(message, plan)
         return 0
+
+
+def outbox_path(slug: str, sid: str, pane: str) -> Path:
+    if not SESSION_ID_RE.fullmatch(sid):
+        raise ValueError(f"session id {sid!r} cannot name an outbox file")
+    return Ledger.for_slug(slug).path.parent / f"outbox-{sid}-{pane}.msg"
+
+
+def record_outbox(slug: str, sid: str, pane: str, message: str) -> None:
+    """The exact text this send pastes, for the receiver's --recover-delivery."""
+    path = outbox_path(slug, sid, pane)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    pending = path.with_suffix(".tmp")
+    fd = os.open(pending, os.O_WRONLY | os.O_CREAT | os.O_TRUNC | os.O_NOFOLLOW, 0o600)
+    with os.fdopen(fd, "w", encoding="utf-8") as handle:
+        handle.write(message)
+    os.replace(pending, path)
+
+
+def holds_exactly(content: str, message: str) -> bool:
+    return " ".join(content.split()) == " ".join(message.split())
+
+
+def own_composer(t: dict[str, Any], sid: str, profile: Any, window: str) -> str | None:
+    return t["live_prompt_text"](profile, t["_pane_text_unchecked"](sid, profile, window))
+
+
+def collapsed(content: str) -> bool:
+    return any(marker in content for marker in COLLAPSED_PASTE_MARKERS)
+
+
+def composer_refusal(t: dict[str, Any], profile: Any, content: str | None, message: str) -> tuple[int, str] | None:
+    """Why Return must not be pressed on this composer, or None when it holds exactly the message."""
+    if content is None:
+        return 1, "composer unreadable; left untouched"
+    if t["composer_is_empty"](profile, content):
+        return RECOVER_NOTHING, "composer empty; nothing to recover"
+    if collapsed(content):
+        return 1, "composer shows a collapsed paste whose text cannot be checked; left untouched"
+    if not holds_exactly(content, message):
+        return 1, "composer holds other text; left untouched"
+    return None
+
+
+def own_target(t: dict[str, Any], args: argparse.Namespace) -> tuple[str, str, Any]:
+    own = t["own_pane"]()
+    detected = t["detect_harness"](t["locate_session"](args.session, args.window), own)
+    if detected is None:
+        raise RuntimeError(f"the {own} pane runs no known harness; nothing to recover")
+    profile = t["Profile"](own, detected[0], detected[1], "", RETURN_KEY)
+    window, sid = t["resolve_target"](args.session, args.window, profile)
+    return window, sid, profile
+
+
+def recover_result(recovered: bool, reason: str) -> None:
+    print(f'{{"recovered": {str(recovered).lower()}, "reason": "{reason}"}}')
+
+
+def recover_delivery(t: dict[str, Any], args: argparse.Namespace) -> int:
+    window, sid, profile = own_target(t, args)
+    with Ledger.for_slug(args.slug).locked():
+        return recover_locked(t, sid, profile, window, outbox_path(args.slug, sid, profile.pane))
+
+
+def recover_locked(t: dict[str, Any], sid: str, profile: Any, window: str, path: Path) -> int:
+    """Under the topic lock no send can replace the outbox between the check and its consumption."""
+    if not path.is_file():
+        recover_result(False, f"no recorded message for the {profile.pane} pane")
+        return RECOVER_NOTHING
+    message = read_message_path(str(path), t["MAX_MESSAGE_BYTES"])
+    for _ in range(2):
+        refusal = composer_refusal(t, profile, own_composer(t, sid, profile, window), message)
+        if refusal is not None:
+            recover_result(False, refusal[1])
+            return refusal[0]
+    t["type_text"](sid, profile, RETURN_KEY, window)
+    os.replace(path, path.with_suffix(".recovered"))
+    recover_result(True, "return pressed on the recorded message")
+    return 0
 
 
 def restore_message_file(t: dict[str, Any], name: str, body: str) -> None:
@@ -336,14 +427,27 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         help="codex recipient only: Tab queues the note behind a peer seen working; "
         "an idle or unreadable peer gets Return",
     )
-    source = parser.add_mutually_exclusive_group(required=True)
+    source = parser.add_mutually_exclusive_group()
     source.add_argument("--stdin", action="store_true")
     source.add_argument("--message-file")
-    return parser.parse_args(argv)
+    source.add_argument(
+        "--recover-delivery",
+        action="store_true",
+        help="in the receiving pane: press Return only when the own composer holds exactly "
+        "the message recorded for it under --slug",
+    )
+    args = parser.parse_args(argv)
+    if not (args.stdin or args.message_file or args.recover_delivery):
+        parser.error("one of --stdin, --message-file or --recover-delivery is required")
+    if args.recover_delivery and not args.slug:
+        parser.error("--recover-delivery needs --slug")
+    return args
 
 
 def main() -> int:
     args = parse_args()
+    if args.recover_delivery:
+        return run_recover(args)
     try:
         transport = load_transport()
         body = read_body(transport, args)
@@ -361,6 +465,14 @@ def main() -> int:
         except (RuntimeError, ValueError, OSError) as err:
             print(f"peer-chat-paste: could not restore message file: {err}", file=sys.stderr)
     return status
+
+
+def run_recover(args: argparse.Namespace) -> int:
+    try:
+        return recover_delivery(load_transport(), args)
+    except (RuntimeError, ValueError, OSError, subprocess.CalledProcessError) as err:
+        print(f"peer-chat-paste: {err}", file=sys.stderr)
+        return 1
 
 
 if __name__ == "__main__":

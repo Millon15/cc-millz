@@ -700,3 +700,132 @@ PY
     [ ! -f "${TMP}/typed.log" ]
     [ "$(grep -c '^session paste ' "${TMP}/calls.log")" -eq 1 ]
 }
+
+# --recover-delivery runs in the receiving pane (left = claude in tree-split-codex.json).
+RECORDED=$'Chat from codex (right): 🎯 the answer\n\n🔎 path.go:12\n   the reasoning'
+
+outbox() { printf '%s' "${TMP}/tmp/peer-chat/t/outbox-${SID}-$1"; }
+
+recorded_outbox() {
+    mkdir -p "${TMP}/tmp/peer-chat/t"
+    printf '%s' "${RECORDED}" > "$(outbox left.msg)"
+}
+
+claude_composer() { # claude_composer <file> <content line>...
+    local file="$1"
+    shift
+    { printf '❯ %s\n' "$1"; shift; for line in "$@"; do printf '  %s\n' "$line"; done
+      printf '%s\n' '────────────────────────────────' '  ? for shortcuts'; } > "${file}"
+}
+
+recorded_composer() { claude_composer "$1" 'Chat from codex (right): 🎯 the' 'answer' '🔎 path.go:12' 'the reasoning'; }
+
+# The second `session text` read shows composer-next, as when the user types between the two reads.
+swap_on_second_read() {
+    local hook="[ -f '${TMP}/composer-next' ] \&\& [ -f '${TMP}/read-once' ] \&\& cp '${TMP}/composer-next' '${TMP}/composer'; touch '${TMP}/read-once';"
+    sed -i.bak "s|^            \*) cat |            *) ${hook} cat |" "${STUB_BIN}/agtermctl"
+    grep -q 'read-once' "${STUB_BIN}/agtermctl"
+}
+
+recover() { run python3 "${PASTE}" --to peer --recover-delivery --slug t; }
+
+@test "recover: a send with --slug records the exact pasted text for the receiving session and pane" {
+    printf '🎯 one\n\n🔎 two\n' > "${TMP}/msg"
+    send_file "${TMP}/msg" --slug t
+    assert_status 0
+    [ "$(cat "$(outbox right.msg)")" = "$(cat "${TMP}/clip-first-set")" ]
+    [ "$(stat -f %Lp "$(outbox right.msg)")" = 600 ]
+}
+
+@test "recover: the composer holding exactly the recorded message, rewrapped, gets one Return" {
+    recorded_outbox
+    recorded_composer "${TMP}/composer"
+    recover
+    assert_status 0
+    assert_contains "${output}" '"recovered": true'
+    assert_contains "$(cat "${TMP}/calls.log")" 'session type --stdin --pane left'
+    [ "$(wc -l < "${TMP}/typed.log")" -eq 1 ]
+    [ -f "$(outbox left.recovered)" ]
+    [ ! -f "$(outbox left.msg)" ]
+}
+
+@test "recover: extra text or only a prefix leaves the composer untouched" {
+    recorded_outbox
+    for composer in extra prefix; do
+        if [ "$composer" = extra ]; then
+            claude_composer "${TMP}/composer" 'Chat from codex (right): 🎯 the answer' '🔎 path.go:12' 'the reasoning' 'my own words'
+        else
+            claude_composer "${TMP}/composer" 'Chat from codex (right): 🎯 the answer'
+        fi
+        recover
+        assert_status 1
+        assert_contains "${output}" 'composer holds other text; left untouched'
+        [ ! -f "${TMP}/typed.log" ]
+        [ -f "$(outbox left.msg)" ]
+    done
+}
+
+@test "recover: a collapsed paste is never submitted, whatever its size" {
+    recorded_outbox
+    for marker in '[Pasted text #1 +3 lines]' '[Pasted text #1 +4 lines]'; do
+        claude_composer "${TMP}/composer" "${marker}"
+        recover
+        assert_status 1
+        assert_contains "${output}" 'collapsed paste whose text cannot be checked'
+    done
+    [ ! -f "${TMP}/typed.log" ]
+    [ -f "$(outbox left.msg)" ]
+}
+
+@test "recover: text that changes between the two composer reads is left untouched" {
+    recorded_outbox
+    recorded_composer "${TMP}/composer"
+    claude_composer "${TMP}/composer-next" 'Chat from codex (right): 🎯 the answer' '🔎 path.go:12' 'the reasoning' 'typed meanwhile'
+    swap_on_second_read
+    recover
+    assert_status 1
+    assert_contains "${output}" 'composer holds other text; left untouched'
+    [ ! -f "${TMP}/typed.log" ]
+}
+
+@test "recover: waits for a send holding the topic lock, so the outbox cannot change under it" {
+    recorded_outbox
+    recorded_composer "${TMP}/composer"
+    python3 - "${TMP}/tmp/peer-chat/t/asks.lock" "${TMP}/calls.log" "${TMP}/held" <<'PY2' &
+import fcntl, sys, time
+from pathlib import Path
+with open(sys.argv[1], "a") as lock:
+    fcntl.flock(lock, fcntl.LOCK_EX)
+    Path(sys.argv[3]).touch()
+    time.sleep(1.5)
+    with open(sys.argv[2], "a") as log:
+        log.write("holder released\n")
+    fcntl.flock(lock, fcntl.LOCK_UN)
+PY2
+    holder=$!
+    while [ ! -f "${TMP}/held" ]; do sleep 0.05; done
+    recover
+    wait "${holder}"
+    assert_status 0
+    released=$(grep -n 'holder released' "${TMP}/calls.log" | cut -d: -f1)
+    typed=$(grep -n '^session type' "${TMP}/calls.log" | cut -d: -f1)
+    [ "${typed}" -gt "${released}" ]
+}
+
+@test "recover: an empty composer or no recorded message presses nothing and exits 3" {
+    claude_composer "${TMP}/composer" ''
+    recover
+    assert_status 3
+    assert_contains "${output}" 'no recorded message for the left pane'
+    recorded_outbox
+    recover
+    assert_status 3
+    assert_contains "${output}" 'composer empty; nothing to recover'
+    [ ! -f "${TMP}/typed.log" ]
+}
+
+@test "recover: --recover-delivery without --slug is a usage error" {
+    run python3 "${PASTE}" --to peer --recover-delivery
+    assert_status 2
+    assert_contains "${output}" '--recover-delivery needs --slug'
+}

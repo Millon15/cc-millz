@@ -139,7 +139,7 @@ that could not run is `incomplete`, never green.
 ## Guardrails
 
 - MUST hold every lane edit until `## Lanes` reads `accepted`, on a first run and after a recovery.
-- Continue independent work after sending; otherwise end the turn and let the reply resume it. Never poll a pane. Never claim completion while an ask is open.
+- Continue independent work after sending; otherwise end the turn and let the reply resume it. An ask the next step needs arms the skill's timer (§ A stalled ask); never poll a pane. Never claim completion while an ask is open.
 - NEVER edit a file the peer owns: a patch through the skill's patch protocol instead.
 - NEVER claim "fixed", "passes" or "works" from a reading: run it, or write `🎯 unproven:`.
 - After compaction or an interruption: re-read the design file, `git status`, the diff and

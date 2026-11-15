@@ -355,11 +355,41 @@ survived. Never use a glob to clean `/tmp`.
 
 Do not poll or watch for one. The peer replying wakes this session up on its own, so a watcher
 only creates a deadlock where each agent waits for a pane the other will not move until it hears
-back.
+back. The one timed wake is a blocking ask's timer, § A stalled ask.
 
 A reply is also not promised. A model can decline to answer a message that arrived perfectly well,
 and nothing reports that on either side. Never describe a sent message as though an answer were
 owed, and never say the peer is "thinking about it" when all you know is that the line was typed.
+
+## A stalled ask
+
+An ask the work continues without needs nothing more. An ask whose answer the next step needs, a
+blocking ask, gets one timer, armed right after its send. The timer is not a watcher: it wakes this
+session once, and the session reads the panes once.
+
+- **Clock**: a wake every 5 minutes (`PEER_CHAT_WAKE_MINUTES`) up to a deadline 30 minutes after the
+  send (`PEER_CHAT_STALL_MINUTES`), both apart from `PEER_CHAT_DEFER_MINUTES`. One timer per ask id
+  (plus the design revision when the caller has one); re-arming replaces it, and a wake for an ask
+  that is already answered, or for an older revision, does nothing.
+- **Claude Code**: `sleep 300` as a background Bash command (`run_in_background`), the ask id and
+  the deadline in its description; its exit re-invokes the session.
+- **Codex**: there is no self-wake (a background job is a process wait of at most 60 s). Run a
+  bounded active wait inside the turn, or take the deadline row on the next turn.
+- **Never on a timer**: an experiment the peer is holding, or an ownership handover. Those wait for
+  the peer's own message.
+
+On each wake, the first row that applies wins:
+
+| Wake finds | Do |
+| --- | --- |
+| the reply already in this conversation | consume it; the timer ends |
+| own composer not empty | `peer-chat-paste.py --to peer --recover-delivery --slug <slug>`: exit 0 pressed Return on exactly the message the peer's transport recorded for this session and pane, which arrives as the next input; exit 1 other or extra text, or a collapsed paste whose text cannot be checked, left untouched: report it to the user in one line, then the next rows |
+| the deadline passed | stop waiting: a fresh peer pass or solo work, and the closing report names the ask as unanswered |
+| the peer pane `working` (`peer_turn` from `peer-chat-spawn.sh`) | re-arm |
+| the peer pane `idle` | one reminder through the transport, `#<ask id> still open: <question>`, then re-arm |
+
+A reply that lands after the deadline row ran is history: it reopens nothing already decided
+unless it shows a defect, and that defect is a new ask.
 
 ## What you may not do
 

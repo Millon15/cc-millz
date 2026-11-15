@@ -1,5 +1,17 @@
 # Changelog
 
+## peer-chat v0.7.6 - 2026-11-14
+
+### Added
+
+- `peer-chat-paste.py --recover-delivery --slug <slug>` presses Return on its own composer only when two reads, the second right before the key, both hold exactly the message the peer's transport recorded for this session and pane. It runs under the topic lock every send takes, so a newer send cannot replace the record between the check and its consumption. A collapsed paste marker hides its text and is never matched; any other text is left untouched. Exit 0 pressed, 1 untouched, 3 nothing to recover.
+- Every send with `--slug` records its exact pasted text as `outbox-<session>-<pane>.msg` beside the ask ledger, mode 0600.
+- Skill § A stalled ask: a blocking ask gets one timer (a 5-minute wake, a 30-minute deadline). On wake: consume a reply already in the conversation, recover a stuck delivery, re-arm while the peer works, remind an idle peer under the same ask id, or after the deadline go on with a fresh pass or solo and name the ask as unanswered. Codex has no self-wake and uses a bounded wait.
+
+### Changed
+
+- `/peer-chat:build` regenerated: its guardrail points a blocking ask at the stall timer.
+
 ## peer-chat v0.7.5 - 2026-11-12
 
 ### Added
