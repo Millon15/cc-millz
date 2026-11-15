@@ -54,6 +54,18 @@ freeze() { (cd "${REPO}" && python3 "${FREEZE}" --slug topic "$@"); }
     [ "$(git -C "${REPO}" diff --name-only HEAD "$(jq -r .tree <<<"${output}")")" = "a.txt" ]
 }
 
+@test "freeze: a same-size edit the index holds as racily clean lands in the tree" {
+    git -C "${REPO}" config core.trustctime false
+    touch -t 202001010000 "${REPO}/a.txt"
+    git -C "${REPO}" update-index --refresh
+    printf 'two\n' >"${REPO}/a.txt"
+    touch -t 202001010000 "${REPO}/a.txt" "${REPO}/.git/index"
+    [ "$(git -C "${REPO}" diff --name-only)" = "a.txt" ]
+    run freeze
+    [ "${status}" -eq 0 ]
+    [ "$(git -C "${REPO}" diff --name-only HEAD "$(jq -r .tree <<<"${output}")")" = "a.txt" ]
+}
+
 @test "fresh: usage error without --focus and --resume" {
     run bash "${FRESH}"
     [ "${status}" -eq 2 ]

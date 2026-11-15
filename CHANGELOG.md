@@ -1,5 +1,11 @@
 # Changelog
 
+## peer-chat v0.7.7 - 2026-11-14
+
+### Fixed
+
+- `peer-chat-freeze.py` copies the index with its mtime. A fresh mtime on the scratch copy hid git's racy-clean check, so an edit of the same size made in the same second as the last index write was left out of the frozen tree. `test-peer-chat-freeze.bats` failed 7 of 20 runs for this reason; a new case pins the racy entry with fixed timestamps and fails without the fix.
+
 ## peer-chat v0.7.6 - 2026-11-14
 
 ### Added
