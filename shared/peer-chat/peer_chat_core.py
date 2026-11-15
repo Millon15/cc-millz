@@ -342,6 +342,6 @@ def freeze_tree(repo: Path, pathspecs: list[str] | None = None) -> str:
         index = Path(scratch) / "index"
         real = git_index_path(repo)
         if real.exists():
-            shutil.copyfile(real, index)
+            shutil.copy2(real, index)
         git_with_index(repo, index, "add", "-A", "--", *(pathspecs or ["."]))
         return git_with_index(repo, index, "write-tree")

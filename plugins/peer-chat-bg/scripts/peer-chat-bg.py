@@ -25,7 +25,7 @@ ROLES = ("left", "right")
 SLUG = re.compile(r"[a-z0-9][a-z0-9-]{0,59}\Z")
 TERMINAL = {"acknowledged", "answered", "failed", "cancelled"}
 TRANSITIONS = {
-    "prepared": {"dispatching", "cancelled"},
+    "prepared": {"dispatching", "cancelled", "acknowledged", "answered"},
     "dispatching": {"submitted", "uncertain", "acknowledged", "answered", "failed"},
     "submitted": {"acknowledged", "answered", "uncertain"},
     "uncertain": {"submitted", "acknowledged", "answered", "failed"},
@@ -223,28 +223,46 @@ def locked(path):
 
 class MemoryLedger(Ledger):
     """Reuse the canonical ask parser/planner against the locked native snapshot."""
-    def __init__(self, state):
+    def __init__(self, state, sender=None, exclude_message=None):
         self.state = state
+        self.pending = in_flight_dispositions(state, sender, exclude_message)
 
     def load(self):
         return [Ask(**row) for row in self.state["asks"]]
+
+    def open_new_from(self, agent):
+        return [ask for ask in super().open_new_from(agent) if ask.id not in self.pending]
 
     def next_id(self, agent):
         return f'{agent}-{self.state["counters"][agent] + 1:03d}'
 
 
-def validate_dispositions(state, sender, plan):
+def in_flight_dispositions(state, sender, exclude_message):
+    return {disposition.id
+            for mid, message in state["messages"].items()
+            if mid != exclude_message and message["sender"] == sender
+            and message["state"] in ("prepared", "dispatching", "submitted", "uncertain")
+            and not message["dispositions_applied"]
+            for disposition in message_plan(message).dispositions}
+
+
+def validate_dispositions(state, sender, plan, allow_stale=False):
     asks = {ask["id"]: ask for ask in state["asks"]}
     seen = set()
+    stale = []
     for disposition in plan.dispositions:
         require(disposition.id not in seen, "duplicate disposition: " + disposition.id)
         seen.add(disposition.id)
         require(disposition.id in asks, "unknown ask: " + disposition.id)
         ask = asks[disposition.id]
         require(ask["asked_by"] != sender, "cannot dispose your own ask: " + disposition.id)
-        require(ask["disposition"] in ("", "deferred"), "ask already closed: " + disposition.id)
         require(disposition.kind == "answered" or disposition.reason,
                 "deferred/declined requires a reason: " + disposition.id)
+        if ask["disposition"] in ("answered", "declined") and allow_stale:
+            stale.append(disposition.id)
+            continue
+        require(ask["disposition"] in ("", "deferred"), "ask already closed: " + disposition.id)
+    return stale
 
 
 def actor_role(state, actor):
@@ -267,11 +285,31 @@ def activate_asks(state, message):
     message["asks_active"] = True
 
 
+def receipt_plan(state, message):
+    plan = message_plan(message)
+    stale = validate_dispositions(state, message["sender"], plan, allow_stale=True)
+    if stale:
+        message["stale_dispositions"] = list(dict.fromkeys(message.get("stale_dispositions", []) + stale))
+        plan.dispositions = [disposition for disposition in plan.dispositions if disposition.id not in stale]
+    return plan
+
+
+def record_dispatch(state, message, recheck=True):
+    binding = state["bindings"][message["recipient"]]
+    require(binding is not None, "bind the actual recipient ID before dispatching")
+    plan = receipt_plan(state, message)
+    if recheck:
+        from peer_chat_core import refuse_missing_dispositions
+        ledger = MemoryLedger(state, message["sender"], message["message_id"])
+        refuse_missing_dispositions(ledger, message["sender"], plan)
+    message["recipient_binding"] = dict(binding)
+    activate_asks(state, message)
+
+
 def apply_dispositions(state, message):
     if message["dispositions_applied"]:
         return
-    plan = message_plan(message)
-    validate_dispositions(state, message["sender"], plan)
+    plan = receipt_plan(state, message)
     asks = Ledger.apply_dispositions(MemoryLedger(state).load(), plan.dispositions, now_utc())
     state["asks"] = [asdict(ask) for ask in asks]
     message["dispositions_applied"] = True
@@ -327,7 +365,7 @@ def mutate(args, state, repo):
         lines = clean_lines(SimpleNamespace(label=f"Chat from {args.sender}: "), body)
         require(not any(is_ask(line) and ASK_ID_RE.search(line) for line in lines),
                 "new asks must not supply their own IDs")
-        ledger = MemoryLedger(state)
+        ledger = MemoryLedger(state, args.sender)
         plan = plan_body(lines, args.sender, ledger, now_utc(), width=0)
         validate_dispositions(state, args.sender, plan)
         state["counters"][args.sender] += len(plan.new_asks)
@@ -339,7 +377,8 @@ def mutate(args, state, repo):
                    "created_at": stamp(now_utc()), "receipts": []}
         state["messages"][mid] = message
         state["keys"][key] = mid
-        state["confirmations"] = {}
+        if plan.new_asks or not any(line.startswith("🏁") for line in plan.text.splitlines()):
+            state["confirmations"] = {}
         return message
     if args.command == "receipt":
         require(args.message_id in state["messages"], "unknown message ID")
@@ -359,16 +398,9 @@ def mutate(args, state, repo):
         late_submission = args.state == "submitted" and message["state"] in ("acknowledged", "answered")
         require(late_submission or args.state in TRANSITIONS[message["state"]],
                 f'invalid receipt transition {message["state"]} -> {args.state}; never resend blindly')
-        if args.state == "dispatching":
-            binding = state["bindings"][message["recipient"]]
-            require(binding is not None, "bind the actual recipient ID before dispatching")
-            message["recipient_binding"] = dict(binding)
-            plan = message_plan(message)
-            validate_dispositions(state, message["sender"], plan)
-            # Recheck asks received since prepare before authorizing a native call.
-            from peer_chat_core import refuse_missing_dispositions
-            refuse_missing_dispositions(MemoryLedger(state), message["sender"], plan)
-            activate_asks(state, message)
+        hand_back = message["state"] == "prepared" and args.state in ("acknowledged", "answered")
+        if args.state == "dispatching" or hand_back:
+            record_dispatch(state, message, recheck=not hand_back)
         if args.state in ("submitted", "acknowledged", "answered"):
             apply_dispositions(state, message)
         if args.state == "failed":
@@ -381,8 +413,10 @@ def mutate(args, state, repo):
             state["asks"] = [ask for ask in state["asks"] if ask["id"] not in own_ids]
         if not late_submission:
             message["state"] = args.state
-        message["receipts"].append({"state": args.state, "actor_id": args.actor_id,
-                                    "at": stamp(now_utc()), "evidence": proof})
+        receipt = {"state": args.state, "actor_id": args.actor_id, "at": stamp(now_utc()), "evidence": proof}
+        if hand_back:
+            receipt["via"] = "hand-back"
+        message["receipts"].append(receipt)
         return {**message, "dispatch_permitted": args.state == "dispatching"}
     if args.command == "check":
         require(args.name in state["checks"], "check was not declared by init")

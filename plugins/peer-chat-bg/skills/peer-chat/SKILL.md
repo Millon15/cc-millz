@@ -43,8 +43,9 @@ transport and lifecycle differ. This plugin does not require agterm or clipboard
    The helper stamps each `❓` question, records a durable message ID and returns exact `text`.
    Reusing the key with the same body is idempotent; different content must use another key.
 2. Spawn the peer with a short bootstrap: absolute skill path, repo, slug, run ID, parent
-   identity, requested model, allowed file scope and instruction to wait for the prepared
-   opening message. Record the tool result as an evidence file. Bind its actual returned ID:
+   identity, requested model, allowed file scope, instruction to wait for the prepared
+   opening message, and its delivery duty from steps 3-4: prepare every reply, record
+   `dispatching`, then deliver the exact prepared text with its message ID. Record the tool result as an evidence file. Bind its actual returned ID:
    `... bind --role right --agent-id REAL_CHILD_ID`. Do not duplicate a live topic's peer.
 3. Before sending prepared text, mark `... receipt --message-id ID --state dispatching
    --actor-id SENDER_ID`. Dispatch only when the fresh receipt returns `dispatch_permitted:true`; a replay is not
@@ -53,9 +54,19 @@ transport and lifecycle differ. This plugin does not require agterm or clipboard
    using `--evidence FILE`. Tool success means submission, not peer acknowledgment or answer.
    If acknowledgment arrives before this receipt write, record the late submission normally;
    it appends evidence without downgrading the stronger state or permitting another send.
+   A Claude child delivers by ending its turn with the prepared text as its final result, so
+   it records `dispatching` and never `submitted`; a Codex child delivers through
+   `send_message` and records `submitted` as above.
 4. On receiving the message, the recipient cites its message ID and records `acknowledged`
    with a real received-message artifact and its own `--actor-id`. The sender may retain
    an acknowledgment actually returned by the peer; never manufacture it from tool success.
+   The parent saves EVERY peer result it receives (a final result, a `send_message`
+   payload) to a file in the state directory and records `acknowledged`, or `answered`,
+   on that message ID with `--evidence` that file: finalize refuses while any message is
+   not terminal. A message the child left in `prepared` (it ended its turn before
+   `dispatching`) takes the same receipt from the recipient; the helper runs the skipped
+   dispatch bookkeeping and marks the row `"via": "hand-back"`. The sender itself can
+   never move its own `prepared` message to `acknowledged`.
 
 Opening message: question or task input; current position and alternatives; relevant `🔎`
 evidence paths; bounded ownership proposal; one `❓` asking the peer to accept or challenge it.
@@ -69,6 +80,11 @@ not an assumption that the child inherited the conversation.
 - Every new peer question gets `#role-NNN answered`, `deferred(reason)` or `declined(reason)`
   in the next prepared response. Include the substantive answer; a disposition alone is not it.
   Deferred/declined asks do not waive the underlying requirement or authorize scope expansion.
+  A disposition your own earlier message carries counts while that message is in flight
+  (`prepared`, `dispatching`, `submitted`, `uncertain`): the next prepare does not repeat it.
+  If that message ends `failed` or `cancelled`, the ask is open again and the next prepare
+  requires it. A disposition that reaches an ask another message already closed is skipped
+  and listed in the message's `stale_dispositions`; it does not block that receipt.
 - Both sides prepare responses through the helper before native delivery, including the
   helper's message ID. A native completion/final answer is the child's delivery vehicle when
   no persistent two-way message tool exists. Preserve that actual final result as evidence.
@@ -108,8 +124,10 @@ directly. Its receipts are evidence-backed records, not authentication or a sand
    nonignored file, modes, deletions and HEAD. Alternatively `git:<full-sha>` requires that
    HEAD and a clean worktree. Check/finalize revalidate actual files, not a caller label.
    Checks for an older target do not prove the final tree.
-2. Resolve all questions and uncertain messages. Each peer names the same unchanged final
-   target and runs `... finalize --target TARGET --actor-id OWN_REAL_ID --evidence FILE`.
+2. Resolve all questions and uncertain messages. Exchange the `🏁` closing messages FIRST,
+   then finalize: a prepared message with a `🏁` line and no new `❓` keeps the other side's
+   confirmation, while any other prepare, and every `check`, clears it. Each peer names the
+   same unchanged final target and runs `... finalize --target TARGET --actor-id OWN_REAL_ID --evidence FILE`.
    Evidence files must be nonempty, inside the consuming repo, and reflect the actual result;
    the helper records their SHA256. Keep them ignored and owner-private.
 3. Report completion only when the helper reports `phase: finalized`, every required check is green,

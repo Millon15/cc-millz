@@ -198,6 +198,126 @@ class ProtocolTests(unittest.TestCase):
         self.assertIn("no disposition", result["error"])
         self.assertEqual(self.call("status")["messages"][planned["message_id"]]["state"], "prepared")
 
+    def test_in_flight_answer_allows_followup_and_both_can_finalize(self):
+        self.deliver(self.prepare("❓ A question?"))
+        answer = self.prepare("#left-001 answered: yes", "right", "answer")
+        followup = self.prepare("A followup without repeating the answer", "right", "followup")
+        self.receipt(followup, "dispatching")
+        self.receipt(answer, "dispatching")
+        self.receipt(answer, "acknowledged")
+        self.receipt(followup, "acknowledged")
+        self.check()
+        self.finalize("parent-real-id")
+        self.assertEqual(self.finalize("child-real-id")["phase"], "finalized")
+
+    def test_uncertain_answer_still_counts_as_in_flight(self):
+        self.deliver(self.prepare("❓ A question?"))
+        answer = self.prepare("#left-001 answered: yes", "right", "answer")
+        self.receipt(answer, "dispatching")
+        self.receipt(answer, "uncertain")
+        followup = self.prepare("An independent followup", "right", "followup")
+        self.receipt(followup, "dispatching")
+        self.assertEqual(self.call("status")["open_asks"], ["left-001"])
+
+    def test_failed_in_flight_answer_reopens_prepare_and_dispatch_requirements(self):
+        self.deliver(self.prepare("❓ A question?"))
+        answer = self.prepare("#left-001 answered: yes", "right", "answer")
+        followup = self.prepare("An independent followup", "right", "followup")
+        self.receipt(answer, "dispatching")
+        self.receipt(answer, "failed")
+        self.assertIn("no disposition", self.receipt(followup, "dispatching", status=2)["error"])
+        result = self.call("prepare", "--sender", "right", "--key", "later", "--stdin",
+                           body="Another followup", status=2)
+        self.assertIn("no disposition", result["error"])
+
+    def test_cancelled_in_flight_answer_reopens_requirement(self):
+        self.deliver(self.prepare("❓ A question?"))
+        answer = self.prepare("#left-001 answered: yes", "right", "answer")
+        self.receipt(answer, "cancelled")
+        result = self.call("prepare", "--sender", "right", "--key", "later", "--stdin",
+                           body="Another followup", status=2)
+        self.assertIn("no disposition", result["error"])
+
+    def test_stale_disposition_at_dispatch_is_recorded_without_overwriting_answer(self):
+        self.deliver(self.prepare("❓ A question?"))
+        first = self.prepare("#left-001 answered: first answer", "right", "first")
+        second = self.prepare("#left-001 declined(second answer)", "right", "second")
+        self.deliver(first)
+        dispatched = self.receipt(second, "dispatching")
+        self.assertEqual(dispatched["stale_dispositions"], ["left-001"])
+        self.receipt(second, "submitted")
+        terminal = self.receipt(second, "acknowledged")
+        self.assertEqual(terminal["stale_dispositions"], ["left-001"])
+        self.assertEqual(terminal["state"], "acknowledged")
+        ask = self.call("status")["asks"][0]
+        self.assertEqual((ask["disposition"], ask["reason"]), ("answered", "first answer"))
+
+    def test_stale_disposition_at_terminal_receipt_is_recorded(self):
+        self.deliver(self.prepare("❓ A question?"))
+        first = self.prepare("#left-001 declined(already checked)", "right", "first")
+        second = self.prepare("#left-001 answered: yes", "right", "second")
+        self.receipt(second, "dispatching")
+        self.deliver(first)
+        terminal = self.receipt(second, "answered")
+        self.assertEqual(terminal["state"], "answered")
+        self.assertEqual(terminal["stale_dispositions"], ["left-001"])
+        self.assertEqual(self.call("status")["asks"][0]["disposition"], "declined")
+
+    def test_hand_back_activates_asks_applies_dispositions_and_records_recipient(self):
+        self.deliver(self.prepare("❓ A question?"))
+        for observed in ("acknowledged", "answered"):
+            with self.subTest(observed=observed):
+                body = "#left-001 answered: yes\n❓ A followup?" if observed == "acknowledged" else "A final result"
+                message = self.prepare(body, "right", observed)
+                self.assertIn("left", self.receipt(message, observed, actor="child-real-id", status=2)["error"])
+                terminal = self.receipt(message, observed)
+                self.assertEqual(terminal["state"], observed)
+                self.assertTrue(terminal["asks_active"])
+                self.assertTrue(terminal["dispositions_applied"])
+                self.assertEqual(terminal["recipient_binding"], {"agent_id": "parent-real-id", "generation": 1})
+                self.assertEqual(terminal["receipts"][-1]["via"], "hand-back")
+                self.assertTrue(self.receipt(message, observed)["replayed"])
+        self.assertEqual(self.call("status")["open_asks"], ["right-001"])
+
+    def test_hand_back_requires_evidence(self):
+        message = self.prepare("The returned result", "right", "result")
+        result = self.call("receipt", "--message-id", message["message_id"], "--state", "acknowledged",
+                           "--actor-id", "parent-real-id", status=2)
+        self.assertIn("requires --evidence", result["error"])
+        self.assertEqual(self.call("status")["messages"][message["message_id"]]["state"], "prepared")
+
+    def test_hand_back_does_not_recheck_new_missing_dispositions(self):
+        result = self.prepare("An already returned result", "right", "early")
+        self.deliver(self.prepare("❓ A later question?"))
+        self.receipt(result, "acknowledged")
+        self.assertEqual(self.call("status")["open_asks"], ["left-001"])
+        refused = self.call("prepare", "--sender", "right", "--key", "later", "--stdin",
+                            body="No answer yet", status=2)
+        self.assertIn("no disposition", refused["error"])
+
+    def test_closing_message_without_asks_keeps_confirmation_and_can_finalize(self):
+        self.exchange()
+        self.check()
+        self.finalize("parent-real-id")
+        closing = self.prepare("🏁 Checks and review complete", "right", "close")
+        self.assertIn("left", self.call("status")["confirmations"])
+        self.deliver(closing)
+        self.assertEqual(self.finalize("child-real-id")["phase"], "finalized")
+
+    def test_plain_message_clears_confirmation(self):
+        self.exchange()
+        self.check()
+        self.finalize("parent-real-id")
+        self.prepare("One more finding", "right", "finding")
+        self.assertEqual(self.call("status")["confirmations"], {})
+
+    def test_closing_message_with_new_ask_clears_confirmation(self):
+        self.exchange()
+        self.check()
+        self.finalize("parent-real-id")
+        self.prepare("🏁 Almost done\n❓ One more question?", "right", "question")
+        self.assertEqual(self.call("status")["confirmations"], {})
+
     def test_fast_ack_accepts_late_submission_receipt_without_downgrading(self):
         for observed in ("acknowledged", "answered"):
             message = self.prepare("A message without asks", key=observed)

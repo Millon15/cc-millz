@@ -1,5 +1,19 @@
 # Changelog
 
+## peer-chat-bg v0.1.7 - 2026-11-15
+
+### Fixed
+
+- A message whose disposition is still in flight no longer forces the next message to repeat it. `prepare` and the dispatch recheck count a disposition carried by the same sender's `prepared`, `dispatching`, `submitted` or `uncertain` message; if that message ends `failed` or `cancelled`, the ask is required again.
+- A disposition that reaches an ask another message already closed is skipped at receipt time and listed in the message's `stale_dispositions`, so the receipt goes terminal and `finalize` is reachable. A disposition for a closed ask still refuses at `prepare`.
+- The recipient can record `acknowledged` or `answered` on a `prepared` message, the hand-back case where a Claude child delivered by ending its turn. The helper runs the skipped dispatch bookkeeping, requires `--evidence`, and marks the receipt `"via": "hand-back"`. The sender still cannot.
+- A prepared message with a `🏁` line and no new `❓` keeps the other side's finalize confirmation; any other prepare, and every `check`, still clears it.
+- The shared `peer_chat_core.py` now carries the v0.7.7 `copy2` freeze fix, so peer-chat-bg ships it and `make test-generated` passes again.
+
+### Changed
+
+- The `peer-chat` skill states each side's delivery receipt, that the parent records a receipt for every peer result, and that the `🏁` messages come before `finalize`.
+
 ## peer-chat v0.7.9 - 2026-11-14
 
 ### Added

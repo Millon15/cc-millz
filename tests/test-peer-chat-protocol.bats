@@ -25,3 +25,12 @@ setup() {
     [ "$status" -eq 0 ]
     [ "$(printf '%s' "$output" | jq -r .plugin)" = peer-chat-bg ]
 }
+
+@test "background peer: skill names each side's delivery receipt and the closing order" {
+    local skill="$REPO_ROOT/plugins/peer-chat-bg/skills/peer-chat/SKILL.md"
+    grep -q 'records `dispatching` and never `submitted`' "$skill"
+    grep -q 'The parent saves EVERY peer result' "$skill"
+    grep -q '"via": "hand-back"' "$skill"
+    grep -q 'stale_dispositions' "$skill"
+    grep -q 'Exchange the `🏁` closing messages FIRST' "$skill"
+}
