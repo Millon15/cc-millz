@@ -1,5 +1,11 @@
 # Changelog
 
+## peer-chat v0.7.8 - 2026-11-14
+
+### Changed
+
+- `peer-chat-spawn.sh` no longer pins a Codex model. Without `--model`, `PEER_CHAT_PEER_MODEL` or `peer_model`, it launches `codex` with no `--model` flag, so the user's Codex config picks the model, the same way Claude already worked. The peer's label is `codex` unless a model was named.
+
 ## peer-chat v0.7.7 - 2026-11-14
 
 ### Fixed

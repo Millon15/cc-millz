@@ -89,7 +89,7 @@ def resolve_config(args):
     for key, env, default, cli in specs:
         values[key], sources[key] = resolve_value(profile, key, env, default, cli)
     values['peer_model'], sources['peer_model'] = resolve_value(
-        profile, 'peer_model', 'PEER_CHAT_PEER_MODEL', default_model(values['peer_harness']), args.model)
+        profile, 'peer_model', 'PEER_CHAT_PEER_MODEL', None, args.model)
     values['peer_fallback'], sources['peer_fallback'] = resolve_value(
         profile, 'peer_fallback', 'PEER_CHAT_PEER_FALLBACK', other_harness(values['peer_harness']), args.fallback)
     if sources['peer_args'].startswith('detected:env:'):
@@ -102,10 +102,6 @@ def resolve_config(args):
     return Config(path, values, sources)
 
 
-def default_model(harness):
-    return 'gpt-6-astra' if harness == 'codex' else None
-
-
 def other_harness(harness):
     return 'claude:fable' if harness == 'codex' else 'codex'
 
@@ -114,7 +110,7 @@ def parse_peer(value):
     harness, separator, model = value.partition(':')
     if harness not in ('claude', 'codex') or (separator and not model):
         raise Failure(f'peer_fallback must be none, claude[:model] or codex[:model], got {value!r}', 2)
-    return harness, (model if separator else default_model(harness))
+    return harness, (model or None)
 
 
 def valid_text(value):

@@ -37,7 +37,7 @@ the user in one line what was written.
 This session needs a split with a peer agent in the other pane. Open it yourself:
 
 ```bash
-bash "${CLAUDE_PLUGIN_ROOT}/scripts/peer-chat-spawn.sh"                     # codex, gpt-6-astra
+bash "${CLAUDE_PLUGIN_ROOT}/scripts/peer-chat-spawn.sh"                     # codex, model from its own config
 bash "${CLAUDE_PLUGIN_ROOT}/scripts/peer-chat-spawn.sh" claude:fable         # a Claude peer
 bash "${CLAUDE_PLUGIN_ROOT}/scripts/peer-chat-spawn.sh" --harness codex --model gpt-5.6-sol
 ```
@@ -63,7 +63,7 @@ Set `codex_mode` to `daemon` in `.peer-chat.json`, or `PEER_CHAT_CODEX_MODE=daem
 connect to the shared local daemon. Explicit `"--no-daemon"` in `peer_args` keeps embedded mode.
 Use embedded mode for `--profile`, `--oss`, `--strict-config` and `--dangerously-bypass-hook-trust`.
 When the requested harness cannot start, the script falls back on its own to the other harness
-(`claude:fable` for a Codex request, `codex` on `gpt-6-astra` for a Claude request; `--fallback
+(`claude:fable` for a Codex request, `codex` for a Claude request; `--fallback
 <harness[:model]>`, `PEER_CHAT_PEER_FALLBACK` or `peer_fallback` change it, `--no-fallback` turns it
 off). Fallback covers a missing harness executable, a failed or timed-out Codex daemon start, a harness that does not
 appear in the pane within `start_timeout`, or the other pane already runs the fallback harness (then
@@ -149,7 +149,7 @@ right. A missing session or window triggers **Recovering a stale session** below
 at reporting a stale id when the live conversation can be verified.
 
 Do not write the `Chat from …:` label yourself. The script adds `Chat from <name>: `, where the name
-is `PEER_CHAT_NAME` (the spawn sets it for the peer it launches, e.g. `codex gpt-6-astra`) or
+is `PEER_CHAT_NAME` (the spawn sets it for the peer it launches: `codex`, or `codex gpt-5.6-sol` when a model was named) or
 `<harness> (<pane>)`, and that label lets the peer read the message as conversation instead of as
 a fresh instruction from the user.
 

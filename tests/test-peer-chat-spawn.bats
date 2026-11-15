@@ -119,14 +119,13 @@ assert_launch_arg() {
     done
 }
 
-@test "spawn: default opens a missing split and explicitly selects gpt-6-astra" {
+@test "spawn: default opens a missing split and leaves the model to the Codex config" {
     set_state '.hasSplit=false | .split=false'
     run bash "$SPAWN"
     assert_status 0
     assert_contains "$output" '"state":"started"'
     assert_launch_arg codex
-    assert_launch_arg --model
-    assert_launch_arg gpt-6-astra
+    jq -e 'index("--model") == null' "$TMP/launch.json" >/dev/null
     assert_launch_arg --no-daemon
     jq -e 'index("--remote") == null' "$TMP/launch.json" >/dev/null
     [ ! -e "$TMP/daemon-calls.txt" ]
@@ -143,7 +142,7 @@ assert_launch_arg() {
     assert_launch_arg "shell_environment_policy.set.AGTERM_WINDOW_ID=\"$WID\""
     assert_launch_arg 'shell_environment_policy.set.AGTERM_PANE="right"'
     assert_launch_arg 'shell_environment_policy.set.AGTERM_ENABLED="1"'
-    assert_launch_arg 'shell_environment_policy.set.PEER_CHAT_NAME="codex gpt-6-astra"'
+    assert_launch_arg 'shell_environment_policy.set.PEER_CHAT_NAME="codex"'
     assert_launch_arg 'shell_environment_policy.set.PEER_CHAT_CODEX_COMMAND="codex-wrapper"'
     assert_launch_arg --no-daemon
     [ ! -e "$TMP/daemon-calls.txt" ]
@@ -484,7 +483,7 @@ assert_launch_arg() {
     assert_explain_source "$output" codex_mode default
     [ "$(printf '%s' "$output" | jq -r .values.codex_mode)" = embedded ]
     assert_explain_source "$output" peer_model default
-    [ "$(printf '%s' "$output" | jq -r '.values.peer_model')" = gpt-6-astra ]
+    [ "$(printf '%s' "$output" | jq -r '.values.peer_model')" = null ]
     [ "$(printf '%s' "$output" | jq -r '.values.start_timeout')" = 30 ]
     [ ! -e "$TMP/calls.jsonl" ]
     [ ! -e "$TMP/daemon-calls.txt" ]
