@@ -1,5 +1,11 @@
 # Changelog
 
+## toolsmith v0.1.2 - 2026-11-15
+
+### Fixed
+
+- The skill finder checks that Bun runs before starting a search. A broken or inactive runtime now reports the first stderr line from `bun --version`, or its exit status when stderr is empty, followed by an activation hint. It exits 1 and leaves stdout empty.
+
 ## peer-chat-bg v0.1.7 - 2026-11-15
 
 ### Fixed

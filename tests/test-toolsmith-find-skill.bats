@@ -20,6 +20,7 @@
 # The `--exact` collision mode has its own suite, tests/test-toolsmith-exact.bats.
 
 setup_file() {
+	bats_require_minimum_version 1.5.0
 	export FIXROOT="${BATS_FILE_TMPDIR}/fixtures"
 	mkdir -p "${FIXROOT}"
 	bash "${BATS_TEST_DIRNAME}/fixtures/toolsmith/setup.sh" "${FIXROOT}" >/dev/null
@@ -59,6 +60,59 @@ need_bun() { command -v bun >/dev/null 2>&1 || skip "bun is not installed"; }
 	assert_contains "${output}" "usage: find-skill.sh"
 	assert_contains "${output}" "--exact"
 	assert_contains "${output}" "--root"
+}
+
+@test "toolsmith find: missing bun reports installation guidance on stderr only" {
+	ln -s /usr/bin/dirname "${STUB_BIN}/dirname"
+	run --separate-stderr /usr/bin/env PATH="${STUB_BIN}" /bin/bash "${FS}" query
+	assert_status 1
+	[ -z "${output}" ]
+	[ "${stderr}" = 'find-skill: bun is not installed; see https://bun.sh' ]
+}
+
+@test "toolsmith find: broken bun reports its first stderr line and activation guidance" {
+	stub bun '
+if [ "$1" = --version ]; then
+    printf "%s\n" "unwanted version stdout"
+    printf "%s\n" "mise ERROR No version is set for bun" "second diagnostic" >&2
+    exit 17
+fi
+printf "%s\n" "engine launched"
+exit 99'
+	run --separate-stderr /bin/bash "${FS}" query
+	assert_status 1
+	[ -z "${output}" ]
+	[ "${stderr}" = $'find-skill: bun does not run: mise ERROR No version is set for bun\nfind-skill: activate it (for mise: mise use -g bun@latest) or install it from https://bun.sh' ]
+}
+
+@test "toolsmith find: healthy bun forwards arguments without leaking the version probe" {
+	stub bun '
+if [ "$1" = --version ]; then
+    printf "%s\n" "1.4.4"
+    printf "%s\n" "version warning" >&2
+    exit 0
+fi
+printf "%s\n" "$@"'
+	run --separate-stderr /bin/bash "${FS}" "two words" --limit 2
+	assert_status 0
+	[ "${output}" = "${ENGINE}"$'\ntwo words\n--limit\n2' ]
+	[ -z "${stderr}" ]
+}
+
+@test "toolsmith find: silent bun failure reports its exit status" {
+	stub bun 'exit 3'
+	run --separate-stderr /bin/bash "${FS}" query
+	assert_status 1
+	[ -z "${output}" ]
+	[ "${stderr}" = $'find-skill: bun does not run: bun --version exited 3\nfind-skill: activate it (for mise: mise use -g bun@latest) or install it from https://bun.sh' ]
+}
+
+@test "toolsmith find: help does not need a working bun" {
+	stub bun 'exit 17'
+	run --separate-stderr /bin/bash "${FS}"
+	assert_status 0
+	assert_contains "${output}" "usage: find-skill.sh"
+	[ -z "${stderr}" ]
 }
 
 @test "toolsmith find: the wrapper hard-codes no home directory and no origin-project path" {

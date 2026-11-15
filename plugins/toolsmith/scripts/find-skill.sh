@@ -10,7 +10,7 @@
 # toolsmith.sh which layout this project has, so nothing here names a directory.
 #
 # Exit codes: 0 on a completed search (no hits is a result, not a failure);
-# 2 on bad usage; 1 when bun is missing.
+# 2 on bad usage; 1 when bun is missing or cannot run.
 
 set -uo pipefail
 
@@ -25,7 +25,16 @@ if [ "$#" -eq 0 ]; then
 fi
 
 if ! command -v bun >/dev/null 2>&1; then
-	echo "find-skill: bun is not installed — see https://bun.sh" >&2
+	echo "find-skill: bun is not installed; see https://bun.sh" >&2
+	exit 1
+fi
+
+BUN_STATUS=0
+BUN_ERROR="$(bun --version 2>&1 >/dev/null)" || BUN_STATUS=$?
+if [ "${BUN_STATUS}" -ne 0 ]; then
+	BUN_ERROR="${BUN_ERROR%%$'\n'*}"
+	printf 'find-skill: bun does not run: %s\n' "${BUN_ERROR:-bun --version exited ${BUN_STATUS}}" >&2
+	echo "find-skill: activate it (for mise: mise use -g bun@latest) or install it from https://bun.sh" >&2
 	exit 1
 fi
 
