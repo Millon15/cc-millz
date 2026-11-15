@@ -6,7 +6,7 @@ description: >
   fix by owner, record every acceptance check, commit under the project's policy. Use after a
   design is agreed in chat, a plan file or a ticket: "implement the design with the peer",
   "build this with codex", "pair on the implementation".
-argument-hint: "[<design file | ticket url or key>] [--slug <topic>] [--peer <harness[:model]>]"
+argument-hint: "[<design file | ticket url or key>] [<harness>(<model>)] [--slug <topic>]"
 model: opus
 ---
 
@@ -22,7 +22,10 @@ adds the build flow; where the two disagree, the skill wins.
 
 ## Input
 
-`$ARGUMENTS`: `[<design>] [--slug <topic>] [--peer <harness[:model]>]`. `<design>` is a file path, a
+`$ARGUMENTS`: `[<design>] [<peer>] [--slug <topic>]`. `<peer>` is `claude` or `codex`, with an
+optional model in parentheses (`codex(sol-6.1)`); a word matching `^(claude|codex)(\(.+\))?$` is the
+peer, anything else is the design. `--peer <harness[:model]>` is the older spelling of the same
+value. `<design>` is a file path, a
 ticket url or key (fetched with the project's tracker tooling), or empty: the one proposal the user
 approved in this conversation. Several incompatible proposals: ask the user which, before the first
 send. `--slug` defaults to the design title in kebab-case, at most four words; every send of this

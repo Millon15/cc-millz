@@ -59,14 +59,14 @@ def outputs():
             "peer-chat",
             "peer in the other pane",
             '1. `Skill(skill="peer-chat:peer-chat")`, then its Preflight.\n'
-            '2. Peer: the skill\'s spawn step; `--peer <harness[:model]>` passes through. `"state":"already"` is fine.',
+            '2. Peer: the skill\'s spawn step with `<peer>`, its model mapped as the skill\'s § Bringing a peer in says. `"state":"already"` is fine, except for a model the user named: the skill\'s restart rule applies.',
             "Continue independent work after sending; otherwise end the turn and let the reply resume it. An ask the next step needs arms the skill's timer (§ A stalled ask); never poll a pane.",
         ),
         (
             "peer-chat-bg",
             "background peer",
             "1. Load `peer-chat-bg:peer-chat` (Claude: `Skill`; Codex: read `../peer-chat/SKILL.md` relative to this skill).\n"
-            "2. Complete its preflight and bind the returned native child identity. `--peer` selects a host-supported model, not another runtime.",
+            "2. Complete its preflight and bind the returned native child identity. `<peer>` or `--peer` selects a host-supported model, not another runtime.",
             "Continue independent work after sending. Use the host completion/yield mechanism; use a bounded native wait only when the next step is blocked. Do not loop-poll.",
         ),
     ):

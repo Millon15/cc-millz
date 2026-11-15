@@ -28,27 +28,31 @@ class Config:
     sources: dict
 
 
+PEER_FORMS = 'claude | codex | <h>:<model> | <h>(<model>)'
+
+
 def arguments():
     parser = argparse.ArgumentParser(description='Start a peer in the other agterm pane.')
-    parser.add_argument('peer', nargs='?', help='claude[:model] or codex[:model]')
+    parser.add_argument('peer', nargs='?', help=PEER_FORMS)
     parser.add_argument('--harness', choices=('claude', 'codex'))
     parser.add_argument('--model')
     parser.add_argument('--restart', action='store_true')
     parser.add_argument('--explain', action='store_true')
     fallback = parser.add_mutually_exclusive_group()
-    fallback.add_argument('--fallback', help='harness[:model] to start when the peer cannot; default: the other harness')
+    fallback.add_argument('--fallback', help=f'{PEER_FORMS} to start when the peer cannot; default: the other harness')
     fallback.add_argument('--no-fallback', action='store_const', const='none', dest='fallback')
     args = parser.parse_args(sys.argv[2:])
-    if args.peer:
-        harness, separator, model = args.peer.partition(':')
-        if harness not in ('claude', 'codex') or (separator and not model):
-            parser.error('peer must be claude[:model] or codex[:model]')
+    if args.peer is not None:
+        try:
+            harness, model = parse_peer(args.peer)
+        except Failure as error:
+            parser.error(str(error))
         if args.harness and args.harness != harness:
             parser.error('positional peer conflicts with --harness')
-        if args.model and separator and args.model != model:
+        if args.model is not None and model is not None and args.model != model:
             parser.error('positional peer conflicts with --model')
         args.harness = harness
-        args.model = args.model if args.model is not None else (model if separator else None)
+        args.model = args.model if args.model is not None else model
     return args
 
 
@@ -103,14 +107,23 @@ def resolve_config(args):
 
 
 def other_harness(harness):
-    return 'claude:fable' if harness == 'codex' else 'codex'
+    return 'claude' if harness == 'codex' else 'codex'
 
 
-def parse_peer(value):
-    harness, separator, model = value.partition(':')
-    if harness not in ('claude', 'codex') or (separator and not model):
-        raise Failure(f'peer_fallback must be none, claude[:model] or codex[:model], got {value!r}', 2)
-    return harness, (model or None)
+def parse_peer(value, setting='peer'):
+    match = re.fullmatch(r'(claude|codex)(?::([^()]+)|\(([^()]+)\))?', value) if isinstance(value, str) else None
+    if match:
+        harness, colon_model, parenthesised_model = match.groups()
+        model = colon_model if colon_model is not None else parenthesised_model
+        if model is None or valid_model(model):
+            return harness, model
+    forms = f'none | {PEER_FORMS}' if setting == 'peer_fallback' else PEER_FORMS
+    raise Failure(f'{setting} must be {forms}, got {value!r}', 2)
+
+
+def valid_model(value):
+    return (valid_text(value) and not value.startswith('-')
+            and not any(c in '()' or 127 <= ord(c) <= 159 for c in value))
 
 
 def valid_text(value):
@@ -123,13 +136,11 @@ def validate_config(values):
     if values['codex_mode'] not in ('embedded', 'daemon'):
         raise Failure('codex_mode must be embedded or daemon', 2)
     model = values['peer_model']
-    if model is not None and (not valid_text(model) or model.startswith('-')):
+    if model is not None and not valid_model(model):
         raise Failure('peer_model must be a nonempty model name', 2)
     fallback = values['peer_fallback']
-    if not valid_text(fallback):
-        raise Failure('peer_fallback must be none, claude[:model] or codex[:model]', 2)
     if fallback != 'none':
-        parse_peer(fallback)
+        parse_peer(fallback, 'peer_fallback')
     argv = values['peer_args']
     if not isinstance(argv, list) or not all(isinstance(v, str) and not any(ord(c) < 32 for c in v) for v in argv):
         raise Failure('peer_args must be an array of strings without control characters', 2)

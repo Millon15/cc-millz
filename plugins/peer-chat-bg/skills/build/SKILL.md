@@ -1,7 +1,7 @@
 ---
 name: build
 description: Implement an agreed design with a peer through accepted lanes, frozen cross-review targets and recorded QA.
-argument-hint: "[<design file | ticket url or key>] [--slug <topic>] [--peer <harness[:model]>]"
+argument-hint: "[<design file | ticket url or key>] [<harness>(<model>)] [--slug <topic>]"
 model: opus
 ---
 <!-- Generated from shared/peer-chat/build.md; edit the source and run scripts/sync-peer-chat-protocol.py. -->
@@ -17,13 +17,16 @@ adds the build flow; where the two disagree, the skill wins.
 ## Engine
 
 1. Load `peer-chat-bg:peer-chat` (Claude: `Skill`; Codex: read `../peer-chat/SKILL.md` relative to this skill).
-2. Complete its preflight and bind the returned native child identity. `--peer` selects a host-supported model, not another runtime.
+2. Complete its preflight and bind the returned native child identity. `<peer>` or `--peer` selects a host-supported model, not another runtime.
 
 The paths below use the default `tmp/peer-chat-bg`. Substitute `values.state_dir` from `BG --explain` when configured. The ask/message ledger is `<state_dir>/<slug>/state.json`, not a TSV file. Use the engine's target/check/finalize commands to validate the unchanged integrated tree and close both peer confirmations.
 
 ## Input
 
-`$ARGUMENTS`: `[<design>] [--slug <topic>] [--peer <harness[:model]>]`. `<design>` is a file path, a
+`$ARGUMENTS`: `[<design>] [<peer>] [--slug <topic>]`. `<peer>` is `claude` or `codex`, with an
+optional model in parentheses (`codex(sol-6.1)`); a word matching `^(claude|codex)(\(.+\))?$` is the
+peer, anything else is the design. `--peer <harness[:model]>` is the older spelling of the same
+value. `<design>` is a file path, a
 ticket url or key (fetched with the project's tracker tooling), or empty: the one proposal the user
 approved in this conversation. Several incompatible proposals: ask the user which, before the first
 send. `--slug` defaults to the design title in kebab-case, at most four words; every send of this

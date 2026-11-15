@@ -191,7 +191,11 @@ codex_plugin_cache() { # codex_plugin_cache [<cached body file>] [true|false]
     assert_contains "${body}" 'peer-chat-install.sh" --check'
     assert_contains "${body}" 'peer-chat-spawn.sh"'
     assert_contains "${body}" "codex, model from its own config"
-    assert_contains "${body}" "claude:fable"
+    assert_contains "${body}" "/peer-chat codex(sol-6.1)"
+    assert_contains "${body}" "yours to map"
+    assert_contains "${body}" "'codex(gpt-5.6-sol)'"
+    assert_not_contains "${body}" "claude:fable"
+    assert_contains "${body}" "only while \`peer_turn\` is \`idle\`; \`working\` or \`unknown\` asks the user first"
     assert_contains "${body}" "--harness codex --model"
     assert_contains "${body}" "--restart"
     assert_contains "${body}" "--explain"

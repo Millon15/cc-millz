@@ -1,5 +1,23 @@
 # Changelog
 
+## peer-chat v0.7.9 - 2026-11-14
+
+### Added
+
+- `/peer-chat` takes an optional peer argument, `claude` or `codex` with a model in parentheses: `/peer-chat codex(sol-6.1)`. It names the other pane only. The calling agent maps a shorthand model to the id the harness CLI accepts, says the mapping in one line, and passes the id; the script maps nothing.
+- `/peer-chat:build [<design>] [<peer>] [--slug <topic>]` takes the same argument; `--peer <harness[:model]>` stays as the older spelling.
+- `peer-chat-spawn.sh` accepts `harness(model)` wherever it accepts `harness[:model]`: the positional peer, `--fallback`, `PEER_CHAT_PEER_FALLBACK` and `peer_fallback`.
+
+### Changed
+
+- The fallback for a Codex request is bare `claude`, no longer `claude:fable`, so no default path passes `--model` to either harness.
+
+## peer-chat-bg v0.1.6 - 2026-11-14
+
+### Changed
+
+- `/peer-chat-bg:build` regenerated: it takes the optional `<peer>` argument, which selects a host-supported model.
+
 ## peer-chat v0.7.8 - 2026-11-14
 
 ### Changed

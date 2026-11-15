@@ -67,3 +67,10 @@ setup() {
     assert_contains "${bg}" "--since <previous token>"
     assert_not_contains "${bg}" "peer-chat-fresh.sh"
 }
+
+@test "peer-chat build: takes an optional peer argument with a model in parentheses" {
+    assert_contains "${body}" 'argument-hint: "[<design file | ticket url or key>] [<harness>(<model>)] [--slug <topic>]"'
+    assert_contains "${body}" '`^(claude|codex)(\(.+\))?$`'
+    assert_contains "${body}" "spawn step with \`<peer>\`, its model mapped"
+    assert_contains "${body}" "older spelling of the same"
+}

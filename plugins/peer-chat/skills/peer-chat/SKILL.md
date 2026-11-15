@@ -1,6 +1,7 @@
 ---
 name: peer-chat
 description: 'Hold a back-and-forth conversation, as equals, with the coding agent (Claude Code or Codex, any model) in the other pane of this agterm split, opening that pane yourself when it is missing. Use when the user says "chat with codex", "talk to claude", "work with codex", "do this with claude", "start two claudes", "discuss this with a peer", "get a colleague on this", when a prompt arrives starting with "Chat from ", or on your own when a call would be better for an adversary: a design with two defensible options, a root cause nobody has tried to disprove, a diff about to ship with no reviewer, an investigation whose reading can be split. Not for a one-shot task handed to another agent, and not for a read-only second opinion (use a review skill for those).'
+argument-hint: "[<harness>(<model>)]"
 allowed-tools: Bash, Read, Grep, Glob
 ---
 
@@ -38,11 +39,22 @@ This session needs a split with a peer agent in the other pane. Open it yourself
 
 ```bash
 bash "${CLAUDE_PLUGIN_ROOT}/scripts/peer-chat-spawn.sh"                     # codex, model from its own config
-bash "${CLAUDE_PLUGIN_ROOT}/scripts/peer-chat-spawn.sh" claude:fable         # a Claude peer
+bash "${CLAUDE_PLUGIN_ROOT}/scripts/peer-chat-spawn.sh" claude              # a Claude peer, model from its own config
+bash "${CLAUDE_PLUGIN_ROOT}/scripts/peer-chat-spawn.sh" 'codex(gpt-5.6-sol)'   # a named model; same as codex:gpt-5.6-sol
 bash "${CLAUDE_PLUGIN_ROOT}/scripts/peer-chat-spawn.sh" --harness codex --model gpt-5.6-sol
 ```
 
-It works from either pane and prints one JSON object. `"state":"already"` means the requested
+The user may name the peer when invoking this skill: `/peer-chat codex(sol-6.1)` or
+`/peer-chat claude(fable-5.2)`, a harness (`claude` or `codex`) with an optional model in
+parentheses. The argument names the other pane only; this session stays as it is. A model the user
+wrote as shorthand is yours to map: turn it into the id that harness's CLI accepts, from what you
+know of its models, say the mapping in one line (`sol-6.1 → gpt-6.1-sol`), then pass the id. The
+script passes a model verbatim and maps nothing. Quote the parenthesised form in the shell. No
+argument: no model flag, and the harness's own config picks the model. `"state":"already"` does not
+check the running peer's model: when the user named one, spawn again with `--restart`, which that
+request authorizes only while `peer_turn` is `idle`; `working` or `unknown` asks the user first.
+
+The script works from either pane and prints one JSON object. `"state":"already"` means the requested
 harness already runs in the other pane; a different harness there needs `--restart`, and any other
 program there is refused. Otherwise it opens that pane, types one launch line with the pane's
 session context injected, waits until agterm reports the requested harness in the foreground, and
@@ -63,8 +75,8 @@ Set `codex_mode` to `daemon` in `.peer-chat.json`, or `PEER_CHAT_CODEX_MODE=daem
 connect to the shared local daemon. Explicit `"--no-daemon"` in `peer_args` keeps embedded mode.
 Use embedded mode for `--profile`, `--oss`, `--strict-config` and `--dangerously-bypass-hook-trust`.
 When the requested harness cannot start, the script falls back on its own to the other harness
-(`claude:fable` for a Codex request, `codex` for a Claude request; `--fallback
-<harness[:model]>`, `PEER_CHAT_PEER_FALLBACK` or `peer_fallback` change it, `--no-fallback` turns it
+(`claude` for a Codex request, `codex` for a Claude request, neither with a model; `--fallback
+<harness[:model]>` or `--fallback '<harness>(<model>)'`, `PEER_CHAT_PEER_FALLBACK` or `peer_fallback` change it, `--no-fallback` turns it
 off). Fallback covers a missing harness executable, a failed or timed-out Codex daemon start, a harness that does not
 appear in the pane within `start_timeout`, or the other pane already runs the fallback harness (then
 `"state":"already"` names it). The result carries `fallback_from` and stderr says why; tell the

@@ -11,7 +11,7 @@ setup() {
     export PEER_CHAT_START_TIMEOUT=1 PEER_CHAT_QUIT_SETTLE=0.2
     export CLAUDE_CONFIG_DIR="$TMP/claude"
     export CODEX_HOME="$TMP/codex home"
-    unset PEER_CHAT_CODEX_MODE
+    unset PEER_CHAT_CODEX_MODE PEER_CHAT_PEER_FALLBACK
     unset PEER_CHAT_PEER_HARNESS PEER_CHAT_PEER_MODEL PEER_CHAT_PEER_ARGS
     unset PEER_CHAT_CODEX_ARGS PEER_CHAT_CODEX_COMMAND PEER_CHAT_CLAUDE_COMMAND
     stub codex 'printf "%s\n" "$*" >> "$TMP/daemon-calls.txt"'
@@ -332,19 +332,21 @@ assert_launch_arg() {
     assert_contains "$output" '"state":"already"'
     assert_contains "$output" '"harness":"claude"'
     assert_contains "$output" '"fallback_from":"codex"'
-    assert_contains "$output" 'falling back to claude:fable'
+    assert_contains "$output" 'falling back to claude'
+    assert_contains "$output" '"requested_model":null'
     [ ! -e "$TMP/typed.jsonl" ]
 }
 
-@test "spawn: a missing codex executable falls back to claude:fable" {
+@test "spawn: a missing codex executable falls back to Claude using its own model config" {
     PEER_CHAT_CODEX_COMMAND=peer-chat-nonexistent-test-binary run bash "$SPAWN"
     assert_status 0
     assert_contains "$output" '"state":"started"'
     assert_contains "$output" '"harness":"claude"'
-    assert_contains "$output" '"requested_model":"fable"'
+    assert_contains "$output" '"requested_model":null'
     assert_contains "$output" '"fallback_from":"codex"'
     assert_launch_arg claude
-    assert_launch_arg fable
+    assert_launch_arg PEER_CHAT_NAME=claude
+    jq -e 'index("--model") == null' "$TMP/launch.json" >/dev/null
 }
 
 @test "spawn: a codex that never appears falls back once, and the fallback itself never falls back" {
@@ -483,6 +485,8 @@ assert_launch_arg() {
     assert_explain_source "$output" codex_mode default
     [ "$(printf '%s' "$output" | jq -r .values.codex_mode)" = embedded ]
     assert_explain_source "$output" peer_model default
+    assert_explain_source "$output" peer_fallback default
+    [ "$(printf '%s' "$output" | jq -r '.values.peer_fallback')" = claude ]
     [ "$(printf '%s' "$output" | jq -r '.values.peer_model')" = null ]
     [ "$(printf '%s' "$output" | jq -r '.values.start_timeout')" = 30 ]
     [ ! -e "$TMP/calls.jsonl" ]
@@ -510,6 +514,7 @@ assert_launch_arg() {
     run bash "$SPAWN" --harness claude --explain
     assert_status 0
     [ "$(printf '%s' "$output" | jq -r '.values.peer_model')" = null ]
+    [ "$(printf '%s' "$output" | jq -r '.values.peer_fallback')" = codex ]
 }
 
 @test "config: invalid harness, arguments, model and profile are rejected before terminal IO" {
@@ -579,5 +584,152 @@ PY
     assert_status 0
     assert_explain_source "$output" codex_mode detected:env:PEER_CHAT_CODEX_MODE
     [ "$(printf '%s' "$output" | jq -r .values.codex_mode)" = embedded ]
+    [ ! -e "$TMP/calls.jsonl" ]
+}
+
+@test "spawn: parenthesised and colon peers pass the exact model and label to either harness" {
+    for harness in claude codex; do
+        for peer in "$harness(gpt-x)" "$harness:gpt-x"; do
+            set_pair claude ""
+            run bash "$SPAWN" "$peer"
+            assert_status 0
+            assert_contains "$output" '"requested_model":"gpt-x"'
+            jq -e 'index("--model") as $i | $i != null and .[$i + 1] == "gpt-x"' "$TMP/launch.json" >/dev/null
+            if [ "$harness" = claude ]; then
+                assert_launch_arg 'PEER_CHAT_NAME=claude gpt-x'
+            else
+                assert_launch_arg 'shell_environment_policy.set.PEER_CHAT_NAME="codex gpt-x"'
+            fi
+        done
+    done
+}
+
+@test "spawn: bare peers omit the model flag and use a bare label for either harness" {
+    for harness in claude codex; do
+        set_pair claude ""
+        run bash "$SPAWN" "$harness"
+        assert_status 0
+        assert_contains "$output" '"requested_model":null'
+        jq -e 'index("--model") == null' "$TMP/launch.json" >/dev/null
+        if [ "$harness" = claude ]; then
+            assert_launch_arg PEER_CHAT_NAME=claude
+        else
+            assert_launch_arg 'shell_environment_policy.set.PEER_CHAT_NAME="codex"'
+        fi
+    done
+}
+
+@test "spawn: a missing Claude falls back to Codex using its own model config" {
+    set_pair codex ""
+    PEER_CHAT_CLAUDE_COMMAND=peer-chat-nonexistent-test-binary run bash "$SPAWN" claude
+    assert_status 0
+    assert_contains "$output" '"harness":"codex"'
+    assert_contains "$output" '"fallback_from":"claude"'
+    assert_contains "$output" '"requested_model":null'
+    assert_launch_arg 'shell_environment_policy.set.PEER_CHAT_NAME="codex"'
+    jq -e 'index("--model") == null' "$TMP/launch.json" >/dev/null
+}
+
+@test "spawn: all fallback sources accept both model forms and preserve the id" {
+    export PEER_CHAT_CODEX_COMMAND=peer-chat-nonexistent-test-binary
+    for source in cli env profile; do
+        for peer in 'claude(opus)' 'claude:opus'; do
+            set_pair claude ""
+            case "$source" in
+                cli) run bash "$SPAWN" --fallback "$peer" ;;
+                env) PEER_CHAT_PEER_FALLBACK="$peer" run bash "$SPAWN" ;;
+                profile)
+                    jq -n --arg peer "$peer" '{peer_fallback:$peer}' > "$TMP/.peer-chat.json"
+                    run bash "$SPAWN"
+                    ;;
+            esac
+            assert_status 0
+            assert_contains "$output" '"requested_model":"opus"'
+            assert_launch_arg 'PEER_CHAT_NAME=claude opus'
+            jq -e 'index("--model") as $i | $i != null and .[$i + 1] == "opus"' "$TMP/launch.json" >/dev/null
+        done
+    done
+}
+
+assert_peer_forms() {
+    assert_contains "$output" 'claude | codex | <h>:<model> | <h>(<model>)'
+}
+
+@test "config: malformed positional peers are usage errors before terminal IO" {
+    for peer in '' 'codex()' 'codex(' 'codex(a)b' 'codex(a(b))' 'codex:a(b)' 'codex:' \
+        'gemini(x)' 'codex:-bad' 'claude(-bad)' $'codex(a\tb)' $'claude:a\nb' \
+        $'codex(a\177b)' $'claude(a\302\205b)'; do
+        run bash "$SPAWN" "$peer"
+        assert_status 2
+        assert_contains "$output" 'usage:'
+        assert_peer_forms
+    done
+    [ ! -e "$TMP/calls.jsonl" ]
+}
+
+@test "config: every fallback source rejects malformed peers before terminal IO" {
+    for source in cli env profile; do
+        for peer in 'codex()' 'codex(' 'codex(a)b' 'codex:a(b)' 'codex:' 'gemini(x)' \
+            'codex:-bad' 'claude(-bad)' $'codex(a\tb)' $'claude:a\nb' $'claude(a\177b)'; do
+            case "$source" in
+                cli) run bash "$SPAWN" --fallback "$peer" ;;
+                env) PEER_CHAT_PEER_FALLBACK="$peer" run bash "$SPAWN" ;;
+                profile)
+                    jq -n --arg peer "$peer" '{peer_fallback:$peer}' > "$TMP/.peer-chat.json"
+                    run bash "$SPAWN"
+                    ;;
+            esac
+            assert_status 2
+            assert_contains "$output" 'peer_fallback must be'
+            assert_peer_forms
+        done
+    done
+    [ ! -e "$TMP/calls.jsonl" ]
+}
+
+@test "config: non-string and empty fallback profiles report the peer grammar" {
+    for value in null 12 '[]' '{}' '""'; do
+        printf '{"peer_fallback":%s}\n' "$value" > "$TMP/.peer-chat.json"
+        run bash "$SPAWN" --explain
+        assert_status 2
+        assert_peer_forms
+    done
+    [ ! -e "$TMP/calls.jsonl" ]
+}
+
+@test "config: both peer forms reject conflicting flags and accept a matching explicit model" {
+    for peer in 'codex(x)' 'codex:x'; do
+        run bash "$SPAWN" "$peer" --model y
+        assert_status 2
+        assert_contains "$output" 'positional peer conflicts with --model'
+        run bash "$SPAWN" "$peer" --harness claude
+        assert_status 2
+        assert_contains "$output" 'positional peer conflicts with --harness'
+        run bash "$SPAWN" "$peer" --model x --explain
+        assert_status 0
+        [ "$(printf '%s' "$output" | jq -r '.values.peer_model')" = x ]
+    done
+    [ ! -e "$TMP/calls.jsonl" ]
+}
+
+
+@test "explain: fallback precedence keeps the selected form and its source" {
+    printf '{"peer_fallback":"claude(profile-id)"}\n' > "$TMP/.peer-chat.json"
+    run bash "$SPAWN" --explain
+    assert_status 0
+    assert_explain_source "$output" peer_fallback profile
+    [ "$(printf '%s' "$output" | jq -r '.values.peer_fallback')" = 'claude(profile-id)' ]
+    PEER_CHAT_PEER_FALLBACK='claude(env-id)' run bash "$SPAWN" --explain
+    assert_status 0
+    assert_explain_source "$output" peer_fallback detected:env:PEER_CHAT_PEER_FALLBACK
+    [ "$(printf '%s' "$output" | jq -r '.values.peer_fallback')" = 'claude(env-id)' ]
+    PEER_CHAT_PEER_FALLBACK='claude(env-id)' run bash "$SPAWN" --fallback 'claude(cli-id)' --explain
+    assert_status 0
+    assert_explain_source "$output" peer_fallback detected:cli:peer_fallback
+    [ "$(printf '%s' "$output" | jq -r '.values.peer_fallback')" = 'claude(cli-id)' ]
+    PEER_CHAT_PEER_FALLBACK='claude(env-id)' run bash "$SPAWN" --no-fallback --explain
+    assert_status 0
+    assert_explain_source "$output" peer_fallback detected:cli:peer_fallback
+    [ "$(printf '%s' "$output" | jq -r '.values.peer_fallback')" = none ]
     [ ! -e "$TMP/calls.jsonl" ]
 }
