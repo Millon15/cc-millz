@@ -23,9 +23,10 @@ adds the build flow; where the two disagree, the skill wins.
 ## Input
 
 `$ARGUMENTS`: `[<design>] [<peer>] [--slug <topic>]`. `<peer>` is `claude` or `codex`, with an
-optional model in parentheses (`codex(sol-6.1)`); a word matching `^(claude|codex)(\(.+\))?$` is the
-peer, anything else is the design. `--peer <harness[:model]>` is the older spelling of the same
-value. `<design>` is a file path, a
+optional model in parentheses (`codex(astra)`, `claude(fable)`) or after a colon (`codex:astra`).
+A word matching `^(claude|codex)(\(.+\)|:.+)?$` is the peer, anything else is the design.
+`--peer=<value>` and the older `--peer <value>` accept the same forms. Pass that value to the
+engine's peer-selection step; when absent, pass no model override. `<design>` is a file path, a
 ticket url or key (fetched with the project's tracker tooling), or empty: the one proposal the user
 approved in this conversation. Several incompatible proposals: ask the user which, before the first
 send. `--slug` defaults to the design title in kebab-case, at most four words; every send of this

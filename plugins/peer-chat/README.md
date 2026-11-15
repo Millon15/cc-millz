@@ -24,6 +24,12 @@ Two coding agents hold a conversation in one agterm split, each typing into the 
 
 ## Components
 
+Model shorthand works in both `/peer-chat codex(astra)` and `/peer-chat claude(fable)`.
+`/peer-chat:build path/to/design.md codex(astra)` takes the same peer argument, including
+the `codex:astra` form or `--peer=codex:astra`. The calling agent states the mapping to an
+accepted model id before spawning. With no model override, the peer starts on its harness's
+own configuration.
+
 | Component | Trigger | Description |
 |-----------|---------|-------------|
 | skill | `peer-chat` | 🗣️ one body for every harness: preflight, spawn, send, receive, organizing the work, manners |

@@ -66,7 +66,7 @@ def outputs():
             "peer-chat-bg",
             "background peer",
             "1. Load `peer-chat-bg:peer-chat` (Claude: `Skill`; Codex: read `../peer-chat/SKILL.md` relative to this skill).\n"
-            "2. Complete its preflight and bind the returned native child identity. `<peer>` or `--peer` selects a host-supported model, not another runtime.",
+            "2. Apply its Peer selection rules to `<peer>` or `--peer`, complete preflight and bind the returned native child identity. Without a model, the child inherits; a different runtime is refused.",
             "Continue independent work after sending. Use the host completion/yield mechanism; use a bounded native wait only when the next step is blocked. Do not loop-poll.",
         ),
     ):

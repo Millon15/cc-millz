@@ -44,6 +44,16 @@ render Claude-style slash commands. The CLI cannot hot-replace an already-runnin
 tool catalog. Neither installation nor registration proves that a host supports native peers;
 the skill preflights the actual tools before use.
 
+## 🎛️ Peer model
+
+- 🎛️ **Choose the peer model:** `/peer-chat-bg:peer-chat claude(fable)` in Claude Code or
+  `/peer-chat-bg:peer-chat codex(astra)` in Codex. Both discussion and build accept `claude` or
+  `codex`, optionally with `(model)` or `:model`; build also accepts `--peer=<value>`.
+  The calling agent maps shorthand and states the mapping; scripts pass no model aliases.
+- 🧬 **Inherit by default:** without a model, the native child inherits the main session's
+  model. A background peer must use the same runtime as its parent; a different runtime is
+  refused with a pointer to agterm `peer-chat:peer-chat`.
+
 ## ⚙️ State and project configuration
 
 Run `scripts/peer-chat-bg.sh --explain` from the consuming repo. A committed `.peer-chat-bg.json`

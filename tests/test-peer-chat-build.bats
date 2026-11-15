@@ -68,9 +68,9 @@ setup() {
     assert_not_contains "${bg}" "peer-chat-fresh.sh"
 }
 
-@test "peer-chat build: takes an optional peer argument with a model in parentheses" {
+@test "peer-chat build: takes an optional peer argument with a model in parentheses or after a colon" {
     assert_contains "${body}" 'argument-hint: "[<design file | ticket url or key>] [<harness>(<model>)] [--slug <topic>]"'
-    assert_contains "${body}" '`^(claude|codex)(\(.+\))?$`'
+    assert_contains "${body}" '`^(claude|codex)(\(.+\)|:.+)?$`'
     assert_contains "${body}" "spawn step with \`<peer>\`, its model mapped"
-    assert_contains "${body}" "older spelling of the same"
+    assert_contains "${body}" '`--peer=<value>` and the older `--peer <value>` accept the same forms.'
 }

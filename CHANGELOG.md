@@ -1,5 +1,18 @@
 # Changelog
 
+## peer-chat-bg v0.1.8 - 2026-11-15
+
+### Changed
+
+- Discussion and build accept an optional peer model, including `claude(fable)` and `codex(astra)`. Without a model override, the native child inherits the main session's model. A request for another runtime refuses with a pointer to agterm peer-chat.
+- The calling agent maps model shorthand and states the mapping before spawning; scripts map nothing. Build accepts colon-form positional peers and `--peer=<value>` as well.
+
+## peer-chat v0.7.10 - 2026-11-15
+
+### Fixed
+
+- Build recognizes colon-form positional peers such as `codex:astra` instead of treating them as design paths. Both discussion and build document `codex(astra)` and `claude(fable)` shorthand; without a model override, the peer uses its harness's own configuration.
+
 ## toolsmith v0.1.2 - 2026-11-15
 
 ### Fixed

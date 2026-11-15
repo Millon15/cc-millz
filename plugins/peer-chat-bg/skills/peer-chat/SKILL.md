@@ -1,6 +1,7 @@
 ---
 name: peer-chat
 description: Discuss, challenge, review or build with a background coding peer in Claude Code or Codex, without terminal panes. Durable questions and verified receipts.
+argument-hint: "[<harness>(<model>)]"
 ---
 # Background peer chat
 
@@ -8,6 +9,26 @@ Use one peer as an equal collaborator: state a falsifiable position, exchange ev
 ownership, challenge each other's work, and close with an observed result. For an agreed design,
 load `peer-chat-bg:build`. Both use the same ask parser and build protocol as `peer-chat`; only
 transport and lifecycle differ. This plugin does not require agterm or clipboard access.
+
+## Peer selection
+
+The optional peer argument is `claude` or `codex`, with an optional model as
+`<harness>(<model>)` or `<harness>:<model>`. For example, `/peer-chat-bg:peer-chat claude(fable)`
+in Claude Code or `/peer-chat-bg:peer-chat codex(astra)` in Codex requests that peer model.
+The argument selects the child only; this session keeps its model.
+
+Match the harness to the actual host runtime before creating state or spawning. On a mismatch,
+refuse in one line: "Background peers must use this runtime; use agterm `peer-chat:peer-chat`
+for Claude ↔ Codex pairing." Do not start another CLI or silently substitute a harness.
+
+No argument, or a bare matching harness: omit `model` from the native spawn call so the child
+inherits the main session's model. In Claude Code, call `Agent` without `model`; in Codex,
+call `spawn_agent` without `model`. Do not choose a default peer model.
+
+For an explicit model, map shorthand such as `astra`, `fable` or `sol` to an id the host accepts,
+say the mapping in one line, and pass it as the native tool's `model`. Scripts map nothing.
+Use isolated context when specifying a Codex model. If the host cannot select that model,
+report the limitation instead of omitting it or substituting another model.
 
 ## 1. Preflight and identity
 
@@ -24,11 +45,9 @@ transport and lifecycle differ. This plugin does not require agterm or clipboard
      message. A background task ID and resumable agent ID may differ: preserve both receipts.
    - If the required host tools are unavailable, report the missing capability. Do not invent
      tool names, fabricate a session ID, or silently fall back to terminal automation.
-3. Native peers stay **inside the current runtime**: Codex → Codex, Claude → Claude. `--peer`
-   in the build workflow requests an available host/model, not a cross-runtime bridge. For
-   Claude ↔ Codex pairing use an explicitly available bridge or original agterm `peer-chat`;
-   this plugin does not claim to provide that bridge. Respect requested model/effort; never
-   silently substitute a cheaper model. Isolate context when specifying a Codex model.
+3. Apply **Peer selection** above, including `<peer>` or `--peer` from the build workflow.
+   Native peers stay **inside the current runtime**: Codex → Codex, Claude → Claude.
+   Respect requested model/effort; never silently substitute a cheaper model.
 4. Choose a short topic slug. Inspect `BG --repo REPO --slug SLUG status` before creating state.
    For a new topic run `... init --host codex|claude --parent-id REAL_PARENT_ID`, adding one
    `--check NAME` per required acceptance check. Save returned `run_id`. Logical roles are

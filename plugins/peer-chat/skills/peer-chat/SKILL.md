@@ -44,11 +44,12 @@ bash "${CLAUDE_PLUGIN_ROOT}/scripts/peer-chat-spawn.sh" 'codex(gpt-5.6-sol)'   #
 bash "${CLAUDE_PLUGIN_ROOT}/scripts/peer-chat-spawn.sh" --harness codex --model gpt-5.6-sol
 ```
 
-The user may name the peer when invoking this skill: `/peer-chat codex(sol-6.1)` or
-`/peer-chat claude(fable-5.2)`, a harness (`claude` or `codex`) with an optional model in
-parentheses. The argument names the other pane only; this session stays as it is. A model the user
-wrote as shorthand is yours to map: turn it into the id that harness's CLI accepts, from what you
-know of its models, say the mapping in one line (`sol-6.1 → gpt-6.1-sol`), then pass the id. The
+The user may name the peer when invoking this skill: `/peer-chat codex(astra)` or
+`/peer-chat claude(fable)`, a harness (`claude` or `codex`) with an optional model in
+parentheses or after a colon (`codex:astra`). The argument names the other pane only; this session
+stays as it is. A model the user wrote as shorthand is yours to map: turn it into the id that
+harness's CLI accepts, from what you know of its models, say the mapping in one line
+(`sol-6.1 → gpt-6.1-sol`), then pass the id. The
 script passes a model verbatim and maps nothing. Quote the parenthesised form in the shell. No
 argument: no model flag, and the harness's own config picks the model. `"state":"already"` does not
 check the running peer's model: when the user named one, spawn again with `--restart`, which that
