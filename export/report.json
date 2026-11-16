@@ -10,16 +10,16 @@
     },
     {
       "name": "codex-delegation",
-      "version": "0.1.3",
+      "version": "0.2.0",
       "included": [],
       "skipped": [
         {
           "source": "skills/codex-computer-use/SKILL.md",
-          "reason": "referenced skill codex-delegation:codex-delegate was skipped: SKILL.md: installed-plugin registry or cache dependency"
+          "reason": "_plugin/scripts/job-companion.mjs: installed-plugin registry or cache dependency"
         },
         {
           "source": "skills/codex-delegate/SKILL.md",
-          "reason": "SKILL.md: installed-plugin registry or cache dependency"
+          "reason": "_plugin/scripts/job-companion.mjs: installed-plugin registry or cache dependency"
         },
         {
           "source": "skills/codex-workflow-fanout/SKILL.md",

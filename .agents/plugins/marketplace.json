@@ -27,17 +27,6 @@
       "category": "Developer Tools"
     },
     {
-      "name": "codex-delegation",
-      "source": {
-        "source": "local",
-        "path": "./plugins/codex-delegation"
-      },
-      "policy": {
-        "installation": "AVAILABLE"
-      },
-      "category": "Developer Tools"
-    },
-    {
       "name": "gws-workspace",
       "source": {
         "source": "local",

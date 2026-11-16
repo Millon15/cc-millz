@@ -1,5 +1,30 @@
 # Changelog
 
+## codex-delegation v0.2.0 - 2026-11-16
+
+### Added
+
+- `scripts/codex-job.sh`, one tracked adapter over the official companion: `probe`, `start`, `status`, `collect`, `cancel` and `dispose`, plus `--explain`. `start` writes the launch intent before spawning and returns a handle at once. A retried `start` with the same invocation id returns the existing job, and changed inputs are refused. Each invocation keeps one atomically published record: lifecycle, task verdict and parent disposition as three separate fields, plus job, thread and turn ids, cwd, worktree, base SHA, prompt SHA-256, companion version, requested and observed model, timestamps, and the raw-output and report paths.
+- `collect` validates the report block (`codex-report/1`); a missing or malformed one gives the verdict `unknown` and keeps the raw output. It diffs against the base SHA, untracked files included, and flags edits outside the owned paths. Reaching the wait budget never cancels.
+- `cancel` reports `cancelled` only after the stop is observed, otherwise `uncertain`.
+- The record is metadata, never configuration: every verb re-resolves the companion and refuses a record that names another one. A `workspace-write` job runs in its own worktree, and the adapter refuses a run dir, adapter or companion under Codex's default writable roots (the job's cwd, `/tmp`, `$TMPDIR`), so a job cannot rewrite the record the parent trusts.
+- `probe` runs a tiny real turn and returns a reason: `absent`, `unauthenticated`, `quota`, `unsupported`, `denied` or `unknown`. It never touches auth files.
+- Routing sends an argument or disagreement to peer-chat with a Codex peer.
+
+### Changed
+
+- The worker agent starts one job and returns its handle, or makes one bounded collect call. It never ends on a promise to wait. The parent collects and disposes every handle.
+- Briefs travel as `--prompt-file`. Write jobs run in their own clean worktree with declared owned paths, and the parent checks the combined tree after a write fan-out.
+- Computer-use declares the capabilities a check needs and runs in the narrowest sandbox (`read-only`, or `workspace-write` for artifacts). A refused operation comes back `blocked`.
+- Model and effort stay unset unless the user or the project asks; the record keeps the requested and the observed model.
+
+### Removed
+
+- The replay that re-sent a prompt through `codex exec` after any companion failure. After launch, a job is collected, cancelled or `uncertain`, never sent again.
+- `danger-full-access` from computer-use.
+- The model ratings table and the pinned model slug.
+- The Codex manifest (`.codex-plugin/plugin.json`) and the Codex marketplace entry: this plugin is Claude-side only, and the adapter refuses to run inside a Codex session.
+
 ## peer-chat v0.8.1 - 2026-11-16
 
 ### Added

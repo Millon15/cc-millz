@@ -1,7 +1,7 @@
 {
   "name": "codex-delegation",
-  "description": "Route second-tier work to Codex CLI through the openai-codex plugin: routing rubric, workflow fan-out wrappers, computer-use verification. REQUIRES plugin: codex@openai-codex (marketplace openai/codex-plugin-cc).",
-  "version": "0.1.3",
+  "description": "Route second-tier work to Codex CLI through the openai-codex plugin: routing, tracked Codex jobs for workflow fan-out and runtime verification, one record per invocation. REQUIRES plugin: codex@openai-codex (marketplace openai/codex-plugin-cc).",
+  "version": "0.2.0",
   "author": {
     "name": "Millon15"
   }

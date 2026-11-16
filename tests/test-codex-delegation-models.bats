@@ -2,71 +2,67 @@
 #
 # tests/test-codex-delegation-models.bats
 #
-# Codex resolves no family alias: `-m sol` is an HTTP 400, and the openai-codex
-# companion maps only `spark`. So the plugins write the family word in prose and
-# the full slug wherever a binary reads it, and the codex-delegate rubric is the
-# one place that names the slug for delegated work. A transport that drops the
-# model silently runs the user's config default instead, so every shipped Codex
-# invocation shape must carry it. Markdown bodies have no CLI boundary, so the
-# contract is asserted by grepping them.
+# codex-delegation v0.2 leaves the model to Codex's own config unless asked, runs every
+# lane through the codex-job adapter, never widens the sandbox and never re-sends a
+# launched prompt. Markdown bodies have no CLI boundary, so those contracts are asserted
+# by grepping the shipped content. The sol pins that revmux-kit and ralphex-revmux still
+# carry must agree with each other, since no rubric names the slug any more.
 
 setup() {
     REPO_ROOT="$(cd "${BATS_TEST_DIRNAME}/.." && pwd)"
     DELEGATION="${REPO_ROOT}/plugins/codex-delegation"
-    RUBRIC="${DELEGATION}/skills/codex-delegate/SKILL.md"
-    WORKER="${DELEGATION}/agents/codex-workflow-worker.md"
-    FANOUT="${DELEGATION}/skills/codex-workflow-fanout/SKILL.md"
-    COMPUTER_USE="${DELEGATION}/skills/codex-computer-use/SKILL.md"
     REVMUX_PROFILES="${REPO_ROOT}/plugins/revmux-kit/skills/revmux-kit/templates/profiles"
     RALPHEX_SNIPPET="${REPO_ROOT}/plugins/ralphex-revmux/skills/ralphex-revmux/templates/ralphex-config.snippet"
 }
 
-rubric_slug() {
-    grep -oE "Today's \`sol\` is \`gpt-[0-9][0-9.]*-sol\`" "${RUBRIC}" | grep -oE 'gpt-[0-9][0-9.]*-sol'
-}
-
-@test "codex-delegation: the rubric names exactly one sol slug" {
-    run rubric_slug
-    [ "$status" -eq 0 ]
-    [ "${#lines[@]}" -eq 1 ]
-}
-
-@test "codex-delegation: every codex exec shape passes the model" {
-    run grep -h 'codex exec -C' "${WORKER}" "${FANOUT}" "${COMPUTER_USE}"
-    [ "$status" -eq 0 ]
-    [ "${#lines[@]}" -eq 3 ]
-    for line in "${lines[@]}"; do
-        [[ "$line" == *" -m <m> "* ]] || { echo "no -m: $line" >&2; return 1; }
-    done
-}
-
-@test "codex-delegation: both fallbacks pass the effort through codex config" {
-    run grep -h 'codex exec -C <repo> -s workspace-write' "${WORKER}" "${FANOUT}"
-    [ "${#lines[@]}" -eq 2 ]
-    for line in "${lines[@]}"; do
-        [[ "$line" == *"-c model_reasoning_effort=<e>"* ]] || { echo "no effort: $line" >&2; return 1; }
-    done
-}
-
-@test "codex-delegation: the companion task shape requires --model" {
-    run grep -h 'task \[--write\]' "${WORKER}" "${FANOUT}"
-    [ "${#lines[@]}" -eq 2 ]
-    for line in "${lines[@]}"; do
-        [[ "$line" == *" --model <m> "* && "$line" != *"[--model"* ]] || { echo "optional model: $line" >&2; return 1; }
-    done
-}
-
-@test "codex-delegation: only the rubric names a gpt slug" {
+@test "codex-delegation: no shipped markdown names a gpt slug" {
     run grep -rlE 'gpt-[0-9]+([.][0-9]+)?-[a-z]' "${DELEGATION}" --include='*.md'
-    [ "$output" = "${RUBRIC}" ]
+    [ "$status" -eq 1 ]
 }
 
-@test "revmux-kit and ralphex-revmux: runnable pins match the rubric's sol slug" {
-    local slug
-    slug="$(rubric_slug)"
-    grep -q "^model: codex/${slug}:xhigh$" "${REVMUX_PROFILES}/sol-panel.md"
-    grep -q "^model: codex/${slug}:xhigh$" "${REVMUX_PROFILES}/sol-final.md"
-    grep -q "^codex_model = ${slug}$" "${RALPHEX_SNIPPET}"
+@test "codex-delegation: no model ratings table" {
+    run grep -rniE '\|[[:space:]]*(intelligence|taste)[[:space:]]*\|' "${DELEGATION}" --include='*.md'
+    [ "$status" -eq 1 ]
+}
+
+@test "codex-delegation: nothing ships danger-full-access" {
+    run grep -rn 'danger-full-access' "${DELEGATION}"
+    [ "$status" -eq 1 ]
+}
+
+@test "codex-delegation: no runnable codex exec shape, so no post-launch replay" {
+    run grep -rnE 'codex exec -' "${DELEGATION}"
+    [ "$status" -eq 1 ]
+    run grep -rniE 'fallback ONCE|fall back once' "${DELEGATION}"
+    [ "$status" -eq 1 ]
+}
+
+@test "codex-delegation: every lane runs through the codex-job adapter" {
+    for body in skills/codex-workflow-fanout/SKILL.md skills/codex-computer-use/SKILL.md \
+        skills/codex-delegate/SKILL.md agents/codex-workflow-worker.md; do
+        grep -q 'codex-job' "${DELEGATION}/${body}" || { echo "no adapter: ${body}" >&2; return 1; }
+    done
+}
+
+@test "codex-delegation: the worker returns the handle, never waiting prose" {
+    grep -q 'Never end on a promise to wait' "${DELEGATION}/agents/codex-workflow-worker.md"
+    grep -q -- '--wait-seconds 150' "${DELEGATION}/agents/codex-workflow-worker.md"
+}
+
+@test "codex-delegation: Claude-side only, no Codex manifest or Codex marketplace entry" {
+    [ ! -e "${DELEGATION}/.codex-plugin" ]
+    run jq -e '.plugins[] | select(.name == "codex-delegation")' "${REPO_ROOT}/.agents/plugins/marketplace.json"
+    [ "$status" -ne 0 ]
+}
+
+@test "revmux-kit and ralphex-revmux: the sol pins agree" {
+    local panel final snippet
+    panel="$(sed -n 's/^model: codex\/\(gpt-[0-9][0-9.]*-sol\):xhigh$/\1/p' "${REVMUX_PROFILES}/sol-panel.md")"
+    final="$(sed -n 's/^model: codex\/\(gpt-[0-9][0-9.]*-sol\):xhigh$/\1/p' "${REVMUX_PROFILES}/sol-final.md")"
+    snippet="$(sed -n 's/^codex_model = \(gpt-[0-9][0-9.]*-sol\)$/\1/p' "${RALPHEX_SNIPPET}")"
+    [ -n "${panel}" ]
+    [ "${panel}" = "${final}" ]
+    [ "${panel}" = "${snippet}" ]
 }
 
 @test "codex plugins: no retired gpt-5 slug remains" {

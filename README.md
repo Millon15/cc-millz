@@ -23,7 +23,7 @@ Provenance: several of these plugins were generalized out of a private codebase 
 | Plugin | Description |
 |--------|-------------|
 | [🪧 agterm-lanes](plugins/agterm-lanes/README.md) | Self-labelling agterm panes — name, emoji, tint, glyph and reboot-survivable sessions |
-| [🤖 codex-delegation](plugins/codex-delegation/README.md) | Codex CLI (`sol`) as a second-tier workforce under Claude's orchestration |
+| [🤖 codex-delegation](plugins/codex-delegation/README.md) | Codex CLI as a second-tier workforce under Claude's orchestration, through tracked jobs with one record per run |
 | [🧰 essentials](plugins/essentials/README.md) | General-purpose personal skills — code-style, concise-writing, q-sql, qsv, `/e15`, `/tldr`, `/recall` |
 | [📄 gws-workspace](plugins/gws-workspace/README.md) | Google Workspace from an agent through the `gws` CLI — Docs, Sheets, Slides, Tasks, Drive, the `+read`/`+write` helpers, and the finding that a highlighted Docs comment is a browser-UI path only. Extracted from a private monorepo. |
 | [🧩 idea-config](plugins/idea-config/README.md) | Read, diagnose and hand-edit a JetBrains `.idea/` for any IntelliJ-platform IDE — VCS mappings for nested repos, source roots and package prefixes, run configs, debugger servers and path mappings, SDKs; a read-only doctor finds stale paths, unmapped repos and a running IDE that would overwrite disk edits. Extracted from a private monorepo. |

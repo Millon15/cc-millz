@@ -20,7 +20,7 @@ Millon15 personal Claude Code plugin marketplace — skills, agents, (future) ho
 - **Versioning** — per-plugin `version` in `plugins/<name>/.claude-plugin/plugin.json`, independent semver: patch = fix, minor = new component, major = breaking. Bump on ANY change to shipped plugin content, not just `.claude-plugin/` files.
 - **Changelog** — bump ⇒ update `CHANGELOG.md` same change; headings `## <plugin> v<version> - YYYY-MM-DD`.
 - **Cross-references** — skills referencing skills in same plugin use plugin prefix (e.g. `codex-delegation:codex-delegate`); other plugins by own prefix.
-- **Dependency** — codex-delegation requires `codex@openai-codex` (marketplace `openai/codex-plugin-cc`) + `codex` CLI; skills preflight for companion script, stop with install instructions when missing.
+- **Dependency** — codex-delegation requires `codex@openai-codex` (marketplace `openai/codex-plugin-cc`) + `codex` CLI; the `codex-job.sh` adapter probes availability with a reason and stops with install instructions when the companion is absent.
 - **`--explain` contract** — every plugin shipping an entry script under `scripts/` resolves project config the same way and prints it on demand. See below; a new plugin MUST match it rather than invent a shape.
 
 ### The `--explain` contract
@@ -46,7 +46,7 @@ Millon15 personal Claude Code plugin marketplace — skills, agents, (future) ho
 - `.claude-plugin/marketplace.json` — Claude marketplace catalog; also lists `pstack`, a git-subdir mirror of cursor/plugins with no directory here
 - `.agents/plugins/marketplace.json` — Codex marketplace catalog, one entry per plugin that ships a `.codex-plugin/plugin.json`
 - `plugins/agterm-lanes/` — self-labelling agterm panes (3 hooks, macOS + agterm only)
-- `plugins/codex-delegation/` — Codex CLI second-tier delegation (3 skills + 1 agent)
+- `plugins/codex-delegation/` — Codex CLI second-tier delegation (3 skills, 1 agent, the `codex-job` adapter); Claude-side only, no Codex manifest
 - `plugins/essentials/` — general-purpose personal skills and commands (code-style, concise-writing, q-sql, qsv, /e15, /recall, /tldr)
 - `plugins/gws-workspace/` — Google Workspace through the `gws` CLI (1 skill + references)
 - `plugins/idea-config/` — JetBrains `.idea/` reading, diagnosis and hand-editing for any IntelliJ-platform IDE (1 skill + references + doctor script)

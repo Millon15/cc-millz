@@ -1,36 +1,46 @@
 ---
 name: codex-computer-use
-description: Ask Codex CLI to run local verification that needs computer use — browser automation, simulators, app launching, screenshots, independent runtime inspection. Use when the user wants Codex/GPT to test a flow, verify UI behavior, inspect a running app, or capture proof of implemented behavior.
+description: Ask Codex CLI to run local runtime verification as an independent agent, such as browser automation, simulators, app launching, screenshots or runtime inspection. Use when the user wants Codex/GPT to test a flow, verify UI behavior, inspect a running app, or capture proof of implemented behavior.
 ---
 # Codex Computer Use
 
-Gap openai-codex plugin not cover: GUI/runtime verification by independent agent.
+An independent agent checks runtime behaviour Claude built. Not for code reading, typecheck, lint or tests Claude can
+run itself. Launching apps, simulators and browsers to verify the requested work needs no question; ask first only
+when the run could disrupt the user's environment (closing their apps, changing system settings, acting on real
+accounts or data).
 
-NOT for code reading, typecheck, lint, tests Claude run directly. Launch apps/simulators/browsers to verify requested work = fine without asking. Ask first only if run could disrupt user environment (close user apps, change system settings, act on real accounts/data).
+## Capabilities pick the sandbox
 
-## Workflow
+The brief DECLARES what the check needs; the job runs in the narrowest sandbox that covers it:
 
-1. Create artifact dir (repo `tmp/codex-runs/<slug>/` inside project, else system temp).
-2. Self-contained prompt: repo path, exact flow, constraints, artifact dir, report format.
-3. Run non-interactive:
+| The check needs | Sandbox |
+| --- | --- |
+| reading the repo, running read-only commands | `read-only` |
+| writing screenshots, logs or other artifacts, or edits the user allowed | `workspace-write`, `--cwd` a worktree of its own, artifacts under its `tmp/` |
+
+An operation the sandbox or the host refuses (a GUI it cannot reach, the network, a path outside the workspace) comes
+back in the report's `blocked[]` with the operation and the reason, and the verdict is `blocked`. Report it to the
+user. The sandbox and the approval policy are never widened, as a retry or as a fallback.
+
+## Steps
+
+1. Probe under the sandbox the check needs (`codex-delegation:codex-delegate` § Availability).
+2. Brief file: the exact behaviour to verify, platform and app type, launch commands, seed data and fixtures,
+   whether source edits are allowed (default none), the declared capabilities, where artifacts go (`<worktree>/tmp/<slug>/`),
+   and the closing report contract from `codex-delegation:codex-workflow-fanout` § The brief. Each runtime claim
+   carries command, expected, observed, exit and evidence path.
+3. Start, then collect:
 
 ```bash
-codex exec -C <repo> --add-dir <artifact-dir> -s danger-full-access -m <m> -o <artifact-dir>/report.md "<prompt>"
+git -C <repo> worktree add <repo>/tmp/codex-worktrees/<slug> HEAD
+bash "${CLAUDE_PLUGIN_ROOT}/scripts/codex-job.sh" start --run-dir <repo>/tmp/codex-runs/<slug> \
+  --invocation-id <slug>-verify --cwd <repo>/tmp/codex-worktrees/<slug> --prompt-file <brief> --sandbox workspace-write
+bash "${CLAUDE_PLUGIN_ROOT}/scripts/codex-job.sh" collect --run-dir <repo>/tmp/codex-runs/<slug> \
+  --invocation-id <slug>-verify --wait-seconds 150
 ```
 
-- `-s danger-full-access` ONLY for GUI automation, simulators, app launch, screenshots, outside-repo access. Non-GUI repo-only checks → `-s workspace-write`.
-- `-m <m>`: the `sol` slug the `codex-delegation:codex-delegate` rubric names; without it Codex runs the user's config default.
-- `--skip-git-repo-check` when cwd not git repo.
-- Long flows: explicit Bash timeout or background + poll report file.
-
-4. Read report, reference screenshot paths, summarize pass/fail/blocked for user.
-
-## Prompt MUST tell Codex
-
-- Exact behavior to verify; platform/app type (web, iOS, Electron, CLI, desktop).
-- Launch commands, test credentials, seed data, deep links, fixtures.
-- Source edits allowed? (default: NO edits).
-- Where save screenshots, logs, final report.
-- Return contract: pass | fail | blocked + steps performed + observed behavior + screenshot paths + actionable feedback.
-
-Prompt must stand alone — Codex see none of Claude conversation.
+   The run dir stays in the main checkout, out of the job's writable worktree, so Codex cannot touch the record.
+   Exit 4 means still running: collect again (the main thread may run it in the background and wait for the
+   notification). A read-only check needs no worktree: `--cwd <repo> --sandbox read-only`.
+4. Read the record and the report: verdict, each runtime claim's evidence path, `blocked[]`. Summarize pass, fail or
+   blocked with the screenshot paths, then `dispose` the record.

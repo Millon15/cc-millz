@@ -12,7 +12,7 @@
     {
       "name": "codex-delegation",
       "source": "./plugins/codex-delegation",
-      "description": "Delegate second-tier work to Codex CLI (`sol`) — model-routing rubric, Workflow/Agent fan-out wrappers, computer-use verification. Requires the openai-codex plugin."
+      "description": "Delegate second-tier work to Codex CLI: routing to the official plugin, tracked Codex jobs for Workflow/Agent fan-out and runtime verification, one record per invocation. Requires the openai-codex plugin."
     },
     {
       "name": "essentials",
