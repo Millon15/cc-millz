@@ -139,9 +139,30 @@ open until fixed or accepted within the user's scope.
 Done when every acceptance check has a recorded outcome and every required one is green. A check
 that could not run is `incomplete`, never green.
 
+### Record the integrated target set
+
+The integrator writes an ignored JSON spec with every repository and its required check names:
+`{"repos":[{"repo":"/absolute/worktree","checks":["suite","security"]}]}`. Include the coordinator.
+Run `peer-chat-state.py --slug <slug> --state <coordinator state> target --spec <spec path>`;
+its `id` covers visible tracked/untracked file bytes, kinds, modes and the required checks
+across the entire set. A changed target or required-check set clears both confirmations and checks.
+Record each actual result using `... check --repo <worktree> --name <check>
+--state passed|failed|incomplete --target-set <id> --evidence <receipt>`. Receipts stay inside
+the coordinator's ignored topic directory. Committing exactly the checked files preserves the id;
+any hook-induced edit still requires a fresh target and checks.
+
+During Phase 5, exchange the closing messages and record each recipient's actual observed peer
+text with `... observe --message-id <id> --event acknowledged|answered --actor-id <recipient>
+--evidence <received text>`. Pasted text and a submit key cannot finalize a build.
+Both peers then run `... confirm --target-set <id> --actor-id <own identity> --evidence <proof>`;
+the integrator runs `... finalize --target-set <id> --actor-id <own identity>`. Finalize rechecks
+all repository snapshots and evidence hashes, requires zero open asks, unresolved messages,
+timer intents or unreleased stopped scopes, passed checks and both current confirmations.
+Completion requires `phase: finalized`. Any later file edit needs a new target and checks.
+
 ## Phase 5: Close
 
-- Both peers name the same final target: a commit or tree sha, unchanged since
+- Both peers name the same final target: the `target_set` id covering every repository and its required checks, unchanged since
   the last green check and both confirmations. A confirmation sent before the last green check,
   or before the last fix landed, does not count: confirm again on the final target.
 - Commit and push only as the user's instructions and the project's policy allow, through the

@@ -127,7 +127,7 @@ open until fixed or accepted within the user's scope.
 
 Done when every acceptance check has a recorded outcome and every required one is green. A check
 that could not run is `incomplete`, never green.
-
+@GATE@
 ## Phase 5: Close
 
 - Both peers name the same final target: a commit or tree sha, unchanged since

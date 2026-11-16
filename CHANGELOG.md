@@ -1,5 +1,11 @@
 # Changelog
 
+## peer-chat v0.8.1 - 2026-11-16
+
+### Added
+
+- `/peer-chat:build` closes through a recorded gate. `peer-chat-state.py target --spec FILE` captures every declared repository's visible files, kinds and modes plus its required check names as one `target_set` id; `check` records each result with evidence on that id; both peers `confirm` it and the integrator runs `finalize`. Finalize re-validates every repository and evidence hash and refuses on keystroke-only receipts (`pasted`, `submit_sent`), an open ask, an unresolved message or timer intent, an unreleased stopped peer, a check not passed on the current set, or a missing or stale confirmation. A changed file or required-check set produces a new id and clears both confirmations.
+
 ## peer-chat-bg v0.2.0 - 2026-11-16
 
 ### Changed

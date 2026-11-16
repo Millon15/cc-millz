@@ -180,3 +180,213 @@ spec.loader.exec_module(paste)
 paste.require_reconciled(state.Store(pathlib.Path(sys.argv[2])), 'left', '')
 PY
 }
+
+gate_fixture() {
+    COORD="${BATS_TEST_TMPDIR}/coordinator"
+    OTHER="${BATS_TEST_TMPDIR}/component"
+    STATE="${COORD}/tmp/topic/state.json"
+    SPEC="${COORD}/tmp/topic/spec.json"
+    CLI="${REPO_ROOT}/plugins/peer-chat/scripts/peer-chat-state.py"
+    python3 - "${REPO_ROOT}/plugins/peer-chat/scripts" "${COORD}" "${OTHER}" "${1:-}" <<'PY'
+from datetime import timedelta
+import json, pathlib, subprocess, sys
+sys.path.insert(0, sys.argv[1])
+import peer_chat_state as p
+from peer_chat_core import now_utc
+coord, other = map(pathlib.Path, sys.argv[2:4])
+for repo in (coord, other):
+    repo.mkdir()
+    subprocess.run(['git', 'init', '-q', str(repo)], check=True)
+    (repo / '.gitignore').write_text('/tmp/\n')
+    (repo / 'code.txt').write_text('original\n')
+    subprocess.run(['git', '-C', str(repo), 'add', '.'], check=True)
+    subprocess.run(['git', '-C', str(repo), '-c', 'user.name=T', '-c', 'user.email=t@example.invalid',
+                    '-c', 'commit.gpgsign=false', 'commit', '-qm', 'fixture'], check=True)
+path = coord / 'tmp/topic/state.json'
+store = p.open_topic(path, transport='agterm', slug='topic', host='agterm', repo=coord)
+proof = path.parent / 'proof.out'
+proof.write_text('fixture peer report and test receipt\n')
+for role in ('left', 'right'):
+    p.bind_participant(store, role, {'agent_id': role, 'harness': 'codex'})
+for role in ('left', 'right'):
+    msg = p.prepare_message(store, sender=role, lines=['🎯 fixture result'], key=role, budgets=None, width=0)
+    p.claim_delivery(store, msg['message_id'])
+    p.observe(store, msg['message_id'], 'pasted')
+    p.observe(store, msg['message_id'], 'submit_sent')
+    if sys.argv[4] != 'keystrokes':
+        p.observe(store, msg['message_id'], 'acknowledged', evidence=proof, actor=p.peer_of(role))
+if sys.argv[4] == 'stopped':
+    moment = now_utc()
+    budgets = p.resolve_budgets('agterm', True, flags={'deadline': '1m', 'grace': '1m', 'wake': '10s'}, estimates={}, env={}, profile={})
+    msg = p.prepare_message(store, sender='left', lines=['🔎 fixture', '❓ result?'], key='timed', budgets=budgets, width=0)
+    p.claim_delivery(store, msg['message_id'])
+    p.observe(store, msg['message_id'], 'pasted')
+    p.observe(store, msg['message_id'], 'submit_sent', now=moment - timedelta(minutes=5))
+    p.observe(store, msg['message_id'], 'acknowledged', evidence=proof, actor='right')
+    token = p.due(store, now=moment - timedelta(minutes=3))[0]['token']
+    p.begin(store, token, 'nudge', now=moment - timedelta(minutes=3))
+    p.finish(store, token, 'nudge', 'ok', now=moment - timedelta(minutes=3))
+    p.begin(store, token, 'stop', now=moment - timedelta(minutes=1))
+    p.finish(store, token, 'stop', 'ok', now=moment - timedelta(minutes=1))
+    p.withdraw(store, 'left-001', actor='left', reason='abandoned fixture ask', evidence=proof)
+(path.parent / 'spec.json').write_text(json.dumps({'repos': [{'repo': str(repo), 'checks': ['suite']} for repo in (coord, other)]}))
+PY
+    COORD="$(cd "${COORD}" && pwd -P)"
+    OTHER="$(cd "${OTHER}" && pwd -P)"
+    STATE="${COORD}/tmp/topic/state.json"
+    SPEC="${COORD}/tmp/topic/spec.json"
+    target="$(python3 "${CLI}" --slug topic --state "${STATE}" target --spec "${SPEC}" | jq -r .id)"
+    [ "${#target}" = 64 ]
+}
+
+gate_checks() {
+    for repo in "${COORD}" "${OTHER}"; do
+        run python3 "${CLI}" --slug topic --state "${STATE}" check --repo "${repo}" --name suite --state passed --target-set "${target}" --evidence tmp/topic/proof.out
+        [ "$status" = 0 ]
+    done
+}
+
+gate_confirm() {
+    run python3 "${CLI}" --slug topic --state "${STATE}" confirm --target-set "${target}" --actor-id "$1" --evidence tmp/topic/proof.out
+}
+
+@test "P2 gate: keystroke receipts cannot confirm or finalize" {
+    gate_fixture keystrokes
+    gate_checks
+    gate_confirm left
+    [ "$status" = 2 ]
+    [[ "$output" == *"keystrokes are not peer evidence"* ]]
+    run python3 "${CLI}" --slug topic --state "${STATE}" finalize --target-set "${target}" --actor-id left
+    [ "$status" = 2 ]
+    [ "$(jq -r .phase "${STATE}")" = active ]
+}
+
+@test "P2 gate: checks and both recipient-evidenced confirmations finalize the entire set" {
+    gate_fixture
+    gate_checks
+    gate_confirm left
+    [ "$status" = 0 ]
+    run python3 "${CLI}" --slug topic --state "${STATE}" finalize --target-set "${target}" --actor-id left
+    [ "$status" = 2 ]
+    [[ "$output" == *"both peers must confirm"* ]]
+    gate_confirm right
+    [ "$status" = 0 ]
+    run python3 "${CLI}" --slug topic --state "${STATE}" finalize --target-set "${target}" --actor-id left
+    [ "$status" = 0 ]
+    [ "$(jq -r .phase <<<"${output}")" = finalized ]
+}
+
+@test "P2 gate: changing the second repo invalidates the full set and clears both confirmations on recapture" {
+    gate_fixture
+    gate_checks
+    gate_confirm left
+    [ "$status" = 0 ]
+    printf 'changed\n' > "${OTHER}/code.txt"
+    gate_confirm right
+    [ "$status" = 2 ]
+    [[ "$output" == *"target working tree changed"* ]]
+    old="${target}"
+    target="$(python3 "${CLI}" --slug topic --state "${STATE}" target --spec "${SPEC}" | jq -r .id)"
+    [ "${old}" != "${target}" ]
+    [ "$(jq '.confirmations | length' "${STATE}")" = 0 ]
+    [ "$(jq -r --arg repo "${OTHER}" '.checks[$repo].suite.state' "${STATE}")" = incomplete ]
+}
+
+@test "P2 gate: the required check set belongs to the target identity" {
+    gate_fixture
+    gate_checks
+    gate_confirm left
+    [ "$status" = 0 ]
+    jq '.repos[0].checks += ["security"]' "${SPEC}" > "${SPEC}.next"
+    mv "${SPEC}.next" "${SPEC}"
+    next="$(python3 "${CLI}" --slug topic --state "${STATE}" target --spec "${SPEC}" | jq -r .id)"
+    [ "${next}" != "${target}" ]
+    [ "$(jq '.confirmations | length' "${STATE}")" = 0 ]
+    [ "$(jq -r --arg repo "${COORD}" '.checks[$repo].security.state' "${STATE}")" = incomplete ]
+}
+
+@test "P2 gate: changed peer or check evidence prevents finalization" {
+    gate_fixture
+    gate_checks
+    gate_confirm left
+    [ "$status" = 0 ]
+    gate_confirm right
+    [ "$status" = 0 ]
+    printf 'different evidence\n' > "${COORD}/tmp/topic/proof.out"
+    run python3 "${CLI}" --slug topic --state "${STATE}" finalize --target-set "${target}" --actor-id left
+    [ "$status" = 2 ]
+    [[ "$output" == *"evidence changed or disappeared"* ]]
+}
+
+@test "P2 gate: actual bytes hidden by assume-unchanged still invalidate the set" {
+    gate_fixture
+    gate_checks
+    git -C "${OTHER}" update-index --assume-unchanged code.txt
+    printf 'hidden edit\n' > "${OTHER}/code.txt"
+    [ -z "$(git -C "${OTHER}" status --porcelain)" ]
+    gate_confirm left
+    [ "$status" = 2 ]
+    [[ "$output" == *"target working tree changed"* ]]
+}
+
+@test "P2 gate: withdrawing the ask does not release a stopped peer's scope" {
+    gate_fixture stopped
+    gate_checks
+    gate_confirm left
+    [ "$status" = 2 ]
+    [[ "$output" == *"stopped peer scopes remain unresolved"* ]]
+    run python3 "${CLI}" --slug topic --state "${STATE}" release --ask-id left-001 --evidence tmp/topic/proof.out
+    [ "$status" = 0 ]
+    gate_confirm left
+    [ "$status" = 0 ]
+}
+
+@test "P2 gate: an open ask blocks confirmation even when its message is acknowledged" {
+    gate_fixture
+    gate_checks
+    python3 - "${REPO_ROOT}/plugins/peer-chat/scripts" "${STATE}" <<'PY'
+import pathlib, sys
+sys.path.insert(0, sys.argv[1])
+import peer_chat_state as p
+store = p.Store(pathlib.Path(sys.argv[2]))
+msg = p.prepare_message(store, sender='left', lines=['🔎 fixture', '❓ unresolved?'], key='open', budgets=None, width=0)
+p.claim_delivery(store, msg['message_id'])
+p.observe(store, msg['message_id'], 'pasted')
+p.observe(store, msg['message_id'], 'submit_sent')
+p.observe(store, msg['message_id'], 'acknowledged', evidence=pathlib.Path('tmp/topic/proof.out'), actor='right')
+PY
+    gate_confirm left
+    [ "$status" = 2 ]
+    [[ "$output" == *"open or deferred asks remain"* ]]
+}
+
+@test "P2 gate: untracked symlinks and actual modes belong to the snapshot" {
+    gate_fixture
+    old="${target}"
+    chmod +x "${OTHER}/code.txt"
+    ln -s code.txt "${OTHER}/shortcut"
+    target="$(python3 "${CLI}" --slug topic --state "${STATE}" target --spec "${SPEC}" | jq -r .id)"
+    [ "${target}" != "${old}" ]
+    [ "$(jq -r --arg repo "${OTHER}" '.target_set.repos[$repo].snapshot.files.shortcut.kind' "${STATE}")" = symlink ]
+    jq -e --arg repo "${OTHER}" '.target_set.repos[$repo].snapshot.files["code.txt"].mode == 493' "${STATE}"
+}
+
+@test "P2 gate: committing checked edits additions and deletions preserves checks through finalization" {
+    gate_fixture
+    printf 'checked edit\n' > "${COORD}/code.txt"
+    rm "${OTHER}/code.txt"
+    printf 'checked addition\n' > "${OTHER}/new.txt"
+    target="$(python3 "${CLI}" --slug topic --state "${STATE}" target --spec "${SPEC}" | jq -r .id)"
+    gate_checks
+    for repo in "${COORD}" "${OTHER}"; do
+        git -C "${repo}" add -A
+        git -C "${repo}" -c user.name=T -c user.email=t@example.invalid -c commit.gpgsign=false commit -qm 'commit the checked files'
+    done
+    gate_confirm left
+    [ "$status" = 0 ]
+    gate_confirm right
+    [ "$status" = 0 ]
+    run python3 "${CLI}" --slug topic --state "${STATE}" finalize --target-set "${target}" --actor-id left
+    [ "$status" = 0 ]
+    [ "$(jq -r .phase <<<"${output}")" = finalized ]
+}

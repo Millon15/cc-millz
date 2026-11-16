@@ -413,6 +413,30 @@ A reply is also not promised. A model can decline to answer a message that arriv
 and nothing reports that on either side. Never describe a sent message as though an answer were
 owed, and never say the peer is "thinking about it" when all you know is that the line was typed.
 
+## Build checks and finalization
+
+For `/peer-chat:build`, the integrator declares every worktree and required check in an ignored
+JSON spec, for example `{"repos":[{"repo":"/absolute/worktree","checks":["suite","security"]}]}`.
+Include the coordinator repository. `peer-chat-state.py --slug <slug> [--state <path>]
+target --spec <file>` captures the actual visible files, kinds and permissions across that set;
+its `id` also covers the required check names. Each repository needs at least one required check.
+
+Use `... check --repo <worktree> --name <check> --state passed|failed|incomplete
+--target-set <id> --evidence <receipt>` after each actual check. Paths for specs and evidence
+resolve inside the coordinator; receipts belong in its ignored topic directory. A target edit,
+new visible file or changed required-check set needs a fresh target and checks.
+Recapturing a changed set clears both confirmations. No check is green from a keystroke receipt.
+Committing exactly the checked file set preserves the id, including checked deletions; an
+edit made by a commit hook still invalidates it. HEAD itself is not part of this content identity.
+
+Exchange the closing messages before confirming. Each recipient records its actual received peer
+text using `observe` with its own bound actor identity and evidence. Both peers then call
+`... confirm --target-set <id> --actor-id <own identity> --evidence <proof>` on the same set;
+the integrator calls `... finalize --target-set <id> --actor-id <own identity>`. The gate checks
+all worktrees and evidence again, requires both current confirmations, every declared check
+passed on that set, a genuine two-way exchange, zero open asks and unresolved messages, and no
+unresolved timer intent or unreleased stopped scope. Only `phase: finalized` completes the build.
+
 ## A stalled ask
 
 A deliberately non-blocking ask arms nothing. If the next step needs the answer, send with

@@ -4,15 +4,20 @@ from __future__ import annotations
 
 import argparse
 from datetime import datetime, timezone
+import hashlib
 import json
+import os
 from pathlib import Path
 import re
+import stat
+import subprocess
 import sys
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from peer_chat_core import now_utc, repo_root, stamp
 from peer_chat_state import (
-    StateError, Store, begin, due, finish, next_wake, nudge_submitted, observe, release, status, withdraw,
+    CLOSED, PEER_EVENTS, TERMINAL_MESSAGES, StateError, Store, begin, due, evidence_record,
+    finish, next_wake, nudge_submitted, observe, release, status, unresolved_timers, withdraw,
 )
 
 
@@ -63,7 +68,206 @@ def parser() -> argparse.ArgumentParser:
     command.add_argument("--actor-id", required=True)
     command.add_argument("--reason", required=True)
     command.add_argument("--evidence", type=Path, required=True)
+    command = commands.add_parser("target")
+    command.add_argument("--spec", type=Path, required=True)
+    command = commands.add_parser("check")
+    command.add_argument("--repo", type=Path, required=True)
+    command.add_argument("--name", required=True)
+    command.add_argument("--state", dest="check_state", choices=("passed", "failed", "incomplete"), required=True)
+    command.add_argument("--target-set", required=True)
+    command.add_argument("--evidence", type=Path, required=True)
+    for name in ("confirm", "finalize"):
+        command = commands.add_parser(name)
+        command.add_argument("--target-set", required=True)
+        command.add_argument("--actor-id", required=True)
+        if name == "confirm":
+            command.add_argument("--evidence", type=Path, required=True)
     return cli
+
+
+def require(condition, message: str) -> None:
+    if not condition:
+        raise StateError(message)
+
+
+def git(repo: Path, *args: str) -> bytes:
+    result = subprocess.run(["git", "-C", str(repo), *args], capture_output=True)
+    require(result.returncode == 0, result.stderr.decode(errors="replace").strip() or "Git operation failed")
+    return result.stdout
+
+
+def worktree_root(path: Path) -> Path:
+    return Path(os.fsdecode(git(path.expanduser().resolve(), "rev-parse", "--show-toplevel")).strip()).resolve()
+
+
+def hash_json(value) -> str:
+    return hashlib.sha256(json.dumps(value, sort_keys=True, ensure_ascii=False, separators=(",", ":")).encode()).hexdigest()
+
+
+def file_snapshot(path: Path) -> dict:
+    if path.is_symlink():
+        return {"kind": "symlink", "mode": stat.S_IMODE(path.lstat().st_mode),
+                "sha256": hashlib.sha256(os.fsencode(os.readlink(path))).hexdigest()}
+    if not path.exists():
+        return {"kind": "deleted"}
+    require(path.is_file(), f"cannot snapshot a directory or submodule as a file: {path}")
+    return {"kind": "file", "mode": stat.S_IMODE(path.stat().st_mode),
+            "sha256": hashlib.sha256(path.read_bytes()).hexdigest()}
+
+
+def repo_snapshot(repo: Path) -> dict:
+    names = set(git(repo, "ls-files", "-z", "--cached", "--others", "--exclude-standard").split(b"\0")) - {b""}
+    return {"files": {os.fsdecode(name): file_snapshot(repo / os.fsdecode(name)) for name in sorted(names)
+                      if (repo / os.fsdecode(name)).exists() or (repo / os.fsdecode(name)).is_symlink()}}
+
+
+def read_spec(path: Path, coordinator: Path) -> dict:
+    source = path if path.is_absolute() else coordinator / path
+    spec = json.loads(source.read_text())
+    require(isinstance(spec, dict) and set(spec) == {"repos"} and isinstance(spec["repos"], list) and spec["repos"],
+            "spec must contain a nonempty repos array")
+    repos = {}
+    for entry in spec["repos"]:
+        require(isinstance(entry, dict) and set(entry) == {"repo", "checks"}, "each repo needs repo and checks")
+        path = Path(entry["repo"])
+        root = worktree_root(path if path.is_absolute() else coordinator / path)
+        names = entry["checks"]
+        require(isinstance(names, list) and names and all(isinstance(name, str) and name.strip() == name and name for name in names),
+                "each repo needs nonempty check names")
+        require(len(names) == len(set(names)), "duplicate required check")
+        require(str(root) not in repos, "duplicate worktree in target spec")
+        repos[str(root)] = {"snapshot": repo_snapshot(root), "required_checks": sorted(names)}
+    return repos
+
+
+def validate_state_location(store: Store, coordinator: Path) -> None:
+    path = store.path.resolve()
+    require(path.is_relative_to(coordinator), "topic state must be inside the coordinator")
+    relative = str(path.relative_to(coordinator))
+    ignored = subprocess.run(["git", "-C", str(coordinator), "check-ignore", "-q", "--", relative]).returncode == 0
+    require(ignored and not git(coordinator, "ls-files", "--", relative), "topic state must be Git-ignored and untracked")
+
+
+def capture_target(args: argparse.Namespace, store: Store) -> dict:
+    before = store.read()
+    require(before["phase"] == "active", "topic is finalized")
+    coordinator = Path(before["repo"]).resolve()
+    validate_state_location(store, coordinator)
+    repos = read_spec(args.spec, coordinator)
+    require(str(coordinator) in repos, "target spec must include the coordinator worktree")
+    target = {"id": hash_json(repos), "repos": repos}
+    with store.mutate() as state:
+        require(state["run_id"] == before["run_id"] and state["phase"] == "active", "topic changed during capture")
+        if state.get("target_set", {}).get("id") != target["id"]:
+            state["target_set"] = target
+            state["checks"] = {repo: {name: {"state": "incomplete"} for name in row["required_checks"]}
+                               for repo, row in repos.items()}
+            state["confirmations"] = {}
+    return target
+
+
+def current_target(state: dict, expected: str) -> dict:
+    target = state.get("target_set")
+    require(target and target["id"] == expected and hash_json(target["repos"]) == expected,
+            "target set missing or changed; capture and check the current set")
+    for name, entry in target["repos"].items():
+        require(str(worktree_root(Path(name))) == name and repo_snapshot(Path(name)) == entry["snapshot"],
+                f"target working tree changed: {name}; capture a new target and rerun checks")
+    return target
+
+
+def validate_evidence(state: dict, proof: dict) -> None:
+    path = Path(proof["path"]).resolve()
+    require(path.is_relative_to(Path(state["repo"]).resolve()), "evidence must remain inside the coordinator")
+    require(path.is_file() and hashlib.sha256(path.read_bytes()).hexdigest() == proof["sha256"],
+            f"evidence changed or disappeared: {path}")
+
+
+def actor_role(state: dict, actor: str) -> str:
+    roles = [role for role, participant in state["participants"].items()
+             if participant and participant["agent_id"] == actor]
+    require(len(roles) == 1, "actor must identify one bound participant")
+    return roles[0]
+
+
+def record_check(args: argparse.Namespace, store: Store) -> dict:
+    with store.mutate() as state:
+        require(state["phase"] == "active", "topic is finalized")
+        target = current_target(state, args.target_set)
+        name = str(worktree_root(args.repo))
+        require(name in target["repos"] and args.name in target["repos"][name]["required_checks"], "check was not declared")
+        record = {"state": args.check_state, "target_set": args.target_set,
+                  "evidence": evidence_record(state, args.evidence), "at": stamp(now_utc())}
+        state["checks"][name][args.name] = record
+        state["confirmations"] = {}
+        return record
+
+
+def peer_exchange(state: dict) -> None:
+    require(all(participant is not None for participant in state["participants"].values()), "bind both participants")
+    require(all(ask["disposition"] in CLOSED for ask in state["asks"]), "open or deferred asks remain")
+    require(not unresolved_timers(state), "timer intents or stopped peer scopes remain unresolved")
+    exchanged = set()
+    for message in state["messages"].values():
+        require(message["state"] in TERMINAL_MESSAGES, "unresolved message receipts remain; keystrokes are not peer evidence")
+        if message["state"] in PEER_EVENTS:
+            require(any(event["event"] == message["state"] for event in message["events"]),
+                    "terminal peer state has no corresponding evidence event")
+        for event in message["events"]:
+            if event["event"] in PEER_EVENTS:
+                recipient = state["participants"][message["recipient"]]
+                require(event["actor"] == recipient["agent_id"] and event["evidence"], "peer receipt has no bound recipient evidence")
+                validate_evidence(state, event["evidence"])
+                exchanged.add(message["sender"])
+    require(exchanged == {"left", "right"}, "need a genuine two-way recipient-evidenced exchange")
+
+
+def validate_supporting_evidence(state: dict) -> None:
+    for message in state["messages"].values():
+        for event in message["events"]:
+            if event.get("evidence"):
+                validate_evidence(state, event["evidence"])
+    for row in state["asks"]:
+        if row.get("withdrawal"):
+            validate_evidence(state, row["withdrawal"]["evidence"])
+    for timer in state["timers"].values():
+        if timer.get("release"):
+            validate_evidence(state, timer["release"]["evidence"])
+
+
+def require_closable(state: dict, target: dict) -> None:
+    peer_exchange(state)
+    for repo, entry in target["repos"].items():
+        for name in entry["required_checks"]:
+            record = state["checks"].get(repo, {}).get(name, {})
+            require(record.get("state") == "passed" and record.get("target_set") == target["id"],
+                    f"required check incomplete, failed or on another target: {repo} {name}")
+            validate_evidence(state, record["evidence"])
+    validate_supporting_evidence(state)
+
+
+def gate_action(args: argparse.Namespace, store: Store) -> dict:
+    with store.mutate() as state:
+        require(state["phase"] == "active", "topic is finalized")
+        target = current_target(state, args.target_set)
+        require_closable(state, target)
+        role = actor_role(state, args.actor_id)
+        if args.command == "confirm":
+            participant = state["participants"][role]
+            state["confirmations"][role] = {"target_set": target["id"], "actor_id": args.actor_id,
+                                             "generation": participant["generation"],
+                                             "evidence": evidence_record(state, args.evidence), "at": stamp(now_utc())}
+        else:
+            require(set(state["confirmations"]) == {"left", "right"}, "both peers must confirm this target set")
+        for who, record in state["confirmations"].items():
+            participant = state["participants"][who]
+            require(record["target_set"] == target["id"] and record["actor_id"] == participant["agent_id"]
+                    and record["generation"] == participant["generation"], "confirmation is stale or belongs to another target")
+            validate_evidence(state, record["evidence"])
+        if args.command == "finalize":
+            state["phase"] = "finalized"
+            state["finalized_at"] = stamp(now_utc())
+        return {"target_set": target["id"], "phase": state["phase"], "confirmations": state["confirmations"], "role": role}
 
 
 def wake_status(store: Store) -> dict:
@@ -77,6 +281,12 @@ def wake_status(store: Store) -> dict:
 
 
 def run(args: argparse.Namespace, store: Store):
+    if args.command == "target":
+        return capture_target(args, store)
+    if args.command == "check":
+        return record_check(args, store)
+    if args.command in ("confirm", "finalize"):
+        return gate_action(args, store)
     if args.command == "status":
         return status(store)
     if args.command == "wake":

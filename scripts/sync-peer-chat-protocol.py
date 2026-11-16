@@ -43,6 +43,29 @@ FREEZE = {
     ),
 }
 
+AGTERM_GATE = """
+### Record the integrated target set
+
+The integrator writes an ignored JSON spec with every repository and its required check names:
+`{"repos":[{"repo":"/absolute/worktree","checks":["suite","security"]}]}`. Include the coordinator.
+Run `peer-chat-state.py --slug <slug> --state <coordinator state> target --spec <spec path>`;
+its `id` covers visible tracked/untracked file bytes, kinds, modes and the required checks
+across the entire set. A changed target or required-check set clears both confirmations and checks.
+Record each actual result using `... check --repo <worktree> --name <check>
+--state passed|failed|incomplete --target-set <id> --evidence <receipt>`. Receipts stay inside
+the coordinator's ignored topic directory. Committing exactly the checked files preserves the id;
+any hook-induced edit still requires a fresh target and checks.
+
+During Phase 5, exchange the closing messages and record each recipient's actual observed peer
+text with `... observe --message-id <id> --event acknowledged|answered --actor-id <recipient>
+--evidence <received text>`. Pasted text and a submit key cannot finalize a build.
+Both peers then run `... confirm --target-set <id> --actor-id <own identity> --evidence <proof>`;
+the integrator runs `... finalize --target-set <id> --actor-id <own identity>`. Finalize rechecks
+all repository snapshots and evidence hashes, requires zero open asks, unresolved messages,
+timer intents or unreleased stopped scopes, passed checks and both current confirmations.
+Completion requires `phase: finalized`. Any later file edit needs a new target and checks.
+"""
+
 
 def invocation_keys(frontmatter):
     """Top-level frontmatter lines minus the multi-line description."""
@@ -80,6 +103,7 @@ def outputs():
             .replace("@LIFECYCLE@", lifecycle)
             .replace("@FRESH@", FRESH[plugin])
             .replace("@FREEZE@", FREEZE[plugin])
+            .replace("@GATE@", AGTERM_GATE if plugin == "peer-chat" else "")
         )
         rendered = rendered.replace(
             "@ARTIFACT_ROOT@",
@@ -96,6 +120,8 @@ def outputs():
                 "a commit or tree sha",
                 "a validated `git:<full-sha>` token on a clean HEAD, or the `manifest:<path>#<sha256>` token returned by the engine's `target --output` command",
             )
+        else:
+            rendered = rendered.replace("a commit or tree sha", "the `target_set` id covering every repository and its required checks")
         header = "<!-- Generated from shared/peer-chat/build.md; edit the source and run scripts/sync-peer-chat-protocol.py. -->\n\n"
         frontmatter, body = rendered.split("---\n", 2)[1:]
         skill_front = (
