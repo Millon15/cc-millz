@@ -7,6 +7,7 @@ import sys
 ROOT = Path(__file__).resolve().parents[1]
 PACKAGES = {
     "peer_chat_core.py": ("peer-chat", "peer-chat-bg"),
+    "peer_chat_state.py": ("peer-chat", "peer-chat-bg"),
 }
 
 

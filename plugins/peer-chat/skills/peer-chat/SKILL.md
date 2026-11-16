@@ -16,7 +16,7 @@ Every send goes through `peer-chat.py` or `peer-chat-paste.py`: the transport ch
 harness and uses its composer protocol. Direct `agtermctl` calls are permitted only for read-only
 session discovery and screen inspection during the recovery procedure below, never for delivery.
 
-`peer-chat.py`, its engine and `peer-chat-paste.py` are bare commands on `PATH`; the installer put
+`peer-chat.py`, its engine, `peer-chat-paste.py` and `peer-chat-state.py` are bare commands on `PATH`; the installer put
 them there. The installer and `peer-chat-spawn.sh` live in this plugin under
 `${CLAUDE_PLUGIN_ROOT}`, the plugin root: Claude Code fills it in, and every other harness reads
 it as the directory two levels above this SKILL.md.
@@ -141,6 +141,10 @@ arrived. A path is never consumed or restored.
 Before the paste, every form reads the peer's screen; a `working` peer gets one stderr line,
 `the peer is mid-turn; this send queues behind its current task`, and the send proceeds.
 
+Add `--state <coordinator topic>/state.json` when sending from another repository in the same
+build; the default is `tmp/peer-chat/<slug>/state.json` in this repository. Every send and freeze
+of the topic must use that same file. The coordinator's `.peer-chat.json` supplies configuration.
+
 `peer-chat-paste.py` keeps the line breaks; a tab becomes one space and CR or any other control
 character is dropped, so a body quoted verbatim from a web page or a bot comment pastes as it is.
 It resolves the peer pane, refuses a send that leaves
@@ -254,7 +258,7 @@ send the answer as `🎯` with its `🔎` instead of the question. The script wa
 ## Asks
 
 Every `❓` line is an ask. `peer-chat-paste.py --slug <slug>` stamps it with an id named after the
-asker's pane, `❓ #left-004 …`, and records it in `tmp/peer-chat/<slug>/asks.tsv`, the script's own
+asker's pane, `❓ #left-004 …`, and reserves it atomically in `tmp/peer-chat/<slug>/state.json`, the script's own
 ledger; pass the same `--slug` on every send of a topic. The peer's next send must carry one
 disposition line per new ask, or the script refuses the send and lists the ids with their
 questions:
@@ -270,6 +274,41 @@ questions:
 to the deferrer's next send. Later sends carry only changed dispositions. A confirmed paste means
 the line landed, not that anything was accepted. Ledgers from before pane ids keep their
 `#claude-NNN` and `#codex-NNN` ids, read as asked by the left and the right pane.
+
+The asker can abandon its own question with `#left-004 withdrawn(<why>)`. Only its asker can
+withdraw it. Withdrawal closes the ask and clears its timer; report the reason at close, since
+withdrawal does not prove an acceptance requirement or grant permission to skip it.
+For a stopped peer, withdraw locally with `peer-chat-state.py --slug <slug> [--state <path>]
+withdraw --ask-id <id> --actor-id <own bound identity> --reason '<why>' --evidence <path>`.
+This records an evidenced withdrawal without sending a message to the stopped peer; the
+stopped file scope still needs its own release evidence.
+
+The sender reserves a prepared message and claims delivery under short storage transactions,
+then releases `state.lock` before pane IO. `pasted` means the composer showed the text;
+`submit_sent` means the submit key was sent. Neither is peer acknowledgment. An interrupted
+claim stays unresolved; `--key <stable-key>` can identify the same message but never authorizes
+another paste. Preserve the outbox and inspect the pane before recovery. A separate transport
+lock prevents another send from replacing that outbox during the guarded Return operation.
+
+Save the actual received peer text as evidence inside the coordinator repository. Use
+`peer-chat-state.py --slug <slug> [--state <path>] observe --message-id <id>
+--event acknowledged|answered --actor-id <own bound identity> --evidence <path>` to record it.
+The identity is the observed `window/session/pane` composite shown by `status`; a sender cannot
+acknowledge its own message. Evidence paths resolve against the coordinator repository.
+For an ambiguous send keep `uncertain`. Only actual proof of non-delivery permits a sender's
+`observe --event failed`; a cancelled unsent draft uses `cancelled`, both with the sender's
+actor ID and nonempty evidence. A timeout alone proves neither failure nor cancellation.
+To reconcile an uncertain send, inspect the peer pane without typing. A capture showing the
+complete stamped message in the peer's transcript, beyond its composer, permits the sender's
+`observe --event submit_sent --actor-id <own identity> --evidence <capture>`; it records the
+observation without another paste or Return. The timer starts at that later observation if
+no submission was recorded before. A composer-only capture permits no such classification;
+use guarded recipient recovery, proven `failed`, or keep the claim unresolved and report it.
+
+An existing TSV ledger imports once with provenance. Legacy freeze rows retain unknown repo
+identity and do not become a baseline for a guessed repo. Finish active conversations using
+their old plugin version, or start a fresh topic after upgrading; never mix old TSV writers
+with schema-2 writers on a live topic. A transport change also needs a fresh topic.
 
 ## Artifacts
 
@@ -376,33 +415,59 @@ owed, and never say the peer is "thinking about it" when all you know is that th
 
 ## A stalled ask
 
-An ask the work continues without needs nothing more. An ask whose answer the next step needs, a
-blocking ask, gets one timer, armed right after its send. The timer is not a watcher: it wakes this
-session once, and the session reads the panes once.
+A deliberately non-blocking ask arms nothing. If the next step needs the answer, send with
+`--blocking` and a resolved deadline, grace and wake budget. Ownership handovers and held
+experiments never get timers. One message has one budget tuple for all its new asks; split
+messages to use different clocks or mix blocking and non-blocking questions.
 
-- **Clock**: a wake every 5 minutes (`PEER_CHAT_WAKE_MINUTES`) up to a deadline 30 minutes after the
-  send (`PEER_CHAT_STALL_MINUTES`), both apart from `PEER_CHAT_DEFER_MINUTES`. One timer per ask id
-  (plus the design revision when the caller has one); re-arming replaces it, and a wake for an ask
-  that is already answered, or for an older revision, does nothing.
-- **Claude Code**: `sleep 300` as a background Bash command (`run_in_background`), the ask id and
-  the deadline in its description; its exit re-invokes the session.
-- **Codex**: there is no self-wake (a background job is a process wait of at most 60 s). Run a
-  bounded active wait inside the turn, or take the deadline row on the next turn.
-- **Never on a timer**: an experiment the peer is holding, or an ownership handover. Those wait for
-  the peer's own message.
+Each value resolves independently: `--deadline/--grace/--wake`, then
+`PEER_CHAT_STALL_MINUTES` / `PEER_CHAT_GRACE_MINUTES` / `PEER_CHAT_WAKE_MINUTES`, then
+`stall_minutes` / `grace_minutes` / `wake_minutes` in the coordinator's `.peer-chat.json`, then
+the agent's `--est-deadline/--est-grace/--est-wake`. Flags take positive durations such as `90s`,
+`20m` or `1h`; env/profile values are positive minutes. There are no built-in time defaults,
+ratios or clamps. Estimate missing values for this ask before sending; a missing budget
+refuses instead of silently making the ask non-blocking.
 
-On each wake, the first row that applies wins:
+The sent text shows each resolved duration and its source. The first `submit_sent` arms the
+answer deadline; status shows its full UTC expiry. A successful nudge submission starts grace.
+Preparation, retries, acknowledgments of the nudge and generic completion notifications do
+not restart either clock. A working marker is not an answer and gives no automatic extension.
 
-| Wake finds | Do |
-| --- | --- |
-| the reply already in this conversation | consume it; the timer ends |
-| own composer not empty | `peer-chat-paste.py --to peer --recover-delivery --slug <slug>`: exit 0 pressed Return on exactly the message the peer's transport recorded for this session and pane, which arrives as the next input; exit 1 other or extra text, or a collapsed paste whose text cannot be checked, left untouched: report it to the user in one line, then the next rows |
-| the deadline passed | stop waiting: a fresh peer pass or solo work, and the closing report names the ask as unanswered |
-| the peer pane `working` (`peer_turn` from `peer-chat-spawn.sh`) | re-arm |
-| the peer pane `idle` | one reminder through the transport, `#<ask id> still open: <question>`, then re-arm |
+Run `peer-chat-state.py --slug <slug> [--state <path>] status` to inspect timers and unresolved
+claims. On a wake, `... wake` returns due actions with their generation token and performs no
+pane action. Its JSON holds `due`, `next_wake_at` and `wake_in_seconds`; the latter two are
+null when no timer can wake. Use the tool's next wake, which is bounded by the earliest expiry.
+Use a due action's exact token with `... begin --token '<JSON>' --action nudge|stop` before
+any action; `null` means stale or already handled, so do nothing. Do not hold `state.lock`
+while reading or writing a pane.
 
-A reply that lands after the deadline row ran is history: it reopens nothing already decided
-unless it shows a defect, and that defect is a new ask.
+For a nudge, ask the peer for its current partial result and active job/resource handles,
+using the checked `peer-chat-paste.py` transport, without another question glyph. Record the
+observed outcome with `... finish --token '<JSON>' --action nudge --outcome ok|failed --detail
+'<receipt path or error>'`. Successful completion starts grace; `... nudged --token '<JSON>'`
+is shorthand for that successful finish, not a second step after it.
+Never repeat an intent whose outcome is missing: inspect its actual delivery evidence first.
+
+On grace expiry, begin the stop action and stop waiting, record its outcome with `finish`,
+and report the unanswered ask. Agterm has no checked peer interrupt; type no Ctrl-C and start
+no replacement peer. The peer's file scope stays reserved. The parent must reconcile every
+recorded job/resource handle, save settled-job evidence and a current idle capture, then
+run `... release --ask-id <id> --evidence <path>`. An idle pane alone proves no external job
+finished. Timeout is not an answered/declined disposition; use the local `withdraw` operation
+to abandon that question after stopping. A late reply after a stop is history, with a new ask
+only when it reveals a defect.
+
+Claude Code can schedule one background Bash sleep until the next selected wake; its completion
+re-invokes the session. Use the configured wake interval, bounded by the remaining answer or
+grace time, and recheck the token after waking. A stale token is a no-op. Codex has no self-wake:
+use bounded native waits only inside an active parent turn, or check due actions on the next
+turn. Never claim a background process will resume an ended Codex turn.
+
+At an agterm wake, consume a received reply first. An own composer containing the recorded
+message can use `peer-chat-paste.py --to peer --recover-delivery --slug <slug>` with the same
+`--state` when needed. Its two exact-text reads guard the Return; unrelated or collapsed text
+stays untouched. Before expiry an idle peer may receive one reminder through the checked
+transport; a working or unknown pane receives none. Reminders never extend the answer budget.
 
 ## What you may not do
 

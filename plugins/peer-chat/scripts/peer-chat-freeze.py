@@ -4,9 +4,8 @@
 peer-chat-freeze.py --slug <slug> [--dir <path>] [-- <pathspec>...]
 
 A freeze writes the working tree, untracked files included, through a scratch copy of the index: the real
-index, HEAD and the branch stay untouched. Each freeze appends one row to <dir>/freezes.tsv (default
-tmp/peer-chat/<slug>/ under the repo root) and prints JSON: freeze number, tree sha, the previous target
-(the last freeze, else HEAD) and the `git diff <previous> <tree>` command the reviewer runs.
+index, HEAD and the branch stay untouched. Each freeze records its repository in the topic's
+state.json and prints the previous freeze from that same worktree, else its HEAD.
 """
 
 from __future__ import annotations
@@ -18,10 +17,8 @@ import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from peer_chat_core import freeze_tree, now_utc, repo_root, stamp  # noqa: E402
-
-EMPTY_TREE = "4b825dc642cb6eb9a060e54bf8d69288fbee4904"
-
+from peer_chat_core import freeze_tree, repo_root  # noqa: E402
+from peer_chat_state import StateError, Store, open_topic, record_freeze
 
 def parse_args(argv: list[str]) -> argparse.Namespace:
     parser = argparse.ArgumentParser(
@@ -29,53 +26,29 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
     )
     parser.add_argument("--slug", required=True)
     parser.add_argument("--dir", type=Path)
+    parser.add_argument("--state", type=Path, help="the coordinator topic's state.json, including from another repo")
     parser.add_argument("pathspecs", nargs="*")
     return parser.parse_args(argv)
 
 
-def head_or_empty(repo: Path) -> str:
-    probe = subprocess.run(
-        ["git", "-C", str(repo), "rev-parse", "--verify", "-q", "HEAD"],
-        capture_output=True,
-        text=True,
-    )
-    return probe.stdout.strip() or EMPTY_TREE
-
-
-def previous_target(ledger: Path, repo: Path) -> str:
-    rows = ledger.read_text().splitlines() if ledger.exists() else []
-    return rows[-1].split("\t")[2] if rows else head_or_empty(repo)
-
-
-def append_row(ledger: Path, tree: str, pathspecs: list[str]) -> int:
-    ledger.parent.mkdir(parents=True, exist_ok=True)
-    number = len(ledger.read_text().splitlines()) + 1 if ledger.exists() else 1
-    with ledger.open("a") as stream:
-        stream.write(
-            f"{number}\t{stamp(now_utc())}\t{tree}\t{' '.join(pathspecs) or '.'}\n"
-        )
-    return number
-
-
 def main(argv: list[str]) -> int:
     args = parse_args(argv)
-    repo = repo_root()
-    ledger = (args.dir or repo / "tmp/peer-chat" / args.slug) / "freezes.tsv"
-    previous = previous_target(ledger, repo)
-    tree = freeze_tree(repo, args.pathspecs)
-    number = append_row(ledger, tree, args.pathspecs)
-    print(
-        json.dumps(
-            {
-                "freeze": number,
-                "tree": tree,
-                "previous": previous,
-                "diff": f"git diff {previous} {tree}",
-                "ledger": str(ledger),
-            }
-        )
-    )
-    return 0
+    try:
+        repo = repo_root().resolve()
+        path = (args.state or (args.dir or repo / "tmp/peer-chat" / args.slug) / "state.json").resolve()
+        if path.name != "state.json":
+            raise StateError("--state must name a topic's state.json")
+        coordinator = Path(Store(path).read()["repo"]) if path.exists() else repo
+        store = open_topic(path, transport="agterm", slug=args.slug, host="agterm", repo=coordinator,
+                           legacy_dir=path.parent)
+        tree = freeze_tree(repo, args.pathspecs)
+        row = record_freeze(store, repo, tree, args.pathspecs)
+        print(json.dumps({**row, "freeze": row["n"], "state": str(path), "ledger": str(path),
+                          "diff": f'git diff {row["previous"]} {tree}'}))
+        return 0
+    except (StateError, OSError, ValueError, subprocess.CalledProcessError) as error:
+        print(f"peer-chat-freeze: {error}", file=sys.stderr)
+        return 2
 
 
 if __name__ == "__main__":

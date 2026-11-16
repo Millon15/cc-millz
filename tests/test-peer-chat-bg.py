@@ -1,5 +1,7 @@
 """Protocol tests use real subprocesses and filesystem locks, not fake host delivery."""
 import concurrent.futures
+import fcntl
+import hashlib
 import importlib.util
 import json
 import os
@@ -8,13 +10,14 @@ import shutil
 import subprocess
 import sys
 import tempfile
+import time
 import unittest
 
 ROOT = Path(__file__).resolve().parents[1]
 HELPER = ROOT / "plugins/peer-chat-bg/scripts/peer-chat-bg.py"
 
 
-class ProtocolTests(unittest.TestCase):
+class ProtocolFixture(unittest.TestCase):
     def setUp(self):
         self.temp = tempfile.TemporaryDirectory()
         self.addCleanup(self.temp.cleanup)
@@ -73,13 +76,15 @@ class ProtocolTests(unittest.TestCase):
         return self.call("check", "--name", "suite", "--state", state, "--target", target or self.target,
                          "--evidence", str(self.proof), status=status)
 
+
+class ProtocolTests(ProtocolFixture):
     def test_cancellation_requires_and_preserves_explanation(self):
         import hashlib
         message = self.prepare("Draft with a typo")
         self.call("receipt", "--message-id", message["message_id"], "--state", "cancelled",
                   "--actor-id", "parent-real-id", status=2)
         result = self.receipt(message, "cancelled")
-        proof = result["receipts"][-1]["evidence"]
+        proof = result["events"][-1]["evidence"]
         self.assertEqual(proof["sha256"], hashlib.sha256(self.proof.read_bytes()).hexdigest())
         self.assertTrue(self.receipt(message, "cancelled")["replayed"])
         self.proof.write_text("different explanation")
@@ -275,7 +280,7 @@ class ProtocolTests(unittest.TestCase):
                 self.assertTrue(terminal["asks_active"])
                 self.assertTrue(terminal["dispositions_applied"])
                 self.assertEqual(terminal["recipient_binding"], {"agent_id": "parent-real-id", "generation": 1})
-                self.assertEqual(terminal["receipts"][-1]["via"], "hand-back")
+                self.assertEqual(terminal["events"][-1]["via"], "hand-back")
                 self.assertTrue(self.receipt(message, observed)["replayed"])
         self.assertEqual(self.call("status")["open_asks"], ["right-001"])
 
@@ -326,7 +331,7 @@ class ProtocolTests(unittest.TestCase):
             late = self.receipt(message, "submitted")
             self.assertEqual(late["state"], observed)
             self.assertFalse(late["dispatch_permitted"])
-            self.assertEqual(late["receipts"][-1]["state"], "submitted")
+            self.assertEqual(late["events"][-1]["event"], "submitted")
             replay = self.receipt(message, "submitted")
             self.assertEqual(replay["state"], observed)
             self.assertTrue(replay["replayed"])
@@ -339,7 +344,7 @@ class ProtocolTests(unittest.TestCase):
         self.assertTrue(self.receipt(message, "submitted")["replayed"])
         self.proof.write_text("changed evidence")
         self.assertIn("differs", self.receipt(message, "submitted", status=2)["error"])
-        self.assertEqual(len(self.call("status")["messages"][message["message_id"]]["receipts"]), 2)
+        self.assertEqual(len(self.call("status")["messages"][message["message_id"]]["events"]), 2)
 
     def test_proved_failure_and_cancellation_do_not_leave_phantom_asks(self):
         first = self.prepare("❓ Never sent?")
@@ -466,6 +471,97 @@ class ProtocolTests(unittest.TestCase):
     def test_run_identity_cannot_be_reinitialized_by_different_parent(self):
         result = self.call("init", "--host", "codex", "--parent-id", "somebody-else", "--check", "suite", status=2)
         self.assertIn("different identity", result["error"])
+
+
+class BudgetTimerCliTests(ProtocolFixture):
+
+    def blocking(self, *flags, text="🔎 a.py:1\n❓ Which file?", key="blocking", status=0):
+        return self.call("prepare", "--sender", "left", "--key", key, "--blocking", *flags, "--stdin",
+                         body=text, status=status)
+
+    def test_blocking_prepare_needs_budgets_and_stamps_each_source(self):
+        self.assertIn("a blocking ask needs deadline, grace", self.blocking(status=2)["error"])
+        self.assertIn("malformed duration", self.blocking("--deadline", "20", "--grace", "5m", status=2)["error"])
+        self.assertIn("malformed duration", self.blocking("--est-deadline", "1m", "--grace", "5m", "--wake", "5",
+                                                          status=2)["error"])
+        ignored = self.blocking("--est-deadline", "20m", "--grace", "5m", "--wake", "5m", "--est-wake", "1m",
+                                key="ignored-wake")
+        self.assertIsNone(ignored["budgets"]["wake"])
+        message = self.blocking("--est-deadline", "20m", "--grace", "5m")
+        self.assertEqual(message["text"].splitlines()[-1],
+                         "⏱ deadline 20m after submission (agent); grace 5m after nudge submission (flag)")
+        self.assertEqual(message["budgets"]["deadline"], {"seconds": 1200.0, "source": "agent"})
+        self.assertNotIn("left-001", self.call("status")["timers"])
+
+    def test_timer_cycle_wake_begin_nudged_stop_release(self):
+        message = self.blocking("--est-deadline", "1s", "--est-grace", "1s")
+        self.receipt(message, "dispatching")
+        self.receipt(message, "submitted")
+        time.sleep(1.2)
+        [nudge] = self.call("wake")["due"]
+        token = json.dumps(nudge["token"])
+        stale = json.dumps({**nudge["token"], "timer_gen": 9})
+        self.assertIsNone(self.call("begin", "--token", stale, "--action", "nudge")["intent"])
+        self.assertEqual(self.call("begin", "--token", token, "--action", "nudge")["intent"]["action"], "nudge")
+        self.assertIsNone(self.call("begin", "--token", token, "--action", "nudge")["intent"])
+        self.call("nudged", "--token", token)
+        time.sleep(1.2)
+        [stop] = self.call("wake")["due"]
+        self.assertEqual(stop["action"], "stop")
+        self.call("begin", "--token", json.dumps(stop["token"]), "--action", "stop")
+        self.call("finish", "--token", json.dumps(stop["token"]), "--action", "stop", "--outcome", "ok")
+        state = self.call("status")
+        self.assertEqual((state["timers"]["left-001"]["phase"], state["asks"][0]["timed_out"]["phase"]),
+                         ("stopped", "stopped"))
+        self.assertEqual(self.call("release", "--ask-id", "left-001", "--evidence", str(self.proof))["timer"]["phase"],
+                         "released")
+
+    def test_lock_is_free_between_dispatching_and_the_native_result(self):
+        message = self.prepare("hello")
+        self.receipt(message, "dispatching")
+        with (self.repo / "tmp/peer-chat-bg/topic/state.lock").open("a") as lock:
+            fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+            fcntl.flock(lock, fcntl.LOCK_UN)
+        self.receipt(message, "submitted")
+
+    def test_rejected_init_leaves_no_topic(self):
+        command = [sys.executable, str(HELPER), "--repo", str(self.repo), "--slug", "fresh", "init", "--host", "codex"]
+        refused = subprocess.run(command + ["--parent-id", " "], capture_output=True, text=True)
+        self.assertEqual(refused.returncode, 2)
+        self.assertFalse((self.repo / "tmp/peer-chat-bg/fresh/state.json").exists())
+        done = subprocess.run(command + ["--parent-id", "parent-real-id"], capture_output=True, text=True)
+        self.assertEqual(done.returncode, 0, done.stderr)
+        self.assertEqual(json.loads(done.stdout)["participants"]["left"]["agent_id"], "parent-real-id")
+
+    def test_withdraw_is_local_and_only_for_the_asker(self):
+        self.deliver(self.prepare("❓ Still needed?"))
+        args = ("withdraw", "--ask-id", "left-001", "--reason", "solo pass", "--evidence", str(self.proof))
+        self.assertIn("only the asker", self.call(*args, "--actor-id", "child-real-id", status=2)["error"])
+        messages = len(self.call("status")["messages"])
+        self.assertEqual(self.call(*args, "--actor-id", "parent-real-id")["ask"]["disposition"], "withdrawn")
+        state = self.call("status")
+        self.assertEqual((state["open_asks"], len(state["messages"])), ([], messages))
+
+    def test_schema_1_topic_migrates_on_its_first_mutating_command(self):
+        path = self.repo / "tmp/peer-chat-bg/legacy/state.json"
+        path.parent.mkdir(parents=True)
+        legacy = {"schema": 1, "run_id": "r1", "slug": "legacy", "repo": str(self.repo.resolve()), "host": "codex",
+                  "created_at": "2026-01-01T00:00:00Z", "phase": "active",
+                  "bindings": {"left": {"agent_id": "parent-real-id", "generation": 1},
+                               "right": {"agent_id": "child-real-id", "generation": 1}},
+                  "counters": {"left": 0, "right": 0}, "messages": {}, "keys": {}, "asks": [],
+                  "checks": {"suite": {"state": "incomplete"}}, "confirmations": {}}
+        path.write_text(json.dumps(legacy))
+        digest = hashlib.sha256(path.read_bytes()).hexdigest()
+        command = [sys.executable, str(HELPER), "--repo", str(self.repo), "--slug", "legacy", "--run", "r1"]
+        refused = subprocess.run(command + ["status"], capture_output=True, text=True)
+        self.assertIn("schema 1", json.loads(refused.stderr)["error"])
+        done = subprocess.run(command + ["prepare", "--sender", "left", "--key", "k", "--stdin"], input="❓ Migrated?",
+                              capture_output=True, text=True)
+        self.assertEqual(done.returncode, 0, done.stderr)
+        state = json.loads(subprocess.run(command + ["status"], capture_output=True, text=True).stdout)
+        self.assertEqual((state["schema"], state["migrations"][0]["sha256"]), (2, digest))
+        self.assertEqual(state["participants"]["right"]["agent_id"], "child-real-id")
 
 
 class SharedPackagingTests(unittest.TestCase):

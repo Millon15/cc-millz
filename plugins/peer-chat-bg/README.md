@@ -10,6 +10,10 @@ targets and recorded acceptance checks.
   plugins; CI checks drift. Installed plugin caches need no sibling checkout or symlinks.
 - 🧾 **Honest delivery:** prepared → dispatching → submitted → acknowledged → answered.
   Submission is not an answer; a crash after dispatch is uncertain, never an automatic resend.
+- ⏱️ **Answer budgets:** a blocking ask carries its own deadline and grace (flag, env, profile,
+  or the agent's estimate, each source shown in a `⏱` line). Past the deadline the parent nudges
+  once, past the grace it stops the child; every wake is token-checked, so a stale one does
+  nothing, and an action is recorded as an intent before the native call and an outcome after.
 - 🤝 **Native scope:** Codex peers run in Codex; Claude peers run in Claude. Cross-runtime
   Claude ↔ Codex pairing still requires a bridge, such as the original agterm plugin.
 - 🔐 **Authority:** no permission-rule installation, shell bypass flags, hidden CLI launches,
@@ -57,7 +61,9 @@ the skill preflights the actual tools before use.
 ## ⚙️ State and project configuration
 
 Run `scripts/peer-chat-bg.sh --explain` from the consuming repo. A committed `.peer-chat-bg.json`
-may set `state_dir`; default is `tmp/peer-chat-bg`. Keep that directory ignored and private.
+may set `state_dir` (default `tmp/peer-chat-bg`) and the answer budgets `stall_minutes` and
+`grace_minutes`. Topic state is schema 2 (`<state_dir>/<slug>/state.json`, shared with agterm
+`peer-chat`); a schema 1 topic migrates in place on its first mutating command. Keep that directory ignored and private.
 The helper prints JSON and uses Python 3, process locks and atomic writes. See the skill for
 the init/bind/prepare/receipt/check/finalize lifecycle. It records protocol evidence, not
 cryptographic peer authentication, and does not prevent native calls outside the protocol.

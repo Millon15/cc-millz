@@ -47,6 +47,8 @@ codex_plugin_cache() { # codex_plugin_cache [<cached body file>] [true|false]
     cmp -s "${PLUGIN}/scripts/peer-chat.py" "${TMP}/bin/peer-chat.py"
     cmp -s "${PLUGIN}/scripts/vendor/peer-chat.py" "${TMP}/bin/peer-chat-engine.py"
     cmp -s "${PLUGIN}/scripts/peer-chat-paste.py" "${TMP}/bin/peer-chat-paste.py"
+    cmp -s "${PLUGIN}/scripts/peer_chat_state.py" "${TMP}/bin/peer_chat_state.py"
+    cmp -s "${PLUGIN}/scripts/peer-chat-state.py" "${TMP}/bin/peer-chat-state.py"
     [ -x "${TMP}/bin/peer-chat.py" ] && [ -x "${TMP}/bin/peer-chat-paste.py" ]
     cmp -s "${SKILL}" "${TMP}/codex/skills/peer-chat/SKILL.md"
     run grep -c 'prefix_rule(pattern=\["peer-chat.py"' "${TMP}/codex/rules/default.rules"
@@ -215,7 +217,7 @@ codex_plugin_cache() { # codex_plugin_cache [<cached body file>] [true|false]
     assert_not_contains "${body}" "One claim per message"
     assert_contains "${body}" "PEER_CHAT_WRAP"
     assert_contains "${body}" "## Asks"
-    assert_contains "${body}" "asks.tsv"
+    assert_contains "${body}" "state.json"
     assert_contains "${body}" "#left-004 deferred(<what has to happen first>)"
     assert_contains "${body}" "overdue:"
     assert_contains "${body}" "one tool call of your own"

@@ -1,11 +1,9 @@
 #!/usr/bin/env python3
-"""Durable native-peer protocol. Records evidence; never launches or impersonates a host tool."""
+"""Durable native-peer protocol on schema 2 state. Records evidence; never launches or impersonates a host tool."""
+
 from __future__ import annotations
 
 import argparse
-from contextlib import contextmanager
-from dataclasses import asdict
-import fcntl
 import hashlib
 import json
 import os
@@ -14,26 +12,36 @@ import re
 import subprocess
 import sys
 from types import SimpleNamespace
-import uuid
 
-sys.dont_write_bytecode = True  # --explain must not populate the installed cache either.
+sys.dont_write_bytecode = (
+    True  # --explain must not populate the installed cache either.
+)
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from peer_chat_core import (Ask, Ledger, LedgerRefusal, Plan, ASK_ID_RE,
-    clean_lines, freeze_tree, is_ask, now_utc, parse_dispositions, peer_of, plan_body, stamp)
+from peer_chat_core import (
+    ASK_ID_RE,
+    LedgerRefusal,
+    clean_lines,
+    freeze_tree,
+    is_ask,
+    now_utc,
+    peer_of,
+    stamp,
+)
+import peer_chat_state as ps
 
 ROLES = ("left", "right")
 SLUG = re.compile(r"[a-z0-9][a-z0-9-]{0,59}\Z")
-TERMINAL = {"acknowledged", "answered", "failed", "cancelled"}
-TRANSITIONS = {
-    "prepared": {"dispatching", "cancelled", "acknowledged", "answered"},
-    "dispatching": {"submitted", "uncertain", "acknowledged", "answered", "failed"},
-    "submitted": {"acknowledged", "answered", "uncertain"},
-    "uncertain": {"submitted", "acknowledged", "answered", "failed"},
-    "acknowledged": {"answered"},
-    "answered": set(), "failed": set(), "cancelled": set(),
-}
-
-
+TERMINAL = set(ps.TERMINAL_MESSAGES)
+RECEIPT_STATES = (
+    "dispatching",
+    "submitted",
+    "uncertain",
+    "acknowledged",
+    "answered",
+    "failed",
+    "cancelled",
+)
+PROFILE_KEYS = {"state_dir", "stall_minutes", "grace_minutes"}
 class Refusal(ValueError):
     pass
 
@@ -61,10 +69,10 @@ def config(repo):
     if profile.exists():
         data = json.loads(profile.read_text())
         require(isinstance(data, dict), "profile must be a JSON object")
-        require(not (set(data) - {"state_dir"}), "unknown profile keys")
-        if "state_dir" in data:
-            values["state_dir"] = data["state_dir"]
-            sources["state_dir"] = "profile"
+        require(not (set(data) - PROFILE_KEYS), "unknown profile keys")
+        for key in sorted(data):
+            values[key] = data[key]
+            sources[key] = "profile"
     require((repo / ".git").exists() or profile.exists(),
             "no project markers found: .git or .peer-chat-bg.json; pass --repo")
     value = values["state_dir"]
@@ -73,7 +81,8 @@ def config(repo):
     root = (repo / value).resolve()
     require(root.is_relative_to(repo) and root != repo, "state_dir escapes project")
     return {"plugin": "peer-chat-bg", "profile_file": str(profile) if profile.exists() else None,
-            "values": values, "sources": sources}
+            "values": values, "sources": sources,
+            "profile": {key: values[key] for key in values if key != "state_dir"}}
 
 
 def evidence(repo, value):
@@ -196,259 +205,290 @@ def validate_evidence(record):
     path = Path(record["path"])
     require(path.is_file() and digest(path.read_bytes()) == record["sha256"], "evidence changed or disappeared: " + str(path))
 
-
-def write_state(path, state):
-    # One atomic snapshot contains messages, counters, asks and checks. A separate
-    # lock file survives os.replace, unlike a lock held on the replaced state inode.
-    temp = path.with_name(".state-" + uuid.uuid4().hex + ".tmp")
-    try:
-        with temp.open("x", encoding="utf-8") as stream:
-            os.chmod(temp, 0o600)
-            json.dump(state, stream, ensure_ascii=False, indent=2)
-            stream.write("\n")
-            stream.flush()
-            os.fsync(stream.fileno())
-        os.replace(temp, path)
-    finally:
-        temp.unlink(missing_ok=True)
+def status_of(store):
+    return ps.status(store)
 
 
-@contextmanager
-def locked(path):
-    path.parent.mkdir(parents=True, exist_ok=True)
-    with path.with_suffix(".lock").open("a") as lock:
-        fcntl.flock(lock, fcntl.LOCK_EX)
-        yield
+def init(args, repo, path):
+    require(args.parent_id.strip(), "parent ID is empty")
+    require(all(name.strip() for name in args.check), "check names cannot be empty")
+    store = ps.open_topic(path, transport="bg", slug=args.slug, host=args.host, repo=repo,
+                          on_create=lambda state: seed_topic(state, args))
+    require_same_identity(store.read(), args, repo)
+    return status_of(store)
 
 
-class MemoryLedger(Ledger):
-    """Reuse the canonical ask parser/planner against the locked native snapshot."""
-    def __init__(self, state, sender=None, exclude_message=None):
-        self.state = state
-        self.pending = in_flight_dispositions(state, sender, exclude_message)
-
-    def load(self):
-        return [Ask(**row) for row in self.state["asks"]]
-
-    def open_new_from(self, agent):
-        return [ask for ask in super().open_new_from(agent) if ask.id not in self.pending]
-
-    def next_id(self, agent):
-        return f'{agent}-{self.state["counters"][agent] + 1:03d}'
+def seed_topic(state, args):
+    state["participants"]["left"] = ps.participant_record({"agent_id": args.parent_id, "harness": args.host})
+    state["checks"] = {name: {"state": "incomplete"} for name in args.check}
 
 
-def in_flight_dispositions(state, sender, exclude_message):
-    return {disposition.id
-            for mid, message in state["messages"].items()
-            if mid != exclude_message and message["sender"] == sender
-            and message["state"] in ("prepared", "dispatching", "submitted", "uncertain")
-            and not message["dispositions_applied"]
-            for disposition in message_plan(message).dispositions}
-
-
-def validate_dispositions(state, sender, plan, allow_stale=False):
-    asks = {ask["id"]: ask for ask in state["asks"]}
-    seen = set()
-    stale = []
-    for disposition in plan.dispositions:
-        require(disposition.id not in seen, "duplicate disposition: " + disposition.id)
-        seen.add(disposition.id)
-        require(disposition.id in asks, "unknown ask: " + disposition.id)
-        ask = asks[disposition.id]
-        require(ask["asked_by"] != sender, "cannot dispose your own ask: " + disposition.id)
-        require(disposition.kind == "answered" or disposition.reason,
-                "deferred/declined requires a reason: " + disposition.id)
-        if ask["disposition"] in ("answered", "declined") and allow_stale:
-            stale.append(disposition.id)
-            continue
-        require(ask["disposition"] in ("", "deferred"), "ask already closed: " + disposition.id)
-    return stale
+def require_same_identity(state, args, repo):
+    left = state["participants"]["left"] or {}
+    require(
+        state["repo"] == str(repo)
+        and state["host"] == args.host
+        and left.get("agent_id") == args.parent_id,
+        "topic exists with different identity; use a fresh slug",
+    )
+    require(
+        set(args.check) == set(state["checks"]),
+        "topic exists with a different required-check set",
+    )
 
 
 def actor_role(state, actor):
-    roles = [role for role, binding in state["bindings"].items()
-             if binding and binding["agent_id"] == actor]
+    roles = [
+        role
+        for role, who in state["participants"].items()
+        if who and who["agent_id"] == actor
+    ]
     require(len(roles) == 1, "actor ID does not identify a bound peer in this run")
     return roles[0]
 
 
-def message_plan(message):
-    return Plan(message["text"], [tuple(row) for row in message["new_asks"]],
-                parse_dispositions(message["text"].splitlines()))
+def bind(args, store, state):
+    require(args.agent_id.strip(), "agent ID is empty")
+    require(
+        args.agent_id != state["participants"]["left"]["agent_id"],
+        "peer must not be the parent",
+    )
+    prior = state["participants"][args.role]
+    require(
+        not prior or prior["agent_id"] == args.agent_id,
+        "role already bound; no silent identity replacement; use a fresh slug",
+    )
+    bound = ps.bind_participant(
+        store, args.role, {"agent_id": args.agent_id, "harness": state["host"]}
+    )
+    return {"run_id": state["run_id"], "role": args.role, **bound}
 
 
-def activate_asks(state, message):
-    if message["asks_active"]:
-        return
-    state["asks"] += [asdict(Ask(ask_id, message["sender"], stamp(now_utc()), "", "", "", question))
-                      for ask_id, question in message["new_asks"]]
-    message["asks_active"] = True
+def prepare(args, store, state, profile):
+    require(state["participants"][args.sender], "sender role is not bound")
+    lines = clean_lines(SimpleNamespace(label=f"Chat from {args.sender}: "), args.body)
+    require(
+        not any(is_ask(line) and ASK_ID_RE.search(line) for line in lines),
+        "new asks must not supply their own IDs",
+    )
+    for ignored in (args.wake, args.est_wake):
+        if ignored:
+            ps.parse_duration(ignored)
+    budgets = ps.resolve_budgets(
+        "bg",
+        args.blocking,
+        flags=budget_flags(args, ""),
+        estimates=budget_flags(args, "est_"),
+        env=os.environ,
+        profile=profile,
+    )
+    prepared = ps.prepare_message(
+        store, sender=args.sender, lines=lines, key=args.key, budgets=budgets, width=0
+    )
+    return {
+        **store.read()["messages"][prepared["message_id"]],
+        "replayed": prepared["replayed"],
+    }
 
 
-def receipt_plan(state, message):
-    plan = message_plan(message)
-    stale = validate_dispositions(state, message["sender"], plan, allow_stale=True)
-    if stale:
-        message["stale_dispositions"] = list(dict.fromkeys(message.get("stale_dispositions", []) + stale))
-        plan.dispositions = [disposition for disposition in plan.dispositions if disposition.id not in stale]
-    return plan
+def budget_flags(args, prefix):
+    return {name: getattr(args, prefix + name, None) for name in ps.BUDGET_FIELDS}
 
 
-def record_dispatch(state, message, recheck=True):
-    binding = state["bindings"][message["recipient"]]
-    require(binding is not None, "bind the actual recipient ID before dispatching")
-    plan = receipt_plan(state, message)
-    if recheck:
-        from peer_chat_core import refuse_missing_dispositions
-        ledger = MemoryLedger(state, message["sender"], message["message_id"])
-        refuse_missing_dispositions(ledger, message["sender"], plan)
-    message["recipient_binding"] = dict(binding)
-    activate_asks(state, message)
+def receipt(args, store, repo):
+    with store.mutate() as state:
+        record = ps.message(state, args.message_id)
+        role = actor_role(state, args.actor_id)
+        desired = (
+            record["recipient"] if args.state in ps.PEER_EVENTS else record["sender"]
+        )
+        require(role == desired, "receipt actor is not the " + desired + " peer")
+        proof = None if args.state == "dispatching" else evidence(repo, args.evidence)
+        before = record["claim"]
+        result = ps.observe_in(
+            state, record, args.state, proof, args.actor_id, now_utc()
+        )
+        return {
+            **result,
+            "dispatch_permitted": args.state == "dispatching" and before is None,
+        }
 
 
-def apply_dispositions(state, message):
-    if message["dispositions_applied"]:
-        return
-    plan = receipt_plan(state, message)
-    asks = Ledger.apply_dispositions(MemoryLedger(state).load(), plan.dispositions, now_utc())
-    state["asks"] = [asdict(ask) for ask in asks]
-    message["dispositions_applied"] = True
+def check(args, store, repo):
+    with store.mutate() as state:
+        require(args.name in state["checks"], "check was not declared by init")
+        validate_target(repo, args.target)
+        state["checks"][args.name] = {
+            "state": args.state,
+            "target": args.target,
+            "evidence": evidence(repo, args.evidence),
+            "at": stamp(now_utc()),
+        }
+        state["confirmations"] = {}
+        return {"name": args.name, **state["checks"][args.name]}
 
 
-def snapshot(state, path):
-    return {**state, "state_file": str(path),
-            "open_asks": [ask["id"] for ask in state["asks"] if ask["disposition"] not in ("answered", "declined")],
-            "unresolved_messages": [mid for mid, message in state["messages"].items() if message["state"] not in TERMINAL]}
+def finalize(args, store, repo):
+    with store.mutate() as state:
+        role = actor_role(state, args.actor_id)
+        validate_target(repo, args.target)
+        require_closable(state, args.target)
+        other = state["confirmations"].get(peer_of(role))
+        require(
+            not other or other["target"] == args.target,
+            "peers confirmed different final targets",
+        )
+        state["confirmations"][role] = {
+            "target": args.target,
+            "actor_id": args.actor_id,
+            "evidence": evidence(repo, args.evidence),
+            "at": stamp(now_utc()),
+        }
+        if len(state["confirmations"]) == 2:
+            state["phase"] = "finalized"
+            state["finalized_at"] = stamp(now_utc())
+        return {
+            "run_id": state["run_id"],
+            "phase": state["phase"],
+            "confirmations": state["confirmations"],
+        }
 
 
-def init(args, repo, path):
-    if path.exists():
-        state = json.loads(path.read_text())
-        require(state["repo"] == str(repo) and state["host"] == args.host
-                and state["bindings"]["left"]["agent_id"] == args.parent_id,
-                "topic exists with different identity; use a fresh slug")
-        require(set(args.check) == set(state["checks"]), "topic exists with a different required-check set")
-        return snapshot(state, path), False
-    require(args.parent_id.strip(), "parent ID is empty")
-    require(all(name.strip() for name in args.check), "check names cannot be empty")
-    state = {"schema": 1, "run_id": uuid.uuid4().hex, "slug": args.slug, "repo": str(repo),
-             "host": args.host, "created_at": stamp(now_utc()), "phase": "active",
-             "bindings": {"left": {"agent_id": args.parent_id, "generation": 1}, "right": None},
-             "counters": {"left": 0, "right": 0}, "messages": {}, "keys": {}, "asks": [],
-             "checks": {name: {"state": "incomplete"} for name in args.check}, "confirmations": {}}
-    return snapshot(state, path), True
+def require_closable(state, target):
+    require(state["participants"]["right"], "peer is not bound")
+    require(
+        all(ask["disposition"] in ps.CLOSED for ask in state["asks"]),
+        "open or deferred asks remain",
+    )
+    require(
+        all(message["state"] in TERMINAL for message in state["messages"].values()),
+        "unresolved message receipts remain",
+    )
+    require(
+        all(
+            check["state"] == "passed" and check["target"] == target
+            for check in state["checks"].values()
+        ),
+        "required checks incomplete, failed or on a different target",
+    )
+    require(
+        all(
+            any(
+                m["sender"] == sender and m["state"] in ps.PEER_EVENTS
+                for m in state["messages"].values()
+            )
+            for sender in ROLES
+        ),
+        "no two-way peer exchange; an ACK alone is not a substantive reply",
+    )
+    require(
+        not ps.unresolved_timers(state),
+        "timer intents or stopped peers are not reconciled",
+    )
+    for record in list(state["checks"].values()) + list(
+        state["confirmations"].values()
+    ):
+        validate_evidence(record["evidence"])
 
 
-def mutate(args, state, repo):
-    require(args.run == state["run_id"], "missing or stale --run identity; inspect status")
+def token_arg(value):
+    try:
+        token = json.loads(value)
+    except json.JSONDecodeError as error:
+        raise Refusal(
+            "--token must be the JSON token printed by wake: " + str(error)
+        ) from None
+    require(isinstance(token, dict), "--token must be a JSON object")
+    return token
+
+
+def timer_command(args, store, repo):
+    if args.command == "wake":
+        return {"due": ps.due(store), "status": "read-only"}
+    if args.command == "begin":
+        return {"intent": ps.begin(store, token_arg(args.token), args.action)}
+    if args.command == "finish":
+        return {
+            "timer": ps.finish(
+                store,
+                token_arg(args.token),
+                args.action,
+                args.outcome,
+                args.detail or "",
+            )
+        }
+    if args.command == "nudged":
+        return {"grace_expires_at": ps.nudge_submitted(store, token_arg(args.token))}
+    if args.command == "withdraw":
+        return {"ask": ps.withdraw(store, args.ask_id, actor=args.actor_id, reason=args.reason,
+                                   evidence=Path(evidence(repo, args.evidence)["path"]))}
+    if args.command == "release":
+        return {
+            "timer": ps.release(
+                store, args.ask_id, Path(evidence(repo, args.evidence)["path"])
+            )
+        }
+    raise Refusal("unknown command")
+
+
+def mutate(args, store, repo, profile):
+    state = store.read()
+    require(
+        args.run == state["run_id"], "missing or stale --run identity; inspect status"
+    )
     require(state["phase"] == "active", "topic is finalized; use a fresh slug")
     if args.command == "target":
         return freeze_target(repo, args.output, args.since)
     if args.command == "bind":
-        require(args.agent_id.strip(), "agent ID is empty")
-        require(args.agent_id != state["bindings"]["left"]["agent_id"], "peer must not be the parent")
-        prior = state["bindings"][args.role]
-        require(not prior or prior["agent_id"] == args.agent_id,
-                "role already bound; no silent identity replacement; use a fresh slug")
-        state["bindings"][args.role] = {"agent_id": args.agent_id, "generation": 1}
-        return {"run_id": state["run_id"], "role": args.role, **state["bindings"][args.role]}
+        return bind(args, store, state)
     if args.command == "prepare":
-        require(args.key.strip(), "idempotency key is empty")
-        require(state["bindings"][args.sender], "sender role is not bound")
-        body = args.body
-        key = args.sender + ":" + args.key
-        signature = digest(body.encode())
-        if key in state["keys"]:
-            message = state["messages"][state["keys"][key]]
-            require(message["body_sha256"] == signature, "idempotency key reused with different content")
-            return {**message, "replayed": True}
-        lines = clean_lines(SimpleNamespace(label=f"Chat from {args.sender}: "), body)
-        require(not any(is_ask(line) and ASK_ID_RE.search(line) for line in lines),
-                "new asks must not supply their own IDs")
-        ledger = MemoryLedger(state, args.sender)
-        plan = plan_body(lines, args.sender, ledger, now_utc(), width=0)
-        validate_dispositions(state, args.sender, plan)
-        state["counters"][args.sender] += len(plan.new_asks)
-        mid = uuid.uuid4().hex
-        message = {"message_id": mid, "run_id": state["run_id"], "sender": args.sender,
-                   "recipient": peer_of(args.sender), "key": args.key, "body_sha256": signature,
-                   "text": plan.text, "new_asks": plan.new_asks, "warnings": plan.warnings,
-                   "state": "prepared", "asks_active": False, "dispositions_applied": False,
-                   "created_at": stamp(now_utc()), "receipts": []}
-        state["messages"][mid] = message
-        state["keys"][key] = mid
-        if plan.new_asks or not any(line.startswith("🏁") for line in plan.text.splitlines()):
-            state["confirmations"] = {}
-        return message
+        return prepare(args, store, state, profile)
     if args.command == "receipt":
-        require(args.message_id in state["messages"], "unknown message ID")
-        message = state["messages"][args.message_id]
-        role = actor_role(state, args.actor_id)
-        desired = message["recipient"] if args.state in ("acknowledged", "answered") else message["sender"]
-        require(role == desired, "receipt actor is not the " + desired + " peer")
-        proof = None if args.state == "dispatching" else evidence(repo, args.evidence)
-        matching = [receipt for receipt in message["receipts"] if receipt["state"] == args.state]
-        if matching:
-            require(any(receipt["actor_id"] == args.actor_id and receipt["evidence"] == proof
-                        for receipt in matching), "same-state receipt differs from the recorded evidence")
-            return {**message, "replayed": True, "dispatch_permitted": False}
-        # A fast recipient can ACK before the sender persists the native call's
-        # successful submission result. Keep the stronger state and retain that
-        # late sender evidence; it is not a new dispatch or a state downgrade.
-        late_submission = args.state == "submitted" and message["state"] in ("acknowledged", "answered")
-        require(late_submission or args.state in TRANSITIONS[message["state"]],
-                f'invalid receipt transition {message["state"]} -> {args.state}; never resend blindly')
-        hand_back = message["state"] == "prepared" and args.state in ("acknowledged", "answered")
-        if args.state == "dispatching" or hand_back:
-            record_dispatch(state, message, recheck=not hand_back)
-        if args.state in ("submitted", "acknowledged", "answered"):
-            apply_dispositions(state, message)
-        if args.state == "failed":
-            # "failed" means proved not delivered, not an ambiguous timeout. Do not
-            # erase an ask already observed or answered by a concurrent peer.
-            require(not message["dispositions_applied"], "already submitted; not-delivered classification contradicts prior receipt")
-            own_ids = {row[0] for row in message["new_asks"]}
-            touched = [ask for ask in state["asks"] if ask["id"] in own_ids and ask["disposition"]]
-            require(not touched, "ask already observed; cannot classify message as not delivered")
-            state["asks"] = [ask for ask in state["asks"] if ask["id"] not in own_ids]
-        if not late_submission:
-            message["state"] = args.state
-        receipt = {"state": args.state, "actor_id": args.actor_id, "at": stamp(now_utc()), "evidence": proof}
-        if hand_back:
-            receipt["via"] = "hand-back"
-        message["receipts"].append(receipt)
-        return {**message, "dispatch_permitted": args.state == "dispatching"}
+        return receipt(args, store, repo)
     if args.command == "check":
-        require(args.name in state["checks"], "check was not declared by init")
-        validate_target(repo, args.target)
-        state["checks"][args.name] = {"state": args.state, "target": args.target,
-                                      "evidence": evidence(repo, args.evidence), "at": stamp(now_utc())}
-        state["confirmations"] = {}
-        return {"name": args.name, **state["checks"][args.name]}
+        return check(args, store, repo)
     if args.command == "finalize":
-        role = actor_role(state, args.actor_id)
-        validate_target(repo, args.target)
-        require(state["bindings"]["right"], "peer is not bound")
-        require(all(ask["disposition"] in ("answered", "declined") for ask in state["asks"]), "open or deferred asks remain")
-        require(all(message["state"] in TERMINAL for message in state["messages"].values()), "unresolved message receipts remain")
-        require(all(check["state"] == "passed" and check["target"] == args.target
-                    for check in state["checks"].values()), "required checks incomplete, failed or on a different target")
-        require(all(any(message["sender"] == sender and message["state"] in ("acknowledged", "answered")
-                            for message in state["messages"].values()) for sender in ROLES),
-                "no two-way peer exchange; an ACK alone is not a substantive reply")
-        for check in state["checks"].values():
-            validate_evidence(check["evidence"])
-        for confirmation in state["confirmations"].values():
-            validate_evidence(confirmation["evidence"])
-        other = state["confirmations"].get(peer_of(role))
-        require(not other or other["target"] == args.target, "peers confirmed different final targets")
-        state["confirmations"][role] = {"target": args.target, "actor_id": args.actor_id,
-                                        "evidence": evidence(repo, args.evidence), "at": stamp(now_utc())}
-        if len(state["confirmations"]) == 2:
-            state["phase"] = "finalized"
-            state["finalized_at"] = stamp(now_utc())
-        return {"run_id": state["run_id"], "phase": state["phase"], "confirmations": state["confirmations"]}
-    raise Refusal("unknown command")
+        return finalize(args, store, repo)
+    return timer_command(args, store, repo)
+
+
+def add_budget_flags(q):
+    q.add_argument(
+        "--blocking",
+        action="store_true",
+        help="every new ask of this message arms a timer",
+    )
+    for name in ps.BUDGET_FIELDS:
+        q.add_argument(
+            "--" + name, help="the user's value: 90s, 20m or 1h (source flag); bg validates and ignores wake"
+        )
+        q.add_argument(
+            "--est-" + name,
+            dest="est_" + name,
+            help="your estimate for this ask (source agent)",
+        )
+
+
+def add_timer_commands(sub):
+    sub.add_parser(
+        "wake", help="read-only: the due nudge/stop actions with their tokens"
+    )
+    for name in ("begin", "finish"):
+        q = sub.add_parser(name)
+        q.add_argument("--token", required=True)
+        q.add_argument("--action", choices=("nudge", "stop"), required=True)
+        if name == "finish":
+            q.add_argument("--outcome", choices=("ok", "failed"), required=True)
+            q.add_argument("--detail")
+    sub.add_parser("nudged").add_argument("--token", required=True)
+    q = sub.add_parser("release")
+    q.add_argument("--ask-id", required=True)
+    q.add_argument("--evidence", required=True)
+    q = sub.add_parser("withdraw", help="the asker closes its own ask without messaging the peer")
+    q.add_argument("--ask-id", required=True)
+    q.add_argument("--actor-id", required=True)
+    q.add_argument("--reason", required=True)
+    q.add_argument("--evidence", required=True)
 
 
 def parser():
@@ -464,19 +504,23 @@ def parser():
     q.add_argument("--check", action="append", default=[])
     q = sub.add_parser("target")
     q.add_argument("--output", required=True)
-    q.add_argument("--since", help="an earlier manifest token; adds the changed files and keeps the full manifest")
+    q.add_argument(
+        "--since",
+        help="an earlier manifest token; adds the changed files and keeps the full manifest",
+    )
     q = sub.add_parser("bind")
     q.add_argument("--role", choices=("right",), default="right")
     q.add_argument("--agent-id", required=True)
     q = sub.add_parser("prepare")
     q.add_argument("--sender", choices=ROLES, required=True)
     q.add_argument("--key", required=True)
+    add_budget_flags(q)
     source = q.add_mutually_exclusive_group(required=True)
     source.add_argument("--message-file")
     source.add_argument("--stdin", action="store_true")
     q = sub.add_parser("receipt")
     q.add_argument("--message-id", required=True)
-    q.add_argument("--state", choices=tuple(TRANSITIONS)[1:], required=True)
+    q.add_argument("--state", choices=RECEIPT_STATES, required=True)
     q.add_argument("--actor-id", required=True)
     q.add_argument("--evidence")
     q = sub.add_parser("check")
@@ -488,51 +532,83 @@ def parser():
     q.add_argument("--target", required=True)
     q.add_argument("--actor-id", required=True)
     q.add_argument("--evidence", required=True)
+    add_timer_commands(sub)
     sub.add_parser("status")
     return p
+
+
+def topic_path(repo, resolved, slug):
+    require(
+        slug is not None and SLUG.fullmatch(slug),
+        "--slug must be 1-60 lowercase letters, digits or hyphens",
+    )
+    root = (repo / resolved["values"]["state_dir"] / slug).resolve()
+    require(root.is_relative_to(repo), "topic path escapes project")
+    return root, root / "state.json"
+
+
+def run(args):
+    repo = repo_path(args.repo)
+    resolved = config(repo)
+    if args.explain:
+        return resolved
+    require(args.command is not None, "specify a command or --explain")
+    root, path = topic_path(repo, resolved, args.slug)
+    if args.command == "status":
+        return existing_status(args, path)
+    if args.command == "prepare":
+        args.body = (
+            sys.stdin.read(1024 * 1024 + 1)
+            if args.stdin
+            else Path(args.message_file).read_text()
+        )
+        require(len(args.body.encode()) <= 1024 * 1024, "message exceeds 1 MiB")
+    # Mutable conversation state must never appear in git status/add by default.
+    ignored_path(repo, path)
+    require(
+        not git(repo, "ls-files", "--", str(root.relative_to(repo))),
+        "state directory contains tracked files",
+    )
+    if args.command == "init":
+        return init(args, repo, path)
+    require(path.is_file(), "topic does not exist; init first")
+    store = ps.open_topic(
+        path,
+        transport="bg",
+        slug=args.slug,
+        host=json.loads(path.read_text())["host"],
+        repo=repo,
+    )
+    require(store.read()["repo"] == str(repo), "topic belongs to a different project")
+    return mutate(args, store, repo, resolved["profile"])
+
+
+def existing_status(args, path):
+    require(path.is_file(), "topic does not exist")
+    store = ps.Store(path)
+    require(
+        store.read().get("schema") == ps.SCHEMA,
+        "topic is schema 1; run any mutating command to migrate it",
+    )
+    result = status_of(store)
+    require(not args.run or args.run == result["run_id"], "stale --run identity")
+    return result
 
 
 def main(argv=None):
     args = parser().parse_args(argv)
     try:
-        repo = repo_path(args.repo)
-        resolved = config(repo)
-        if args.explain:
-            print(json.dumps(resolved))
-            return 0
-        require(args.command is not None, "specify a command or --explain")
-        require(args.slug is not None and SLUG.fullmatch(args.slug), "--slug must be 1-60 lowercase letters, digits or hyphens")
-        root = (repo / resolved["values"]["state_dir"] / args.slug).resolve()
-        require(root.is_relative_to(repo), "topic path escapes project")
-        path = root / "state.json"
-        if args.command == "status":
-            require(path.is_file(), "topic does not exist")
-            state = json.loads(path.read_text())
-            require(not args.run or args.run == state["run_id"], "stale --run identity")
-            print(json.dumps(snapshot(state, path), ensure_ascii=False))
-            return 0
-        if args.command == "prepare":
-            args.body = sys.stdin.read(1024 * 1024 + 1) if args.stdin else Path(args.message_file).read_text()
-            require(len(args.body.encode()) <= 1024 * 1024, "message exceeds 1 MiB")
-        # Mutable conversation state must never appear in git status/add by default.
-        ignored_path(repo, path)
-        require(not git(repo, "ls-files", "--", str(root.relative_to(repo))), "state directory contains tracked files")
-        with locked(path):
-            if args.command == "init":
-                result, changed = init(args, repo, path)
-                if changed:
-                    state = {key: value for key, value in result.items()
-                             if key not in ("state_file", "open_asks", "unresolved_messages")}
-                    write_state(path, state)
-            else:
-                require(path.is_file(), "topic does not exist; init first")
-                state = json.loads(path.read_text())
-                require(state["repo"] == str(repo), "topic belongs to a different project")
-                result = mutate(args, state, repo)
-                write_state(path, state)
-        print(json.dumps(result, ensure_ascii=False))
+        print(json.dumps(run(args), ensure_ascii=False))
         return 0
-    except (Refusal, LedgerRefusal, OSError, ValueError, KeyError, TypeError) as error:
+    except (
+        Refusal,
+        ps.StateError,
+        LedgerRefusal,
+        OSError,
+        ValueError,
+        KeyError,
+        TypeError,
+    ) as error:
         print(json.dumps({"error": str(error)}), file=sys.stderr)
         return 2
 

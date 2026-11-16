@@ -250,7 +250,7 @@ PY
     seed_codex_ask "" "" ""
     printf '🎯 no disposition here\n' > "${TMP}/msg"
     send_file "${TMP}/msg" --slug seatos
-    assert_status 1
+    assert_status 2
     assert_not_contains "${output}" "mid-turn"
     assert_not_contains "$(cat "${TMP}/calls.log")" "session text"
 }
@@ -320,7 +320,7 @@ typed_keys() { od -An -c "${TMP}/typed.log" | tr -d ' \n'; }
     assert_status 0
     assert_contains "${output}" '"asks": ["#left-001"]'
     assert_contains "$(cat "${TMP}/calls.log")" "session paste --pane right --target ${SID}"
-    assert_contains "$(cat "${TMP}/${LEDGER}")" $'left-001\tleft\t'
+    assert_contains "$(ledger_rows)" $'left-001\tleft\t'
     assert_not_contains "${output}" "unrecognized arguments"
 }
 
@@ -369,7 +369,7 @@ typed_keys() { od -An -c "${TMP}/typed.log" | tr -d ' \n'; }
     printf '🔎 Processor.php:23\n\n❓ is the 409 retried at all?\n' > "${TMP}/msg"
     run python3 "${PLUGIN}/scripts/peer-chat.py" --to peer --slug=seatos --stdin < "${TMP}/msg"
     assert_status 0
-    assert_contains "$(cat "${TMP}/${LEDGER}")" $'left-001\tleft\t'
+    assert_contains "$(ledger_rows)" $'left-001\tleft\t'
 }
 
 @test "handoff: the paste transport resolves through the handing adapter, not a copy on PATH" {
@@ -444,7 +444,7 @@ typed_keys() { od -An -c "${TMP}/typed.log" | tr -d ' \n'; }
     seed_codex_ask "" "" ""
     printf '🎯 the guard is blind across bids\n' > "${TMP}/body.msg"
     run python3 "${PASTE}" --to codex --message-file "${TMP}/body.msg" --slug seatos
-    assert_status 1
+    assert_status 2
     assert_contains "${output}" "refused: the peer's asks below have no disposition"
     assert_not_contains "${output}" "message file restored"
     [ "$(cat "${TMP}/body.msg")" = "🎯 the guard is blind across bids" ]
@@ -483,12 +483,16 @@ typed_keys() { od -An -c "${TMP}/typed.log" | tr -d ' \n'; }
 
 # ----------------------------------------------------------------- ledger --
 
-LEDGER="tmp/peer-chat/seatos/asks.tsv"
+LEDGER="tmp/peer-chat/seatos/state.json"
+
+ledger_rows() {
+    jq -r '.asks[] | [.id,.asked_by,.sent_at,.disposition,.deferred_due,.reason,.question] | @tsv' "${TMP}/${LEDGER}"
+}
 
 seed_codex_ask() { # seed_codex_ask <disposition> <due> <reason>
     mkdir -p "${TMP}/tmp/peer-chat/seatos"
-    printf 'id\tasked_by\tsent_at\tdisposition\tdue\treason\tquestion\n' > "${TMP}/${LEDGER}"
-    printf 'codex-001\tcodex\t2026-09-10T08:00:00Z\t%s\t%s\t%s\tdoes the refund path reuse the bid?\n' "$1" "$2" "$3" >> "${TMP}/${LEDGER}"
+    printf 'id\tasked_by\tsent_at\tdisposition\tdue\treason\tquestion\n' > "${TMP}/tmp/peer-chat/seatos/asks.tsv"
+    printf 'codex-001\tcodex\t2026-09-10T08:00:00Z\t%s\t%s\t%s\tdoes the refund path reuse the bid?\n' "$1" "$2" "$3" >> "${TMP}/tmp/peer-chat/seatos/asks.tsv"
 }
 
 @test "ledger: --slug issues a topic-scoped id to every ❓, writes the row after delivery, reports it" {
@@ -499,24 +503,104 @@ seed_codex_ask() { # seed_codex_ask <disposition> <due> <reason>
     assert_contains "${pasted}" "❓ #left-001 does a retry create a second bid?"
     assert_contains "${pasted}" "❓ #left-002 is the 409 retried at all?"
     assert_contains "${output}" '"asks": ["#left-001", "#left-002"]'
-    assert_contains "$(cat "${TMP}/${LEDGER}")" $'left-001\tleft\t'
-    assert_contains "$(cat "${TMP}/${LEDGER}")" $'\t\t\t\tdoes a retry create a second bid?'
+    assert_contains "$(ledger_rows)" $'left-001\tleft\t'
+    assert_contains "$(ledger_rows)" $'\t\t\t\tdoes a retry create a second bid?'
     assert_not_contains "${output}" "no --slug"
 }
 
-@test "ledger: a failed delivery records nothing" {
+@test "ledger: an unconfirmed delivery preserves an unresolved claim and arms no timer" {
     touch "${TMP}/paste-ignored"
     printf '❓ x?\n' > "${TMP}/msg"
     send_file "${TMP}/msg" --slug seatos
     assert_status 1
-    [ ! -f "${TMP}/${LEDGER}" ]
+    [ "$(jq '.messages | length' "${TMP}/${LEDGER}")" = 1 ]
+    [ "$(jq -r '.messages[] | .state' "${TMP}/${LEDGER}")" = uncertain ]
+    [ "$(jq '.timers | length' "${TMP}/${LEDGER}")" = 0 ]
+}
+
+@test "budgets: a blocking send stamps sources and arms only on submit_sent" {
+    printf '🔎 evidence\n❓ return the result\n' > "${TMP}/msg"
+    PEER_CHAT_WAKE_MINUTES=3 send_file "${TMP}/msg" --slug seatos --blocking --deadline 20m --est-grace 5m
+    assert_status 0
+    assert_contains "$(cat "${TMP}/clip-first-set")" "deadline 20m after"
+    assert_contains "$(cat "${TMP}/clip-first-set")" "(flag)"
+    assert_contains "$(cat "${TMP}/clip-first-set")" "(agent)"
+    [ "$(jq -r '.timers["left-001"].budgets.wake.source' "${TMP}/${LEDGER}")" = env ]
+    jq -e '.timers["left-001"].budgets.wake.seconds == 180' "${TMP}/${LEDGER}"
+    [ "$(jq -r '.asks[0].question' "${TMP}/${LEDGER}")" = "return the result" ]
+    [ "$(jq -r '.messages[].state' "${TMP}/${LEDGER}")" = submit_sent ]
+    [ "$(jq -r '.timers["left-001"].armed_at' "${TMP}/${LEDGER}")" = "$(jq -r '.messages[].submitted_at' "${TMP}/${LEDGER}")" ]
+}
+
+@test "budgets: missing blocking values refuse before any paste" {
+    printf '❓ result?\n' > "${TMP}/msg"
+    send_file "${TMP}/msg" --slug seatos --blocking --deadline 20m
+    assert_status 2
+    assert_contains "${output}" "grace"
+    assert_not_contains "$(cat "${TMP}/calls.log")" "session paste"
+    [ ! -f "${TMP}/typed.log" ]
+}
+
+@test "budgets: a foreign repo send uses the explicit coordinator profile and state" {
+    printf '🎯 initialize\n' > "${TMP}/msg"
+    send_file "${TMP}/msg" --slug seatos
+    assert_status 0
+    printf '{"stall_minutes":2,"grace_minutes":1,"wake_minutes":0.5}\n' > "${TMP}/.peer-chat.json"
+    mkdir "${TMP}/foreign"
+    cd "${TMP}/foreign"
+    printf '❓ result?\n' > "${TMP}/msg"
+    send_file "${TMP}/msg" --state "${TMP}/${LEDGER}" --blocking
+    assert_status 0
+    [ "$(jq -r '.timers["left-001"].budgets.deadline.source' "${TMP}/${LEDGER}")" = profile ]
+    jq -e '.timers["left-001"].budgets.deadline.seconds == 120' "${TMP}/${LEDGER}"
+    [ ! -d "${TMP}/foreign/tmp/peer-chat" ]
+}
+
+@test "delivery: an idempotency replay cannot paste or submit twice" {
+    printf '🎯 a result\n' > "${TMP}/msg"
+    send_file "${TMP}/msg" --slug seatos --key stable
+    assert_status 0
+    send_file "${TMP}/msg" --slug seatos --key stable
+    assert_status 2
+    assert_contains "${output}" "already claimed"
+    [ "$(grep -c '^session paste ' "${TMP}/calls.log")" = 1 ]
+    [ "$(jq '.messages | length' "${TMP}/${LEDGER}")" = 1 ]
+}
+
+@test "delivery: an unresolved paste cannot be hidden by the next send" {
+    touch "${TMP}/paste-ignored"
+    printf '🎯 uncertain\n' > "${TMP}/msg"
+    send_file "${TMP}/msg" --slug seatos
+    assert_status 1
+    printf '🎯 next result\n' > "${TMP}/msg"
+    send_file "${TMP}/msg" --slug seatos
+    assert_status 2
+    assert_contains "${output}" "earlier delivery is unresolved"
+    [ "$(grep -c '^session paste ' "${TMP}/calls.log")" = 1 ]
+    [ "$(jq '.messages | length' "${TMP}/${LEDGER}")" = 1 ]
+}
+
+@test "delivery: state.lock is available throughout clipboard and pane IO" {
+    cat > "${TMP}/check-lock.py" <<'PY'
+import fcntl, pathlib, sys
+path = pathlib.Path(sys.argv[1])
+if path.exists():
+    with path.open('a') as handle:
+        fcntl.flock(handle, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        path.with_suffix('.checked').write_text('storage lock free during IO')
+PY
+    stub pbcopy "python3 '${TMP}/check-lock.py' '${TMP}/tmp/peer-chat/seatos/state.lock' || exit 9; cat > '${TMP}/clip'; grep -q '^Chat from' '${TMP}/clip' || exit 0; cp '${TMP}/clip' '${TMP}/clip-last-set'"
+    printf '🎯 lock check\n' > "${TMP}/msg"
+    send_file "${TMP}/msg" --slug seatos
+    assert_status 0
+    [ -f "${TMP}/tmp/peer-chat/seatos/state.checked" ]
 }
 
 @test "ledger: a new ask from the peer with no disposition refuses the send before anything is written" {
     seed_codex_ask "" "" ""
     printf '🎯 the guard is blind across bids\n' > "${TMP}/msg"
     send_file "${TMP}/msg" --slug seatos
-    assert_status 1
+    assert_status 2
     assert_contains "${output}" "refused: the peer's asks below have no disposition"
     assert_contains "${output}" "#codex-001: does the refund path reuse the bid?"
     assert_not_contains "$(cat "${TMP}/calls.log")" "session paste"
@@ -529,7 +613,7 @@ seed_codex_ask() { # seed_codex_ask <disposition> <due> <reason>
     send_file "${TMP}/msg" --slug seatos
     assert_status 0
     assert_contains "${output}" '"disposed": ["#codex-001"]'
-    assert_contains "$(cat "${TMP}/${LEDGER}")" $'codex-001\tright\t2026-09-10T08:00:00Z\tanswered\t\tno, the refund path opens a new bid\t'
+    assert_contains "$(ledger_rows)" $'codex-001\tright\t2026-09-10T08:00:00Z\tanswered\t\tno, the refund path opens a new bid\t'
 }
 
 @test "ledger: deferred keeps the ask open with a due time, and the next send is not refused" {
@@ -537,7 +621,7 @@ seed_codex_ask() { # seed_codex_ask <disposition> <due> <reason>
     printf '#codex-001 deferred(after the fixture run)\n' > "${TMP}/msg"
     send_file "${TMP}/msg" --slug seatos
     assert_status 0
-    row="$(grep '^codex-001' "${TMP}/${LEDGER}")"
+    row="$(ledger_rows | grep '^codex-001')"
     assert_contains "${row}" $'\tdeferred\t20'
     assert_contains "${row}" $'Z\tafter the fixture run\t'
     printf '🎯 next claim\n' > "${TMP}/msg"
@@ -563,7 +647,7 @@ seed_codex_ask() { # seed_codex_ask <disposition> <due> <reason>
     spool="$(ls -d "${TMP}"/agterm-peer-chat-*)"
     printf '🎯 the guard is blind across bids\n' > "${spool}/peer-chat-codex-a91f.txt"
     run python3 "${PASTE}" --to codex --message-file peer-chat-codex-a91f.txt --slug seatos
-    assert_status 1
+    assert_status 2
     assert_contains "${output}" "message file restored: peer-chat-codex-a91f.txt"
     [ "$(cat "${spool}/peer-chat-codex-a91f.txt")" = "🎯 the guard is blind across bids" ]
 }
@@ -632,13 +716,13 @@ seed_codex_ask() { # seed_codex_ask <disposition> <due> <reason>
 
 @test "ledger: new ids continue after legacy #claude-NNN asks, which now belong to the left pane" {
     mkdir -p "${TMP}/tmp/peer-chat/seatos"
-    printf 'id\tasked_by\tsent_at\tdisposition\tdue\treason\tquestion\n' > "${TMP}/${LEDGER}"
-    printf 'claude-002\tclaude\t2026-09-10T08:00:00Z\tanswered\t\tyes\tolder ask\n' >> "${TMP}/${LEDGER}"
+    printf 'id\tasked_by\tsent_at\tdisposition\tdue\treason\tquestion\n' > "${TMP}/tmp/peer-chat/seatos/asks.tsv"
+    printf 'claude-002\tclaude\t2026-09-10T08:00:00Z\tanswered\t\tyes\tolder ask\n' >> "${TMP}/tmp/peer-chat/seatos/asks.tsv"
     printf '🔎 Processor.php:23\n\n❓ next question\n' > "${TMP}/msg"
     send_file "${TMP}/msg" --slug seatos
     assert_status 0
     assert_contains "$(cat "${TMP}/clip-first-set")" "❓ #left-003 next question"
-    assert_contains "$(cat "${TMP}/${LEDGER}")" $'claude-002\tleft\t'
+    assert_contains "$(ledger_rows)" $'claude-002\tleft\t'
 }
 
 
@@ -788,10 +872,10 @@ recover() { run python3 "${PASTE}" --to peer --recover-delivery --slug t; }
     [ ! -f "${TMP}/typed.log" ]
 }
 
-@test "recover: waits for a send holding the topic lock, so the outbox cannot change under it" {
+@test "recover: waits for the transport lock, so the outbox cannot change under it" {
     recorded_outbox
     recorded_composer "${TMP}/composer"
-    python3 - "${TMP}/tmp/peer-chat/t/asks.lock" "${TMP}/calls.log" "${TMP}/held" <<'PY2' &
+    python3 - "${TMP}/tmp/peer-chat/t/outbox-${SID}-left.delivery.lock" "${TMP}/calls.log" "${TMP}/held" <<'PY2' &
 import fcntl, sys, time
 from pathlib import Path
 with open(sys.argv[1], "a") as lock:

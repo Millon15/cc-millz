@@ -28,7 +28,10 @@ FREEZE = {
         "- Freeze a review target: the integrator commits it when the user's instructions and the project's\n"
         "  policy allow a commit now; otherwise `peer-chat-freeze.py --slug <slug> -- <lane files>` (add\n"
         "  `--dir <task dir>` when the snapshot lives outside the repo) prints the tree sha, untracked files\n"
-        "  included, and the `git diff <previous> <tree>` the reviewer reads. Edits pause until the findings\n"
+        "  included. A lane in another repo passes `--state <coordinator topic>/state.json`; every send\n"
+        "  of the build uses that same state path. Freeze history selects the previous tree from this\n"
+        "  repository only. The output includes\n"
+        "  the `git diff <previous> <tree>` the reviewer reads. Edits pause until the findings\n"
         "  arrive. `🎯 lane <n> ready for review: <tree>` with that diff command; a re-freeze after fixes\n"
         "  sends only its new diff."
     ),
@@ -82,7 +85,7 @@ def outputs():
             "@ARTIFACT_ROOT@",
             "tmp/peer-chat-bg" if plugin == "peer-chat-bg" else "tmp/peer-chat",
         ).replace(
-            "@ASK_STATE@", "state.json" if plugin == "peer-chat-bg" else "asks.tsv"
+            "@ASK_STATE@", "state.json"
         )
         if plugin == "peer-chat-bg":
             rendered = rendered.replace(

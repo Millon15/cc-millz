@@ -34,6 +34,8 @@ SRC_SCRIPT="$PLUGIN_ROOT/scripts/peer-chat.py"
 SRC_ENGINE="$PLUGIN_ROOT/scripts/vendor/peer-chat.py"
 SRC_PASTE="$PLUGIN_ROOT/scripts/peer-chat-paste.py"
 SRC_CORE="$PLUGIN_ROOT/scripts/peer_chat_core.py"
+SRC_STATE="$PLUGIN_ROOT/scripts/peer_chat_state.py"
+SRC_STATE_CLI="$PLUGIN_ROOT/scripts/peer-chat-state.py"
 SRC_FREEZE="$PLUGIN_ROOT/scripts/peer-chat-freeze.py"
 SRC_FRESH="$PLUGIN_ROOT/scripts/peer-chat-fresh.sh"
 SRC_SKILL="$PLUGIN_ROOT/skills/peer-chat/SKILL.md"
@@ -84,6 +86,8 @@ bin_copies() {
 		peer-chat-engine.py "$SRC_ENGINE" \
 		peer-chat-paste.py "$SRC_PASTE" \
 		peer_chat_core.py "$SRC_CORE" \
+		peer_chat_state.py "$SRC_STATE" \
+		peer-chat-state.py "$SRC_STATE_CLI" \
 		peer-chat-freeze.py "$SRC_FREEZE" \
 		peer-chat-fresh.sh "$SRC_FRESH"
 }
@@ -234,7 +238,7 @@ write_stamp() {
 
 install_all() {
 	local source
-	for source in "$SRC_SCRIPT" "$SRC_ENGINE" "$SRC_PASTE" "$SRC_FREEZE" "$SRC_FRESH" "$SRC_SKILL"; do
+	for source in "$SRC_SCRIPT" "$SRC_ENGINE" "$SRC_PASTE" "$SRC_CORE" "$SRC_STATE" "$SRC_STATE_CLI" "$SRC_FREEZE" "$SRC_FRESH" "$SRC_SKILL"; do
 		[ -f "$source" ] || die "missing $source; is this script inside the plugin?" 2
 	done
 	refuse_downgrade && return 0

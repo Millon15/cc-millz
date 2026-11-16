@@ -32,6 +32,12 @@ approved in this conversation. Several incompatible proposals: ask the user whic
 send. `--slug` defaults to the design title in kebab-case, at most four words; every send of this
 build carries it.
 
+For a build spanning repositories, the integrator names one coordinator topic state path in
+the opening message. Every lane passes that same `--state <path>` to its sends and freezes;
+the caller's repository does not become a second coordinator. Timing budgets come from the
+engine skill; a blocking review ask needs explicit or configured budgets, while ownership
+handovers and held experiments never get timers.
+
 ## Phase 0: Snapshot the design (HARD GATE)
 
 Chat dies at the next compaction, the peer does not inherit the entire parent conversation, and the user's own file must not

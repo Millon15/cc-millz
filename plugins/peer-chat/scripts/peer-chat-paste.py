@@ -29,9 +29,9 @@ a disposition; after the paste the pane shows the message's last line (or the TU
 marker). Composer occupancy checks before paste and after submit are intentionally disabled for
 both agents: suggestions, existing drafts, and cursor state do not block delivery. Existing text
 is not cleared before pasting. Success reports that paste was observed and the submit key was
-sent, not that the target accepted the message. Exit 0 sent, 1 refused or failed, 2 usage.
+sent, not that the target accepted the message. Exit 0 sent, 1 transport failure, 2 usage or state refusal.
 
-The ask ledger, `tmp/peer-chat/<slug>/asks.tsv` under the repo root, is the script's own state:
+The topic's `tmp/peer-chat/<slug>/state.json` stores atomic reservations and delivery observations:
 every `❓` line gets a topic-scoped id named after the asker's pane (`#left-004`), and the peer's
 next send must carry `#left-004 answered`, `#left-004 deferred(<when>)` or `#left-004
 declined(<why>)` for each new ask, or it is refused. Ledgers written before the panes became the
@@ -41,7 +41,7 @@ columns on word boundaries so the pane never breaks a word, and a token with no 
 
 Every send with --slug first records the exact pasted text in `outbox-<session>-<pane>.msg` beside
 the ledger, keyed by the receiving session and pane. `--recover-delivery --slug <topic>` runs in the
-receiving pane, under the ledger lock every send of the topic takes: it presses Return on its own
+receiving pane, under a separate transport lock, without holding state.lock: it presses Return on its own
 composer only when two reads, the second right before the key, both show exactly the recorded
 message, whitespace aside. A collapsed paste marker hides its text, so it is never matched; any
 other text stays untouched. Exit 0 Return pressed, 1 left untouched, 3 nothing to recover; one
@@ -52,6 +52,9 @@ from __future__ import annotations
 
 import argparse
 import errno
+import fcntl
+import hashlib
+import json
 import os
 import re
 import runpy
@@ -60,20 +63,19 @@ import stat
 import subprocess
 import sys
 import time
+import uuid
 from pathlib import Path
 from typing import Any
 
-from contextlib import nullcontext
+from contextlib import contextmanager
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from peer_chat_core import (  # noqa: E402
-    WRAP, DEFER_MINUTES, CONTINUATION_INDENT, ASK_GLYPH, EVIDENCE_GLYPH,
-    LEGACY_OWNER, ASK_ID_RE, DISPOSITION_RE, LEDGER_COLUMNS, OPEN,
-    Ask, Disposition, Plan, Ledger, LedgerRefusal, now_utc, stamp, peer_of,
-    repo_root, drop_control, clean_lines, parse_dispositions, is_ask,
-    ask_without_id, question_of, has_unbreakable_token, wrap_line, wrap_lines,
-    refuse_missing_dispositions, assign_ask_ids, bump, prepend_overdue,
-    warn_ask_without_evidence, plan_body,
+    WRAP, Plan, LedgerRefusal, now_utc, repo_root, clean_lines, parse_dispositions, plan_body,
+)
+from peer_chat_state import (
+    StateError, Store, bind_participant, claim_delivery, observe, open_topic,
+    prepare_message, resolve_budgets,
 )
 
 PASTE_SETTLE = 0.4
@@ -236,7 +238,8 @@ def composer_empty_now(t: dict[str, Any], sid: str, profile: Any, window: str) -
 
 
 def paste_and_submit(
-    t: dict[str, Any], sid: str, profile: Any, window: str, message: str, queue: bool
+    t: dict[str, Any], sid: str, profile: Any, window: str, message: str, queue: bool,
+    observed=None,
 ) -> int:
     t["ctl"](
         "session",
@@ -256,7 +259,11 @@ def paste_and_submit(
         )
         return 1
     time.sleep(PASTE_SETTLE)
+    if observed:
+        observed("pasted")
     t["type_text"](sid, profile, submit_key(t, sid, profile, window, queue), window)
+    if observed:
+        observed("submit_sent")
     # Post-submit occupancy check disabled too: new suggestions/drafts are not failures.
     # if not wait_until(
     #     lambda: composer_empty_now(t, sid, profile, window), ACCEPT_TIMEOUT
@@ -270,12 +277,13 @@ def paste_and_submit(
 
 
 def deliver(
-    t: dict[str, Any], sid: str, profile: Any, window: str, message: str, queue: bool
+    t: dict[str, Any], sid: str, profile: Any, window: str, message: str, queue: bool,
+    observed=None,
 ) -> int:
     saved = clipboard_get()
     clipboard_set(message)
     try:
-        return paste_and_submit(t, sid, profile, window, message, queue)
+        return paste_and_submit(t, sid, profile, window, message, queue, observed)
     finally:
         if saved is not None:
             try:
@@ -293,48 +301,129 @@ def report(message: str, plan: Plan) -> None:
     )
 
 
+def topic_store(args: argparse.Namespace) -> Store | None:
+    if not (args.slug or args.state):
+        if args.blocking or args.key or any(getattr(args, name) for name in
+                               ("deadline", "grace", "wake", "est_deadline", "est_grace", "est_wake")):
+            raise StateError("blocking budgets require --slug or --state")
+        return None
+    if args.slug and not re.fullmatch(r"[a-zA-Z0-9][a-zA-Z0-9_-]*", args.slug):
+        raise StateError("slug must be a single topic name")
+    path = Path(args.state).expanduser().resolve() if args.state else repo_root() / "tmp/peer-chat" / args.slug / "state.json"
+    if path.name != "state.json":
+        raise StateError("--state must name a topic's state.json")
+    current = Store(path).read() if path.exists() else None
+    slug = args.slug or (current or {}).get("slug")
+    if not slug:
+        raise StateError("a new topic requires --slug")
+    coordinator = Path(current["repo"]) if current else repo_root().resolve()
+    return open_topic(path, transport="agterm", slug=slug, host="agterm", repo=coordinator,
+                      legacy_dir=path.parent)
+
+
+def message_budgets(args: argparse.Namespace, store: Store):
+    profile_path = Path(store.read()["repo"]) / ".peer-chat.json"
+    try:
+        profile = json.loads(profile_path.read_text()) if profile_path.exists() else {}
+    except (ValueError, OSError) as error:
+        raise StateError(f"cannot read coordinator profile {profile_path}: {error}") from error
+    if not isinstance(profile, dict):
+        raise StateError("coordinator profile must be a JSON object")
+    return resolve_budgets("agterm", args.blocking,
+                           flags={name: getattr(args, name) for name in ("deadline", "grace", "wake")},
+                           estimates={name: getattr(args, "est_" + name) for name in ("deadline", "grace", "wake")},
+                           env=os.environ, profile=profile)
+
+
+def bind_panes(t: dict[str, Any], store: Store, peer) -> None:
+    info = t["locate_session"](peer.session, peer.window)
+    for role in ("left", "right"):
+        detected = t["detect_harness"](info, role)
+        if not detected:
+            raise StateError(f"the {role} pane runs no known harness")
+        bind_participant(store, role, {
+            "agent_id": f"{peer.window}/{peer.session}/{role}", "harness": detected[0],
+            "requested_model": None, "pane": role, "session": peer.session, "window": peer.window,
+        })
+
+
+@contextmanager
+def delivery_lock(path: Path):
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with path.open("a") as handle:
+        fcntl.flock(handle, fcntl.LOCK_EX)
+        try:
+            yield
+        finally:
+            fcntl.flock(handle, fcntl.LOCK_UN)
+
+
+def require_reconciled(store: Store, sender: str, message_id: str) -> None:
+    for message in store.read()["messages"].values():
+        if message["message_id"] == message_id or message["sender"] != sender:
+            continue
+        if message.get("claim") and message["state"] in ("prepared", "pasted", "dispatching", "uncertain"):
+            raise StateError("earlier delivery is unresolved; inspect its outbox before another send")
+
+
 def send(t: dict[str, Any], args: argparse.Namespace, body: str) -> int:
     peer = t["resolve_peer"](
         args.to, args.session, args.window, args.target_command, args.queue
     )
     profile, window, sid, sender = peer.profile, peer.window, peer.session, peer.sender
-    # Occupancy preflight disabled by user request for both agents (2026-09-13).
-    # if not composer_empty_now(t, sid, profile, window):
-    #     print(
-    #         f"refused: the {profile.agent} composer is not empty; nothing written",
-    #         file=sys.stderr,
-    #     )
-    #     return 1
-    ledger = Ledger.for_slug(args.slug) if args.slug else None
-    # Legacy paste commits only after submission. Serialize its bounded transport call
-    # with planning so concurrent sends cannot allocate the same ask ID or miss asks.
-    with ledger.locked() if ledger is not None else nullcontext():
-        moment = now_utc()
-        plan = plan_body(clean_lines(profile, body), sender, ledger, moment)
+    store = topic_store(args)
+    if store is None:
+        plan = plan_body(clean_lines(profile, body), sender, None, now_utc())
         for warning in plan.warnings:
             print(warning, file=sys.stderr)
         message = profile.label + plan.text
-        if args.slug:
-            record_outbox(args.slug, sid, profile.pane, message)
         warn_if_mid_turn(peer_turn(t, sid, profile, window))
         status = deliver(t, sid, profile, window, message, args.queue)
-        if status != 0:
-            return status
-        if ledger is not None:
-            ledger.record(sender, plan, moment)
-        report(message, plan)
-        return 0
+        if status == 0:
+            report(message, plan)
+        return status
+    bind_panes(t, store, peer)
+    path = outbox_path(store.path.parent, sid, profile.pane)
+    with delivery_lock(path.with_suffix(".delivery.lock")):
+        require_reconciled(store, sender, "")
+        prepared = prepare_message(store, sender=sender, lines=clean_lines(profile, body),
+                                   key=args.key or uuid.uuid4().hex, budgets=message_budgets(args, store), width=WRAP)
+        for warning in prepared["warnings"]:
+            print(warning, file=sys.stderr)
+        mid = prepared["message_id"]
+        if not claim_delivery(store, mid):
+            raise StateError("message already claimed; inspect its recorded delivery, never paste it again")
+        message = profile.label + prepared["text"]
+        record_outbox(path, message)
+        metadata = json.dumps({"message_id": mid, "state": str(store.path),
+                               "sha256": hashlib.sha256(message.encode()).hexdigest()})
+        record_outbox(path.with_suffix(".json"), metadata)
+        warn_if_mid_turn(peer_turn(t, sid, profile, window))
+        try:
+            result = deliver(t, sid, profile, window, message, args.queue,
+                             lambda event: observe(store, mid, event))
+            if result:
+                observe(store, mid, "uncertain")
+                return result
+        except (OSError, RuntimeError, subprocess.CalledProcessError):
+            observe(store, mid, "uncertain")
+            raise
+    current = store.read()["messages"][mid]
+    print(json.dumps({"sent": len(message), "lines": message.count("\n") + 1, "message_id": mid,
+                      "asks": ["#" + ask_id for ask_id in prepared["ask_ids"]],
+                      "disposed": ["#" + item.id for item in parse_dispositions(prepared["text"].splitlines())],
+                      "state": str(store.path), "submitted_at": current.get("submitted_at")}))
+    return 0
 
 
-def outbox_path(slug: str, sid: str, pane: str) -> Path:
+def outbox_path(directory: Path, sid: str, pane: str) -> Path:
     if not SESSION_ID_RE.fullmatch(sid):
         raise ValueError(f"session id {sid!r} cannot name an outbox file")
-    return Ledger.for_slug(slug).path.parent / f"outbox-{sid}-{pane}.msg"
+    return directory / f"outbox-{sid}-{pane}.msg"
 
 
-def record_outbox(slug: str, sid: str, pane: str, message: str) -> None:
+def record_outbox(path: Path, message: str) -> None:
     """The exact text this send pastes, for the receiver's --recover-delivery."""
-    path = outbox_path(slug, sid, pane)
     path.parent.mkdir(parents=True, exist_ok=True)
     pending = path.with_suffix(".tmp")
     fd = os.open(pending, os.O_WRONLY | os.O_CREAT | os.O_TRUNC | os.O_NOFOLLOW, 0o600)
@@ -384,22 +473,36 @@ def recover_result(recovered: bool, reason: str) -> None:
 
 def recover_delivery(t: dict[str, Any], args: argparse.Namespace) -> int:
     window, sid, profile = own_target(t, args)
-    with Ledger.for_slug(args.slug).locked():
-        return recover_locked(t, sid, profile, window, outbox_path(args.slug, sid, profile.pane))
+    store = topic_store(args)
+    path = outbox_path(store.path.parent, sid, profile.pane)
+    with delivery_lock(path.with_suffix(".delivery.lock")):
+        return recover_locked(t, sid, profile, window, path, store)
 
 
-def recover_locked(t: dict[str, Any], sid: str, profile: Any, window: str, path: Path) -> int:
-    """Under the topic lock no send can replace the outbox between the check and its consumption."""
+def recover_locked(t: dict[str, Any], sid: str, profile: Any, window: str, path: Path, store: Store) -> int:
+    """A transport lock preserves the outbox while the storage lock stays free."""
     if not path.is_file():
         recover_result(False, f"no recorded message for the {profile.pane} pane")
         return RECOVER_NOTHING
     message = read_message_path(str(path), t["MAX_MESSAGE_BYTES"])
+    metadata = json.loads(path.with_suffix(".json").read_text()) if path.with_suffix(".json").exists() else None
+    if metadata:
+        if metadata.get("state") != str(store.path) or metadata.get("sha256") != hashlib.sha256(message.encode()).hexdigest():
+            raise StateError("recorded outbox identity or bytes changed; inspect before recovery")
+        record = store.read()["messages"].get(metadata.get("message_id"))
+        if not record or record["recipient"] != profile.pane:
+            raise StateError("recorded outbox does not belong to this recipient")
+        if record.get("submitted_at"):
+            recover_result(False, "submission already recorded; no second Return")
+            return RECOVER_NOTHING
     for _ in range(2):
         refusal = composer_refusal(t, profile, own_composer(t, sid, profile, window), message)
         if refusal is not None:
             recover_result(False, refusal[1])
             return refusal[0]
     t["type_text"](sid, profile, RETURN_KEY, window)
+    if metadata:
+        observe(store, metadata["message_id"], "submit_sent")
     os.replace(path, path.with_suffix(".recovered"))
     recover_result(True, "return pressed on the recorded message")
     return 0
@@ -415,12 +518,18 @@ def restore_message_file(t: dict[str, Any], name: str, body: str) -> None:
 
 
 def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
-    parser = argparse.ArgumentParser()
+    parser = argparse.ArgumentParser(allow_abbrev=False)
     parser.add_argument("--to", choices=TARGETS, default="peer")
     parser.add_argument("--session")
     parser.add_argument("--window")
     parser.add_argument("--target-command")
     parser.add_argument("--slug", default=os.environ.get("PEER_CHAT_SLUG") or None)
+    parser.add_argument("--state", help="the coordinator topic's state.json")
+    parser.add_argument("--key", help="stable idempotency key; replays never authorize another paste")
+    parser.add_argument("--blocking", action="store_true")
+    for name in ("deadline", "grace", "wake"):
+        parser.add_argument("--" + name)
+        parser.add_argument("--est-" + name)
     parser.add_argument(
         "--queue",
         action="store_true",
@@ -439,8 +548,8 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     args = parser.parse_args(argv)
     if not (args.stdin or args.message_file or args.recover_delivery):
         parser.error("one of --stdin, --message-file or --recover-delivery is required")
-    if args.recover_delivery and not args.slug:
-        parser.error("--recover-delivery needs --slug")
+    if args.recover_delivery and not (args.slug or args.state):
+        parser.error("--recover-delivery needs --slug or --state")
     return args
 
 
@@ -456,6 +565,9 @@ def main() -> int:
         return 1
     try:
         status = send(transport, args, body)
+    except StateError as err:
+        print(f"peer-chat-paste: {err}", file=sys.stderr)
+        status = 2
     except (LedgerRefusal, RuntimeError, ValueError, OSError, subprocess.CalledProcessError) as err:
         print(f"peer-chat-paste: {err}", file=sys.stderr)
         status = 1
@@ -470,6 +582,9 @@ def main() -> int:
 def run_recover(args: argparse.Namespace) -> int:
     try:
         return recover_delivery(load_transport(), args)
+    except StateError as err:
+        print(f"peer-chat-paste: {err}", file=sys.stderr)
+        return 2
     except (RuntimeError, ValueError, OSError, subprocess.CalledProcessError) as err:
         print(f"peer-chat-paste: {err}", file=sys.stderr)
         return 1

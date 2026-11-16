@@ -1,5 +1,31 @@
 # Changelog
 
+## peer-chat-bg v0.2.0 - 2026-11-16
+
+### Changed
+
+- Topic state is schema 2, the same `state.json` shape agterm peer-chat now uses, built on the new shared `peer_chat_state.py`. A schema 1 topic migrates in place on its first mutating command and keeps its source SHA256 under `migrations`; `status` refuses it until then. Receipts are now `events` with `event` and `actor` fields.
+
+### Added
+
+- Answer budgets for a blocking ask. `prepare --blocking` needs a deadline and a grace, resolved per value from `--deadline`/`--grace` (the user's value), then `PEER_CHAT_STALL_MINUTES`/`PEER_CHAT_GRACE_MINUTES`, then `stall_minutes`/`grace_minutes` in `.peer-chat-bg.json`, then the agent's own `--est-deadline`/`--est-grace`. There is no built-in default, multiplier or clamp; a malformed or missing value is refused. The prepared text ends with a `⏱` line that names each value and its source.
+- A timer per blocking ask, armed at the first `submitted` receipt: `wake` lists due nudge and stop actions read-only, `begin` records the intent before the native call, `finish`/`nudged` record the outcome after it, and `release` frees a stopped peer's scope once its jobs are reconciled. A wake whose token (run, agent, generation, timer generation) no longer matches does nothing, an intent without an outcome is reported and never re-run, and `finalize` refuses while one is unresolved or a stopped peer is unreleased.
+- The asker can close its own ask with `#<id> withdrawn(<why>)` in a message, or locally with `withdraw --ask-id --actor-id --reason --evidence`, which never messages a stopped child. Either clears a running timer.
+- A peer's reply that arrives after its stop is kept as history (`late_dispositions`) and does not answer the ask.
+
+## peer-chat v0.8.0 - 2026-11-16
+
+### Changed
+
+- The asks ledger moves from `asks.tsv` and `freezes.tsv` into one schema 2 `tmp/peer-chat/<slug>/state.json`. An existing topic imports `asks.tsv` once (and refuses if the TSV changes after that), and `freezes.tsv` rows become legacy rows. Each freeze records the realpath of its repo, so its `previous` tree comes from the same repo, or that repo's HEAD on its first freeze.
+- The storage lock is held only for planning and recording, never across the paste. A send claims its message once before the paste and records `pasted` and `submit_sent` after it; a keystroke receipt never counts as an answer.
+
+### Added
+
+- Answer budgets for a blocking ask, replacing the fixed 30-minute deadline and 5-minute wake: `--blocking` with `--deadline`/`--grace`/`--wake` (the user's value) or `--est-deadline`/`--est-grace`/`--est-wake` (the agent's estimate), after `PEER_CHAT_STALL_MINUTES`/`PEER_CHAT_GRACE_MINUTES`/`PEER_CHAT_WAKE_MINUTES` and the profile keys `stall_minutes`/`grace_minutes`/`wake_minutes`. The sent text ends with a `⏱` line naming each value and its source.
+- `peer-chat-state.py`: `status`, a read-only `wake`, `begin`/`finish`/`nudged` around each nudge or stop, `release`, and `observe` for peer receipts with evidence. `--state PATH` lets a lane in another repo use the coordinator's topic.
+- The asker can close its own ask with `#<id> withdrawn(<why>)`, or locally through `peer-chat-state.py` without messaging the peer.
+
 ## peer-chat-bg v0.1.8 - 2026-11-15
 
 ### Changed

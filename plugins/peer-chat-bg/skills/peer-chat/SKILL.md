@@ -49,6 +49,8 @@ report the limitation instead of omitting it or substituting another model.
    Native peers stay **inside the current runtime**: Codex → Codex, Claude → Claude.
    Respect requested model/effort; never silently substitute a cheaper model.
 4. Choose a short topic slug. Inspect `BG --repo REPO --slug SLUG status` before creating state.
+   A schema 1 topic from an older version migrates in place on its first mutating command
+   (its source hash is kept under `migrations`); `status` refuses it until then.
    For a new topic run `... init --host codex|claude --parent-id REAL_PARENT_ID`, adding one
    `--check NAME` per required acceptance check. Save returned `run_id`. Logical roles are
    `left` (initiator/integrator) and `right` (peer), not fixed architect/implementer ranks.
@@ -112,15 +114,63 @@ not an assumption that the child inherited the conversation.
 - Running Codex child: `send_message`. Idle/completed child: `followup_task` to start/queue its
   next turn; `send_message` alone may not wake it. Claude: use the returned resumable agent ID,
   not the background task handle. Do not resume the same child in two simultaneous turns.
-- Work independently after a send. If blocked, use the host's supported bounded wait or
-  completion/yield mechanism. No polling loop, shell sleeps or promise that a nonexistent
-  tool will wake the parent. The parent owns the final user-facing result.
+- Work independently after a send. An ask the next step needs is a blocking ask and gets one
+  timer (§ 3a); anything else waits for the child's completion or message. No polling loop and
+  no promise that a nonexistent tool will wake the parent. The parent owns the final result.
 - Runtime claims need a runnable proof. Load `plan:research` when a material claim merits its
   researcher → hypothesis → proover split. Rerun its contract with `plan-research.sh --slug
   SLUG --verify N`; "fixed" cites the actual rerun, otherwise say `🎯 unproven:`.
 - Own files only. Transfer a patch proposal and obtain acceptance before changing the peer's
   lane. Integrator alone owns git index and shared stateful QA. Peer agreement never grants
   publishing, destructive-action or credential authority.
+
+## 3a. A blocking ask: budgets and the timer
+
+A blocking ask (the parent's next step needs the answer) carries two budgets; nothing is fixed.
+
+1. Prepare it with `--blocking` plus a deadline and a grace. Per value the first source wins:
+   `--deadline` / `--grace` (a value the user gave you, source `flag`), then the env
+   `PEER_CHAT_STALL_MINUTES` / `PEER_CHAT_GRACE_MINUTES`, then `stall_minutes` / `grace_minutes` in
+   `.peer-chat-bg.json`, then your own estimate for this ask, `--est-deadline` / `--est-grace`
+   (source `agent`). Durations are `90s`, `20m`, `1h`; env and profile values are minutes. A
+   malformed value is refused, never adjusted, and `--blocking` with a value missing is refused.
+   One budget pair per message: split messages to vary them or to mix in non-blocking asks.
+2. The prepared text ends with a `⏱` line naming each value and its source, e.g.
+   `⏱ deadline 20m after submission (agent); grace 5m after nudge submission (flag)`. It is
+   metadata for the reader, never part of the question.
+3. The timer arms at the parent message's first `submitted` receipt and stores `expires_at`;
+   a replay or a late receipt never re-arms it. Only the parent's asks to the child arm timers.
+4. Wake once at the deadline. Claude Code: a background `sleep <deadline seconds>` whose exit
+   re-invokes the session, besides the child's own completion notice. Codex: `wait_agent` is
+   bounded only inside an active turn; after the turn ends nothing wakes the parent, so the
+   deadline is checked on the next turn.
+5. On a wake run `BG ... wake`. It is read-only and prints each due action with its `token`.
+   An empty list means nothing to do: an answer recorded first already cleared the timer.
+   For each action: `BG ... begin --token 'TOKEN' --action nudge|stop` writes the intent; a
+   `null` intent means the action is not due yet, the ask closed, or the token no longer names
+   this run and the currently bound peer, so do nothing. Then call the native
+   tool outside the helper, then record the outcome with `BG ... finish --token 'TOKEN' --action
+   ACTION --outcome ok|failed --detail TEXT` (`nudged --token 'TOKEN'` is the same as a `finish`
+   of the nudge with `ok`).
+   - **nudge**: one message to the running child asking for its current partial result and its
+     active job handles. Grace starts when the nudge is submitted.
+   - **stop**: after grace, stop the child (Claude `TaskStop`; Codex: the host's stop tool).
+     Never send any message to a stopped child: a `SendMessage` resumes it.
+   - A missing tool is `finish ... --outcome failed --detail "<tool> unavailable"`. An intent
+     without an outcome (a crash in between) stays in `status` as unresolved and is never re-run.
+6. A stopped peer's file scope stays reserved until the parent reconciles every recorded job
+   handle from its own records (a resumed child misreports a stopped call's side effects), then
+   `BG ... release --ask-id ID --evidence FILE`, the file holding the settled jobs. Finalize
+   refuses while a stopped peer is unreleased or an intent is unresolved.
+7. A timeout never waives the ask. A peer reply that arrives after the stop is kept as history
+   (`late_dispositions` on its message) and does not answer the ask; if it shows a defect, that
+   is a new ask. Abandon the ask locally, never by messaging a stopped child:
+   `BG ... withdraw --ask-id ID --actor-id OWN_REAL_ID --reason WHY --evidence FILE`. Only the
+   asker may withdraw; it closes the ask like `declined` and clears a running timer, while a
+   stopped peer still needs `release`. To a live peer, `#left-NNN withdrawn(<why>)` in your next
+   message does the same. No automatic extension and no replacement child; a new deadline is a
+   new timer generation.
+8. Never on a timer: an experiment the peer is holding, or an ownership handover.
 
 ## 4. Recover without guessing
 

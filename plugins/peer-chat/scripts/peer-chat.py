@@ -40,7 +40,8 @@ PANES = ("left", "right")
 TARGETS = ("peer", *PANES, *HARNESSES)
 ENGINE_NAMES = ("vendor/peer-chat.py", "peer-chat-engine.py")
 PASTE_SCRIPT = "peer-chat-paste.py"
-PASTE_FLAGS = ("--slug", "--queue")
+PASTE_FLAGS = ("--slug", "--queue", "--state", "--blocking", "--deadline", "--grace", "--wake",
+               "--est-deadline", "--est-grace", "--est-wake", "--key")
 PREPARE_FLAG = "--prepare-message"
 
 
@@ -248,7 +249,7 @@ def hands_to_paste(argv: list[str]) -> bool:
     """A send carrying --slug or --queue; the spool reservation step sends nothing and stays here."""
     if prepares_message(argv):
         return False
-    return any(arg in PASTE_FLAGS or arg.startswith("--slug=") for arg in argv)
+    return any(arg.split("=", 1)[0] in PASTE_FLAGS for arg in argv)
 
 
 def hand_to_paste(argv: list[str]) -> NoReturn:

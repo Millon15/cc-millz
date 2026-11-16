@@ -163,7 +163,7 @@
     },
     {
       "name": "peer-chat",
-      "version": "0.7.10",
+      "version": "0.8.0",
       "included": [],
       "skipped": [
         {
@@ -179,7 +179,7 @@
     },
     {
       "name": "peer-chat-bg",
-      "version": "0.1.8",
+      "version": "0.2.0",
       "included": [],
       "skipped": [
         {

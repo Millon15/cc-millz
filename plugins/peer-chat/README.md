@@ -71,6 +71,18 @@ Flags win, then env, then a committed `.peer-chat.json` at the repo root, then t
 
 ## Updating
 
+Schema 2 stores asks, delivery observations, per-repository freezes and timers in one
+`tmp/peer-chat/<slug>/state.json`. Pass `--state <path>` to sends, freezes and
+`peer-chat-state.py` when a lane works in another repository. Legacy TSV files import with
+provenance; unknown-repository freeze rows remain historical. Finish live topics on their
+old version or start a fresh topic after upgrading.
+
+For a question the next step needs, send `--blocking` with `--deadline`, `--grace` and `--wake`
+durations such as `20m`, or their `--est-` forms for agent estimates. Environment and project
+configuration can supply values too; each value's source appears in the message. No fixed
+clock or automatic progress extension applies. `peer-chat-state.py --slug <slug> status|wake`
+reports timers without driving the pane; the skill gives the intent/action/receipt procedure.
+
 Re-run `peer-chat-install.sh` after a plugin version bump: the files on PATH are copies, not symlinks, because a symlink into the plugin cache breaks the moment the cache dir changes. Then `peer-chat-spawn.sh --restart`, since a running agent never reloads its skills.
 
 ---

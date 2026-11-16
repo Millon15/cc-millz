@@ -24,7 +24,7 @@ EVIDENCE_GLYPH = "🔎"
 LEGACY_OWNER = {"claude": "left", "codex": "right"}
 ASK_ID_RE = re.compile(r"#(left|right|claude|codex)-(\d{3,})")
 DISPOSITION_RE = re.compile(
-    r"#(?P<id>(?:left|right|claude|codex)-\d{3,})\s+(?P<kind>answered|deferred|declined)\b"
+    r"#(?P<id>(?:left|right|claude|codex)-\d{3,})\s+(?P<kind>answered|deferred|declined|withdrawn)\b"
     r"[:(]?\s*(?P<reason>[^)]*?)\)?\s*$"
 )
 LEDGER_COLUMNS = ("id", "asked_by", "sent_at", "disposition", "due", "reason", "question")

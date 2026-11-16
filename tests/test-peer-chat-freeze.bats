@@ -43,7 +43,27 @@ freeze() { (cd "${REPO}" && python3 "${FREEZE}" --slug topic "$@"); }
     [ "$(jq -r .freeze <<<"${output}")" = "2" ]
     [ "$(jq -r .diff <<<"${output}")" = "git diff ${first} $(jq -r .tree <<<"${output}")" ]
     [ "$(git -C "${REPO}" diff --name-only "${first}" "$(jq -r .tree <<<"${output}")")" = "b.txt" ]
-    [ "$(wc -l <"${REPO}/tmp/peer-chat/topic/freezes.tsv" | tr -d ' ')" = "2" ]
+    [ "$(jq '.freezes | length' "${REPO}/tmp/peer-chat/topic/state.json")" = "2" ]
+}
+
+@test "freeze: a coordinator shared by two repositories keeps each previous tree separate" {
+    first="$(freeze | jq -r .tree)"
+    state="${REPO}/tmp/peer-chat/topic/state.json"
+    OTHER="${TMP}/other"
+    git init -q "${OTHER}"
+    printf 'different\n' >"${OTHER}/own.txt"
+    git -C "${OTHER}" add .
+    git -C "${OTHER}" -c user.name=T -c user.email=t@example.invalid commit -qm other
+    other_head="$(git -C "${OTHER}" rev-parse HEAD)"
+    run bash -c 'cd "$1"; python3 "$2" --slug topic --state "$3"' _ "${OTHER}" "${FREEZE}" "${state}"
+    assert_status 0
+    [ "$(jq -r .previous <<<"${output}")" = "${other_head}" ]
+    printf 'two\n' >"${REPO}/a.txt"
+    run freeze
+    assert_status 0
+    [ "$(jq -r .previous <<<"${output}")" = "${first}" ]
+    [ "$(jq '.freezes | length' "${state}")" = 3 ]
+    [ ! -f "${OTHER}/tmp/peer-chat/topic/state.json" ]
 }
 
 @test "freeze: pathspecs keep the other lane's edits out of the tree" {

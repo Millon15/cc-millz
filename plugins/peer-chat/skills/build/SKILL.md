@@ -31,6 +31,12 @@ approved in this conversation. Several incompatible proposals: ask the user whic
 send. `--slug` defaults to the design title in kebab-case, at most four words; every send of this
 build carries it.
 
+For a build spanning repositories, the integrator names one coordinator topic state path in
+the opening message. Every lane passes that same `--state <path>` to its sends and freezes;
+the caller's repository does not become a second coordinator. Timing budgets come from the
+engine skill; a blocking review ask needs explicit or configured budgets, while ownership
+handovers and held experiments never get timers.
+
 ## Phase 0: Snapshot the design (HARD GATE)
 
 Chat dies at the next compaction, the peer does not inherit the entire parent conversation, and the user's own file must not
@@ -91,7 +97,10 @@ until its owner accepts it.
 - Freeze a review target: the integrator commits it when the user's instructions and the project's
   policy allow a commit now; otherwise `peer-chat-freeze.py --slug <slug> -- <lane files>` (add
   `--dir <task dir>` when the snapshot lives outside the repo) prints the tree sha, untracked files
-  included, and the `git diff <previous> <tree>` the reviewer reads. Edits pause until the findings
+  included. A lane in another repo passes `--state <coordinator topic>/state.json`; every send
+  of the build uses that same state path. Freeze history selects the previous tree from this
+  repository only. The output includes
+  the `git diff <previous> <tree>` the reviewer reads. Edits pause until the findings
   arrive. `🎯 lane <n> ready for review: <tree>` with that diff command; a re-freeze after fixes
   sends only its new diff.
 
@@ -147,5 +156,5 @@ that could not run is `incomplete`, never green.
 - NEVER edit a file the peer owns: a patch through the skill's patch protocol instead.
 - NEVER claim "fixed", "passes" or "works" from a reading: run it, or write `🎯 unproven:`.
 - After compaction or an interruption: re-read the design file, `git status`, the diff and
-  `asks.tsv` before anything; a `## Lanes` not in `accepted` is re-agreed first.
+  `state.json` before anything; a `## Lanes` not in `accepted` is re-agreed first.
 - A peer agreement never widens what the user authorized (skill § Organizing the work).
