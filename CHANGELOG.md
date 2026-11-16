@@ -1,5 +1,17 @@
 # Changelog
 
+## peer-chat v0.8.2 - 2026-11-16
+
+### Fixed
+
+- Disposition reasons preserve embedded and trailing parentheses. Colon reasons keep the full line; parenthesized reasons remove only their outer closing parenthesis, so nested reasons no longer disappear or lose text.
+
+## peer-chat-bg v0.2.1 - 2026-11-16
+
+### Fixed
+
+- The shared disposition parser preserves nested parentheses and trailing smileys in answer, deferral, decline and withdrawal reasons.
+
 ## codex-delegation v0.2.0 - 2026-11-16
 
 ### Added

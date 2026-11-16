@@ -25,7 +25,7 @@ LEGACY_OWNER = {"claude": "left", "codex": "right"}
 ASK_ID_RE = re.compile(r"#(left|right|claude|codex)-(\d{3,})")
 DISPOSITION_RE = re.compile(
     r"#(?P<id>(?:left|right|claude|codex)-\d{3,})\s+(?P<kind>answered|deferred|declined|withdrawn)\b"
-    r"[:(]?\s*(?P<reason>[^)]*?)\)?\s*$"
+    r"(?P<delimiter>[:(])?\s*(?P<reason>.*)$"
 )
 LEDGER_COLUMNS = ("id", "asked_by", "sent_at", "disposition", "due", "reason", "question")
 OPEN = ""
@@ -216,8 +216,11 @@ def parse_dispositions(lines: list[str]) -> list[Disposition]:
     for line in lines:
         match = DISPOSITION_RE.search(line)
         if match:
+            reason = match["reason"].strip()
+            if match["delimiter"] == "(" and reason.endswith(")"):
+                reason = reason[:-1].rstrip()
             found.append(
-                Disposition(match["id"], match["kind"], match["reason"].strip())
+                Disposition(match["id"], match["kind"], reason)
             )
     return found
 
