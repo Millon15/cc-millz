@@ -1,5 +1,11 @@
 # Changelog
 
+## peer-chat v0.9.2 - 2026-11-17
+
+### Fixed
+
+- A Codex peer started by `peer-chat-spawn.sh` now gets `PEER_CHAT_NAME` and the pane variables in its process env, through the same `env K=V` prefix the Claude launch line has, so the peer-mode hook stays silent in it. Before, Codex got them only as `-c shell_environment_policy.set.*` overrides, which reach its shell tools and not its hooks; those overrides stay.
+
 ## peer-chat v0.9.1 - 2026-11-17
 
 ### Fixed

@@ -290,12 +290,15 @@ def launch_argv(config, terminal, plugin_root):
     argv = [values[f'{harness}_command'], *values['peer_args']]
     if model:
         argv += ['--model', model]
+    env_prefix = ['env', *(f'{key}={value}' for key, value in context.items())]
     if harness == 'claude':
-        return ['env', *(f'{key}={value}' for key, value in context.items()), *argv, *claude_plugin_args(plugin_root)]
+        return [*env_prefix, *argv, *claude_plugin_args(plugin_root)]
     argv += codex_daemon_args(values)
+    # The process env reaches Codex hooks (the peer-mode hook reads PEER_CHAT_NAME); the
+    # shell_environment_policy flags reach its shell tools.
     for key, value in context.items():
         argv += ['-c', f'shell_environment_policy.set.{key}={json.dumps(value)}']
-    return argv
+    return [*env_prefix, *argv]
 
 
 def load_turn_state(plugin_root):

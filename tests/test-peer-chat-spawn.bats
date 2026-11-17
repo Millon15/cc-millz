@@ -148,6 +148,15 @@ assert_launch_arg() {
     [ ! -e "$TMP/daemon-calls.txt" ]
 }
 
+@test "spawn: Codex also gets the peer identity in its process env, which its hooks read" {
+    run bash "$SPAWN"
+    assert_status 0
+    jq -e '.[0] == "env"' "$TMP/launch.json" >/dev/null
+    assert_launch_arg PEER_CHAT_NAME=codex
+    assert_launch_arg AGTERM_PANE=right
+    jq -e 'index("PEER_CHAT_NAME=codex") < index("codex")' "$TMP/launch.json" >/dev/null
+}
+
 @test "spawn: starts the local daemon without applying pane overrides globally" {
     export PEER_CHAT_CODEX_MODE=daemon
     run bash "$SPAWN"

@@ -71,7 +71,8 @@ the peer is mid-turn on something that is not your message, and stderr says so. 
 line ("peer busy, mid-turn on its current task"), send anyway if the ask can wait, and expect the
 reply after that turn ends rather than on your usual clock. Never wait for it and never `--restart`
 on your own: replacing a working peer discards its task, and only the user decides that.
-Codex defaults to embedded mode with `--no-daemon`. Pane context stays in per-thread configuration.
+Codex defaults to embedded mode with `--no-daemon`. Pane context reaches its shell tools through
+per-thread configuration and its hooks through the process env.
 Set `codex_mode` to `daemon` in `.peer-chat.json`, or `PEER_CHAT_CODEX_MODE=daemon`, to start and
 connect to the shared local daemon. Explicit `"--no-daemon"` in `peer_args` keeps embedded mode.
 Use embedded mode for `--profile`, `--oss`, `--strict-config` and `--dangerously-bypass-hook-trust`.

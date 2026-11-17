@@ -95,7 +95,7 @@ Flags win, then env, then a committed `.peer-chat.json` at the repo root, then t
 
 ## Limits
 
-- Codex peers default to embedded mode with `--no-daemon`, including when `peer_args` contains other options. Pane variables are passed through per-thread `-c` overrides.
+- Codex peers default to embedded mode with `--no-daemon`, including when `peer_args` contains other options. Pane variables are passed twice: as an `env K=V` prefix on the launch line, which Codex hooks read, and as per-thread `-c` overrides, which its shell tools read.
 - Set `codex_mode` to `daemon` in `.peer-chat.json`, or set `PEER_CHAT_CODEX_MODE=daemon`, to use the shared local daemon. The launcher starts it, connects through its Unix socket, and passes the caller's working directory. Explicit `--no-daemon` in `peer_args` overrides daemon mode.
 - `--profile`, `--oss`, `--strict-config`, and `--dangerously-bypass-hook-trust` require embedded mode. Peer-chat selects the runtime, so `--remote` in `peer_args` is rejected. A daemon-mode Codex wrapper must accept `app-server daemon start`; a failed or timed-out start follows the configured harness fallback.
 - The peer is addressed by pane slot. After a promote or re-split puts a different agent of the same harness into that slot, the foreground check cannot tell them apart.
