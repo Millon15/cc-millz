@@ -1,0 +1,15 @@
+{
+  "hooks": {
+    "SessionStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash \"${CLAUDE_PLUGIN_ROOT}/scripts/session-start-peer.sh\" bg",
+            "timeout": 3
+          }
+        ]
+      }
+    ]
+  }
+}

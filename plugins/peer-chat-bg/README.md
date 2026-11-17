@@ -48,6 +48,43 @@ render Claude-style slash commands. The CLI cannot hot-replace an already-runnin
 tool catalog. Neither installation nor registration proves that a host supports native peers;
 the skill preflights the actual tools before use.
 
+## 🔔 Peer mode on every session
+
+Installing the plugin changes no session. To start every interactive session in peer mode,
+without typing `/peer-chat-bg:peer-chat`, write the marker file:
+
+```bash
+echo bg > ~/.claude/peer-chat.mode
+```
+
+The SessionStart hook (`scripts/session-start-peer.sh bg`) then adds one directive to the
+session's context on startup, resume, clear and compact:
+
+| The task | What the agent does |
+|----------|---------------------|
+| a lookup, a typo, a one-line fix | works alone |
+| a decision with two defensible options, a root cause, a diff about to ship | loads `peer-chat-bg:peer-chat` |
+| an agreed multi-file design | runs `peer-chat-bg:build` |
+
+- 📝 **Text only:** the hook starts no peer. A native background peer is a tool call the
+  agent makes when the task reaches the second tier.
+- 🎚️ **One marker for both plugins:** the first line is `bg` (this plugin), `agterm` (the agterm
+  [peer-chat](../peer-chat/README.md) plugin) or `0`. A missing file, `0` or any other value
+  keeps both hooks silent, so the two plugins never fire in the same session.
+  `CLAUDE_CONFIG_DIR` moves the file; a `PEER_CHAT_MODE` shell export overrides it for one run.
+  A settings.json `env` block never reaches hook processes, so do not set it there.
+- 🔇 **Silent in agent-started runs:** when `PEER_CHAT_NAME` is set (a spawned agterm peer),
+  when `CLAUDE_CODE_ENTRYPOINT` starts with `sdk` (`claude -p`), and when two or more parent
+  processes are named `claude` or `codex` (a `codex exec` started from a Claude session
+  inherits `CLAUDE_CODE_ENTRYPOINT=cli`, so env cannot show it). A wrapper named in
+  `PEER_CHAT_CLAUDE_COMMAND` or `PEER_CHAT_CODEX_COMMAND` counts as its harness.
+- ⚠️ **The check can miss, never invent:** a harness whose process shows under another name
+  (`node` for an npm-installed CLI) is not counted, and a headless run started from it gets
+  the directive. That costs one paragraph of context and starts nothing.
+- 🔐 **Codex approval:** Codex runs a plugin hook only after you approve it, once per machine;
+  the approval is stored under `[hooks.state]` in `~/.codex/config.toml`. Until then Codex
+  sessions start without the directive.
+
 ## 🎛️ Peer model
 
 - 🎛️ **Choose the peer model:** `/peer-chat-bg:peer-chat claude(fable)` in Claude Code or

@@ -40,6 +40,39 @@ own configuration.
 | script | `scripts/peer-chat-spawn.sh` | 🪟 open the other pane and start any harness + model; falls back to the other harness when the requested one cannot start (`--fallback`, `--no-fallback`); `--restart` relaunches the peer after an update; `--explain` prints the resolved config |
 | script | `scripts/peer-chat-install.sh` | 🔧 copy the adapter, engine and paste sender onto PATH and write the three Codex approval rules; `--check` reports |
 | script | `scripts/sync-upstream.sh` | 🔄 re-vendor from umputun/agterm, re-pin the sha256 and stage upstream's skill files for a hand merge |
+| hook | `SessionStart` | 🔔 `scripts/session-start-peer.sh agterm` injects the peer-mode directive on startup, resume, clear and compact. Opt-in through `~/.claude/peer-chat.mode`; text only, it never opens a pane |
+
+## Peer mode on every session
+
+Installing the plugin changes no session. To start every interactive `claude` or `codex` inside agterm in peer mode, without typing `/peer-chat`, write the marker file:
+
+    echo agterm > ~/.claude/peer-chat.mode
+
+The SessionStart hook then adds one directive to the session's context, in three tiers:
+
+| The task | What the agent does |
+|----------|---------------------|
+| a lookup, a typo, a one-line fix | works alone |
+| a decision with two defensible options, a root cause, a diff about to ship | loads `peer-chat:peer-chat` and brings the peer in |
+| an agreed multi-file design | runs `peer-chat:build` |
+
+- **Text only.** The hook opens no pane. The other pane opens when the skill sends its first message, so a session that never reaches the second tier never gets a peer.
+- **Every SessionStart source.** The directive comes back after resume, clear and compact, because compaction drops it with the loaded skills.
+- **One marker for both plugins.** Its first line is `agterm` (this plugin), `bg` ([peer-chat-bg](../peer-chat-bg/README.md), no agterm needed) or `0`. A missing file, `0` or any other value keeps both hooks silent.
+- **Where the marker lives.** `CLAUDE_CONFIG_DIR` moves it with the rest of `~/.claude`, and a `PEER_CHAT_MODE` shell export overrides it for one run. Do NOT put `PEER_CHAT_MODE` in a settings.json `env` block: that block never reaches hook processes.
+- **Codex approval.** Codex runs a plugin hook only after you approve it, once per machine. Approve the new SessionStart hook when Codex shows it; the approval is stored under `[hooks.state]` in `~/.codex/config.toml`. Until then Codex sessions start without the directive, and Claude Code sessions are not affected.
+
+With the marker on `agterm`, the hook still stays silent in four cases:
+
+| Case | How the hook sees it |
+|------|----------------------|
+| outside agterm | `AGTERM_ENABLED` is not `1` |
+| the peer the spawn started | `PEER_CHAT_NAME` is set, so a peer never asks for a peer of its own |
+| an SDK run such as `claude -p` | `CLAUDE_CODE_ENTRYPOINT` starts with `sdk` |
+| an agent started by another agent | two or more parent processes are named `claude` or `codex` |
+
+- **Why the last case reads processes.** Env cannot show it: a `codex exec` started from a Claude session inherits `CLAUDE_CODE_ENTRYPOINT=cli` and `AGTERM_ENABLED=1`, and Codex's SessionStart payload has no field for a headless run.
+- **How it counts.** The hook walks its parent processes up to pid 1 and counts the ones whose `ps -o comm=` basename is `claude` or `codex`; a wrapper named in `PEER_CHAT_CLAUDE_COMMAND` or `PEER_CHAT_CODEX_COMMAND` counts too.
 
 ## Config
 
@@ -68,6 +101,8 @@ Flags win, then env, then a committed `.peer-chat.json` at the repo root, then t
 - The peer is addressed by pane slot. After a promote or re-split puts a different agent of the same harness into that slot, the foreground check cannot tell them apart.
 - A model name reaches the harness verbatim; an unknown one fails inside the harness, not before the launch.
 - `peer_turn` and the mid-turn warning come from screen text, matched against the markers Claude Code and Codex draw today (a spinner line with a timer, `Working (… esc to interrupt)`); a harness that redraws them reads as `unknown`, which never warns and never blocks.
+- The peer-mode hook's parent-process check can miss a nested agent and never invents one. A harness whose process shows under another name (`node` for an npm-installed CLI, a wrapper not named in `PEER_CHAT_*_COMMAND`) is not counted, and a headless run started from it gets the directive. The cost is one paragraph of context: the hook opens no pane.
+- The hook picks no peer. `peer_harness` and `peer_model` resolve at spawn time exactly as the Config table says.
 
 ## Updating
 

@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
-"""Package canonical Python sources into independently installable peer plugins."""
+"""Package canonical shared sources into independently installable peer plugins."""
+
 import argparse
 from pathlib import Path
 import sys
@@ -8,6 +9,7 @@ ROOT = Path(__file__).resolve().parents[1]
 PACKAGES = {
     "peer_chat_core.py": ("peer-chat", "peer-chat-bg"),
     "peer_chat_state.py": ("peer-chat", "peer-chat-bg"),
+    "session-start-peer.sh": ("peer-chat", "peer-chat-bg"),
 }
 
 

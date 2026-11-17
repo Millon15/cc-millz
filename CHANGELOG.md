@@ -1,5 +1,21 @@
 # Changelog
 
+## peer-chat v0.9.0 - 2026-11-16
+
+### Added
+
+- An opt-in SessionStart hook, `scripts/session-start-peer.sh agterm`. With `agterm` on the first line of `~/.claude/peer-chat.mode`, every interactive Claude Code or Codex session inside agterm starts with a peer-mode directive in three tiers: a lookup, a typo or a one-line fix stays solo; a decision with two defensible options, a root cause or a diff about to ship loads `peer-chat:peer-chat`; an agreed multi-file design runs `peer-chat:build`. The hook prints text only and never opens a pane: the skill spawns the peer on its first send. It fires on startup, resume, clear and compact.
+- The marker is shared with peer-chat-bg: first line `0`, `agterm` or `bg`, anything else silent. `CLAUDE_CONFIG_DIR` moves it, and a `PEER_CHAT_MODE` shell export overrides it for one run.
+- The hook stays silent outside agterm, in the peer the spawn started (`PEER_CHAT_NAME` set), in SDK runs (`CLAUDE_CODE_ENTRYPOINT=sdk*`) and in an agent started by another agent. For the last case it walks its parent processes and stops at two or more named `claude` or `codex`, or named by `PEER_CHAT_CLAUDE_COMMAND` / `PEER_CHAT_CODEX_COMMAND`. Env cannot show a nested run: a `codex exec` started from a Claude session inherits `CLAUDE_CODE_ENTRYPOINT=cli` and `AGTERM_ENABLED=1`, and Codex's SessionStart payload has no headless field.
+- Codex needs one approval of the new hook per machine before it runs it.
+
+## peer-chat-bg v0.3.0 - 2026-11-16
+
+### Added
+
+- An opt-in SessionStart hook, `scripts/session-start-peer.sh bg`, packaged from the same shared script as peer-chat's. With `bg` on the first line of `~/.claude/peer-chat.mode`, every interactive session starts with the three-tier peer-mode directive naming `peer-chat-bg:peer-chat` and `peer-chat-bg:build`. Text only: the hook starts no peer.
+- Same marker, override and silences as peer-chat v0.9.0, without the agterm requirement. One marker value means the two plugins never fire in the same session.
+
 ## peer-chat v0.8.2 - 2026-11-16
 
 ### Fixed
