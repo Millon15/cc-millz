@@ -168,6 +168,15 @@ directive() { jq -r '.hookSpecificOutput.additionalContext' <<<"$output"; }
 	[ -z "$output" ]
 }
 
+@test "the directive survives a shell that may not write files, as in a Codex read-only sandbox" {
+	command -v sandbox-exec >/dev/null || skip "macOS sandbox-exec only"
+	mode agterm
+	run sandbox-exec -p '(version 1)(allow default)(deny file-write*)(allow file-write* (literal "/dev/null"))' \
+		/bin/bash "$HOOK" agterm </dev/null
+	[ "$status" -eq 0 ]
+	[[ "$(directive)" == *"peer-chat:build"* ]] || false
+}
+
 @test "both plugins ship the shared script and run it with their own lane" {
 	for plugin in peer-chat peer-chat-bg; do
 		cmp "$HOOK" "${REPO_ROOT}/plugins/${plugin}/scripts/session-start-peer.sh"

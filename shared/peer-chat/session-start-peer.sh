@@ -16,8 +16,9 @@
 # exit:   0 always. A hook must never block session start.
 # deps:   jq, ps, awk
 #
-# Portability: `read -r -d ''` instead of `$(cat <<'EOF' … )`, because bash 3.2 (macOS)
-# mis-parses an apostrophe inside a heredoc nested in $( ).
+# Portability: the directive is built with `printf -v`, never a heredoc: bash 3.2 (macOS)
+# backs a heredoc with a temp file, and where TMPDIR is not writable (a sandboxed shell)
+# the heredoc comes back empty.
 #
 set -uo pipefail
 
@@ -79,19 +80,19 @@ print_directive() {
 		chat=peer-chat-bg:peer-chat build=peer-chat-bg:build where="a native background peer starts"
 	fi
 	local text
-	IFS= read -r -d '' text <<EOF || true
-Peer mode is ON for this session (lane: $1, set in peer-chat.mode). The user does not type
-/$chat or /$build here; picking the tier for each task is yours:
-
-1. A lookup, a typo, a one-line change: work solo, no peer.
-2. A decision with two defensible options, a root cause nobody has tried to disprove, a diff
-   about to ship with no reviewer: load the $chat skill, then bring the peer in
-   ($where on the first send).
-3. Implementing an agreed design that spans several files: load the $build skill.
-
-A prompt that opens with "Chat from " is the peer talking: load $chat and answer through its
-transport. Name the tier in one line when you bring the peer in.
-EOF
+	printf -v text '%s\n' \
+		"Peer mode is ON for this session (lane: $1, set in peer-chat.mode). The user does not type" \
+		"/$chat or /$build here; picking the tier for each task is yours:" \
+		"" \
+		"1. A lookup, a typo, a one-line change: work solo, no peer." \
+		"2. A decision with two defensible options, a root cause nobody has tried to disprove, a diff" \
+		"   about to ship with no reviewer: load the $chat skill, then bring the peer in" \
+		"   ($where on the first send)." \
+		"3. Implementing an agreed design that spans several files: load the $build skill." \
+		"" \
+		"A prompt that opens with \"Chat from \" is the peer talking: load $chat and answer through its" \
+		"transport. Name the tier in one line when you bring the peer in."
+	[ -n "$text" ] || return 0
 	command -v jq >/dev/null 2>&1 || return 0
 	jq -nc --arg text "$text" '{hookSpecificOutput: {hookEventName: "SessionStart", additionalContext: $text}}'
 }

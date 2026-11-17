@@ -1,5 +1,17 @@
 # Changelog
 
+## peer-chat v0.9.1 - 2026-11-17
+
+### Fixed
+
+- The SessionStart hook no longer sends an empty directive where bash cannot create a temp file for a here-document (seen under `codex exec --sandbox read-only`: `can't create temp file for here document: operation not permitted`). The text is built with `printf -v`, and a hook that ends up with no text prints nothing.
+
+## peer-chat-bg v0.3.1 - 2026-11-17
+
+### Fixed
+
+- The packaged SessionStart hook carries the peer-chat v0.9.1 fix: no empty directive where a here-document cannot get a temp file.
+
 ## peer-chat v0.9.0 - 2026-11-16
 
 ### Added
