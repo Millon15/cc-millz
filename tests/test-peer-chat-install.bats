@@ -192,7 +192,8 @@ codex_plugin_cache() { # codex_plugin_cache [<cached body file>] [true|false]
     body="$(cat "${SKILL}")"
     assert_contains "${body}" 'peer-chat-install.sh" --check'
     assert_contains "${body}" 'peer-chat-spawn.sh"'
-    assert_contains "${body}" "codex, model from its own config"
+    assert_contains "${body}" "the configured peer (default codex, own model config)"
+    assert_contains "${body}" "is the user's preset and beats the flags"
     assert_contains "${body}" "/peer-chat codex(astra)"
     assert_contains "${body}" "/peer-chat claude(fable)"
     assert_contains "${body}" "yours to map"

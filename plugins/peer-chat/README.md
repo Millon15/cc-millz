@@ -78,6 +78,11 @@ With the marker on `agterm`, the hook still stays silent in four cases:
 
 Flags win, then env, then a committed `.peer-chat.json` at the repo root, then the default. `peer-chat-spawn.sh --explain` prints every value with its source.
 
+The harness and the model resolve as one pair:
+
+- **An env preset beats the flags.** With `PEER_CHAT_PEER_HARNESS` set, the env harness and `PEER_CHAT_PEER_MODEL` win over `--harness`, `--model` and a positional peer, and stderr names the override. A flag model fills in only when the preset has no model and asks for the same harness.
+- **A model never moves to another harness.** A `peer_model` from `.peer-chat.json` applies only to that file's `peer_harness` (default `codex`). Asking for another harness drops it, so the new harness uses its own model config, and `--explain` shows `null` from `default`.
+
 | key | env | default | what |
 |-----|-----|---------|------|
 | `peer_harness` | `PEER_CHAT_PEER_HARNESS` | `codex` | the harness the spawn starts: `claude` or `codex` (`--harness`) |

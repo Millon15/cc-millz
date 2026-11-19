@@ -519,6 +519,61 @@ assert_launch_arg() {
     [ "$(printf '%s' "$output" | jq -r '.values.peer_model')" = custom-model ]
 }
 
+@test "explain: an env harness preset beats a CLI harness and keeps its own model" {
+    bats_require_minimum_version 1.5.0
+    export PEER_CHAT_PEER_HARNESS=claude PEER_CHAT_PEER_MODEL=claude-fable-5-2
+    for request in codex 'codex(gpt-5.6-sol)' 'claude(opus)'; do
+        run --separate-stderr bash "$SPAWN" "$request" --explain
+        assert_status 0
+        [ "$(printf '%s' "$output" | jq -r '.values.peer_harness')" = claude ]
+        [ "$(printf '%s' "$output" | jq -r '.values.peer_model')" = claude-fable-5-2 ]
+        assert_explain_source "$output" peer_harness detected:env:PEER_CHAT_PEER_HARNESS
+        assert_explain_source "$output" peer_model detected:env:PEER_CHAT_PEER_MODEL
+        [[ "$stderr" == *"preset claude(claude-fable-5-2) overrides the requested $request"* ]]
+    done
+    run --separate-stderr bash "$SPAWN" claude --explain
+    assert_status 0
+    [ -z "$stderr" ]
+    [ ! -e "$TMP/calls.jsonl" ]
+}
+
+@test "explain: a model-less env preset takes a CLI model for its own harness only" {
+    bats_require_minimum_version 1.5.0
+    export PEER_CHAT_PEER_HARNESS=claude
+    run --separate-stderr bash "$SPAWN" 'claude(opus)' --explain
+    assert_status 0
+    [ "$(printf '%s' "$output" | jq -r '.values.peer_model')" = opus ]
+    assert_explain_source "$output" peer_model detected:cli:peer_model
+    run --separate-stderr bash "$SPAWN" 'codex(gpt-5.6-sol)' --explain
+    assert_status 0
+    [ "$(printf '%s' "$output" | jq -r '.values.peer_harness')" = claude ]
+    [ "$(printf '%s' "$output" | jq -r '.values.peer_model')" = null ]
+    [[ "$stderr" == *"overrides the requested codex(gpt-5.6-sol)"* ]]
+}
+
+@test "explain: a model never crosses to a harness the CLI or env picked" {
+    make_git_repo "$TMP/repo"
+    printf '{"peer_harness":"claude","peer_model":"opus"}\n' > "$TMP/repo/.peer-chat.json"
+    cd "$TMP/repo"
+    run bash "$SPAWN" codex --explain
+    assert_status 0
+    [ "$(printf '%s' "$output" | jq -r '.values.peer_harness')" = codex ]
+    [ "$(printf '%s' "$output" | jq -r '.values.peer_model')" = null ]
+    assert_explain_source "$output" peer_model default
+    PEER_CHAT_PEER_HARNESS=codex run bash "$SPAWN" --explain
+    assert_status 0
+    [ "$(printf '%s' "$output" | jq -r '.values.peer_model')" = null ]
+}
+
+@test "spawn: a Claude env preset launches Claude even when codex was requested" {
+    export PEER_CHAT_PEER_HARNESS=claude PEER_CHAT_PEER_MODEL=claude-fable-5-2 PEER_CHAT_PEER_FALLBACK=none
+    run bash "$SPAWN" codex
+    assert_status 0
+    assert_launch_arg claude
+    assert_launch_arg claude-fable-5-2
+    [ "$(jq 'index("codex")' "$TMP/launch.json")" = null ]
+}
+
 @test "explain: Claude without an explicit model uses the Claude default" {
     run bash "$SPAWN" --harness claude --explain
     assert_status 0

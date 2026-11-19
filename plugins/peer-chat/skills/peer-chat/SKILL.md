@@ -38,7 +38,7 @@ the user in one line what was written.
 This session needs a split with a peer agent in the other pane. Open it yourself:
 
 ```bash
-bash "${CLAUDE_PLUGIN_ROOT}/scripts/peer-chat-spawn.sh"                     # codex, model from its own config
+bash "${CLAUDE_PLUGIN_ROOT}/scripts/peer-chat-spawn.sh"                     # the configured peer (default codex, own model config)
 bash "${CLAUDE_PLUGIN_ROOT}/scripts/peer-chat-spawn.sh" claude              # a Claude peer, model from its own config
 bash "${CLAUDE_PLUGIN_ROOT}/scripts/peer-chat-spawn.sh" 'codex(gpt-5.6-sol)'   # a named model; same as codex:gpt-5.6-sol
 bash "${CLAUDE_PLUGIN_ROOT}/scripts/peer-chat-spawn.sh" --harness codex --model gpt-5.6-sol
@@ -91,7 +91,12 @@ the decision you want attacked. The user can close the pane; that ends the excha
 
 Config, highest first: flags, then `PEER_CHAT_PEER_HARNESS` / `PEER_CHAT_PEER_MODEL` /
 `PEER_CHAT_PEER_FALLBACK`, then `peer_harness`, `peer_model`, `peer_fallback` and `peer_args` (an
-argv array) in a committed `.peer-chat.json` at the repo root. `PEER_CHAT_CLAUDE_COMMAND` / `PEER_CHAT_CODEX_COMMAND` (or `claude_command` /
+argv array) in a committed `.peer-chat.json` at the repo root. One exception: a set
+`PEER_CHAT_PEER_HARNESS` is the user's preset and beats the flags. The env harness and its
+`PEER_CHAT_PEER_MODEL` win as a pair, and a flag model counts only when the preset names no model
+for that harness. When the preset overrides your request, stderr says so: tell the user in one line
+which peer they got, since the preset is theirs to change. A model never moves to another harness:
+a model set for one harness is dropped when the peer starts another harness. `PEER_CHAT_CLAUDE_COMMAND` / `PEER_CHAT_CODEX_COMMAND` (or `claude_command` /
 `codex_command`) name wrapper executables. `peer-chat-spawn.sh --explain` prints what resolved and
 from where.
 

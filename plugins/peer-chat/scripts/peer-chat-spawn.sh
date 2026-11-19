@@ -28,6 +28,17 @@ class Config:
     sources: dict
 
 
+@dataclass(frozen=True)
+class Peer:
+    harness: str
+    harness_source: str
+    model: str | None
+    model_source: str
+
+    def label(self):
+        return f'{self.harness}({self.model})' if self.model else self.harness
+
+
 PEER_FORMS = 'claude | codex | <h>:<model> | <h>(<model>)'
 
 
@@ -81,19 +92,49 @@ def resolve_value(profile, key, env, default, cli=None):
     return default, 'default'
 
 
+def resolve_peer(profile, args):
+    configured = configured_peer(profile)
+    requested = requested_peer(configured, args)
+    if not os.environ.get('PEER_CHAT_PEER_HARNESS'):
+        return requested
+    if requested.harness == configured.harness and configured.model in (None, requested.model):
+        return requested
+    print(f'peer-chat-spawn: the PEER_CHAT_PEER_HARNESS preset {configured.label()} '
+          f'overrides the requested {requested.label()}', file=sys.stderr)
+    return configured
+
+
+def configured_peer(profile):
+    """The env-or-profile pair; a profile model counts only for the profile's own harness."""
+    harness, harness_source = resolve_value(profile, 'peer_harness', 'PEER_CHAT_PEER_HARNESS', 'codex')
+    model, model_source = resolve_value(profile, 'peer_model', 'PEER_CHAT_PEER_MODEL', None)
+    if model_source == 'profile' and profile.get('peer_harness', 'codex') != harness:
+        return Peer(harness, harness_source, None, 'default')
+    return Peer(harness, harness_source, model, model_source)
+
+
+def requested_peer(configured, args):
+    harness = args.harness or configured.harness
+    harness_source = 'detected:cli:peer_harness' if args.harness else configured.harness_source
+    if args.model is not None:
+        return Peer(harness, harness_source, args.model, 'detected:cli:peer_model')
+    if harness == configured.harness:
+        return Peer(harness, harness_source, configured.model, configured.model_source)
+    return Peer(harness, harness_source, None, 'default')
+
+
 def resolve_config(args):
     path, profile = read_profile()
-    values, sources = {}, {}
-    specs = [('peer_harness', 'PEER_CHAT_PEER_HARNESS', 'codex', args.harness)]
-    specs += [(f'{name}_command', f'PEER_CHAT_{name.upper()}_COMMAND', name, None)
-              for name in ('claude', 'codex')]
+    peer = resolve_peer(profile, args)
+    values = {'peer_harness': peer.harness, 'peer_model': peer.model}
+    sources = {'peer_harness': peer.harness_source, 'peer_model': peer.model_source}
+    specs = [(f'{name}_command', f'PEER_CHAT_{name.upper()}_COMMAND', name, None)
+             for name in ('claude', 'codex')]
     specs += [('peer_args', 'PEER_CHAT_PEER_ARGS', [], None),
               ('codex_mode', 'PEER_CHAT_CODEX_MODE', 'embedded', None),
               ('start_timeout', 'PEER_CHAT_START_TIMEOUT', 30, None)]
     for key, env, default, cli in specs:
         values[key], sources[key] = resolve_value(profile, key, env, default, cli)
-    values['peer_model'], sources['peer_model'] = resolve_value(
-        profile, 'peer_model', 'PEER_CHAT_PEER_MODEL', None, args.model)
     values['peer_fallback'], sources['peer_fallback'] = resolve_value(
         profile, 'peer_fallback', 'PEER_CHAT_PEER_FALLBACK', other_harness(values['peer_harness']), args.fallback)
     if sources['peer_args'].startswith('detected:env:'):

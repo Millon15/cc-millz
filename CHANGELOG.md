@@ -1,5 +1,15 @@
 # Changelog
 
+## peer-chat v0.10.0 - 2026-11-18
+
+### Changed
+
+- A set `PEER_CHAT_PEER_HARNESS` is now a preset that beats the flags. The env harness and `PEER_CHAT_PEER_MODEL` win as a pair over `--harness`, `--model` and a positional peer, and stderr names the override (`the PEER_CHAT_PEER_HARNESS preset claude(claude-fable-5-2) overrides the requested codex`). A flag model still fills in when the preset names no model and asks for the same harness.
+
+### Fixed
+
+- A model no longer moves to a harness it was not set for. Before, `peer-chat-spawn.sh codex` under `PEER_CHAT_PEER_HARNESS=claude PEER_CHAT_PEER_MODEL=claude-fable-5-2` typed `codex --model claude-fable-5-2`, and Codex refused the model. A `peer_model` in `.peer-chat.json` now applies only to that file's `peer_harness`.
+
 ## peer-chat v0.9.2 - 2026-11-17
 
 ### Fixed
