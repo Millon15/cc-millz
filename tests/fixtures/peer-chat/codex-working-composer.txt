@@ -1,0 +1,8 @@
+• Ran ls
+  └ a b c
+
+• Working (12s • esc to interrupt)
+
+› Ask Codex to do anything
+
+  ? for shortcuts                                            100% context left

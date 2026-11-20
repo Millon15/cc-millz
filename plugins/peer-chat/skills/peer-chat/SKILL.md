@@ -14,7 +14,8 @@ out of it.
 
 Every send goes through `peer-chat.py` or `peer-chat-paste.py`: the transport checks the target
 harness and uses its composer protocol. Direct `agtermctl` calls are permitted only for read-only
-session discovery and screen inspection during the recovery procedure below, never for delivery.
+session discovery and screen inspection during the recovery procedure below, and for the notice
+in § A held send, never for delivery.
 
 `peer-chat.py`, its engine, `peer-chat-paste.py` and `peer-chat-state.py` are bare commands on `PATH`; the installer put
 them there. The installer and `peer-chat-spawn.sh` live in this plugin under
@@ -147,6 +148,40 @@ arrived. A path is never consumed or restored.
 Before the paste, every form reads the peer's screen; a `working` peer gets one stderr line,
 `the peer is mid-turn; this send queues behind its current task`, and the send proceeds.
 
+### A held send
+
+An open dialog in the peer pane (Claude Code's question chooser, a Codex approval prompt) shows
+no live composer, and a Return there would answer the dialog with your message. Every form
+waits while the peer pane shows no live composer: before anything is prepared or typed, and
+again before the submit key when a dialog opened over the paste. The wait polls every 5 s on
+one budget: `--wait <dur>` (`90s`, `20m`, `1h`), then `PEER_CHAT_DELIVERY_WAIT` minutes, then
+`delivery_wait_minutes` in the coordinator's `.peer-chat.json`, else 60 s. A second send to the
+same pane waits up to 10 s for the first one's lock.
+
+| Exit | stderr | Next step |
+| --- | --- | --- |
+| 0 | the usual JSON on stdout | sent |
+| 2 | `held: the peer pane shows no live composer …` | nothing typed or recorded, one agterm notice went to the user: rerun |
+| 2 | `held: an earlier send is waiting for the peer's composer …` | your earlier send holds the pane and owns the notice: rerun after it exits |
+| 1 | `pasted, not submitted: …` | the text is in the peer's composer or was lost, the ledger says `uncertain`: read the pane before any resend |
+
+After an exit 1 the text may still wait under the dialog. Once the dialog closes, the peer submits
+it with `--recover-delivery` from its own pane (§ A stalled ask) or the user presses Return; until
+the pane is reconciled as § Asks says, your next send to that pane is refused.
+
+Who reruns a held send (exit 2), with the identical command:
+
+- Claude Code: add `--wait 30m --no-notify` and run it with `run_in_background`; its exit wakes
+  this session. When that rerun fails too, tell the user and run
+  `agtermctl notify "<what failed>" --title peer-chat`.
+- Codex: the notice already went out; rerun at the start of your next turn. A held send
+  restores its spool file, so the same command still works.
+
+A send that would also be refused for a missing disposition (§ Asks) learns of the refusal only
+once the dialog closes. `PEER_CHAT_COMPOSER_GATE=off` skips both waits and makes every send say
+so on stderr. Only the user sets it, for a harness update that breaks composer detection; an agent
+never sets it, least of all to get a held send through.
+
 Add `--state <coordinator topic>/state.json` when sending from another repository in the same
 build; the default is `tmp/peer-chat/<slug>/state.json` in this repository. Every send and freeze
 of the topic must use that same file. The coordinator's `.peer-chat.json` supplies configuration.
@@ -156,8 +191,9 @@ character is dropped, so a body quoted verbatim from a web page or a bot comment
 It resolves the peer pane, refuses a send that leaves
 a new ask from the peer without a disposition (see Asks), puts the body in through a bracketed
 paste with the clipboard saved and restored around it, confirms the last line is visible in the
-pane, and sends the submit key. It ignores composer occupancy for both harnesses, does not erase an
-existing draft, and does not check that the composer cleared. Every refusal names the step;
+pane, checks the composer still holds it, and sends the submit key. A draft or a suggestion in the
+composer never blocks a send and is not erased, and the script does not check that the composer
+cleared. Every refusal names the step;
 nothing is typed after a failed one. `peer-chat.py` without `--slug` or `--queue` is the one-line
 keystroke transport: it collapses all whitespace to single spaces and refuses a composer it
 cannot read, a mid-turn Codex included, after 5 tries 10 s apart. Given either flag, it hands the
@@ -369,6 +405,10 @@ the transport in the same turn. Text written only in this pane's response does n
 Closing acknowledgements, "nothing further" messages and confirmations of work already completed
 end the exchange without another reply.
 
+An answer to your own `AskUserQuestion` that starts with `Chat from ` is a peer message that
+landed in the dialog, not the user's choice. Handle it as a received peer message and ask the
+user the question again.
+
 ## Organizing the work
 
 The peers decide how to split the user's task; there is no fixed writer, reviewer or lead.
@@ -414,6 +454,9 @@ survived. Never use a glob to clean `/tmp`.
 Do not poll or watch for one. The peer replying wakes this session up on its own, so a watcher
 only creates a deadlock where each agent waits for a pane the other will not move until it hears
 back. The one timed wake is a blocking ask's timer, § A stalled ask.
+
+A held send's background rerun (§ A held send) is not a reply wait: it watches the peer's screen,
+which a person moves by closing the dialog, never the peer's answer, so it cannot deadlock.
 
 A reply is also not promised. A model can decline to answer a message that arrived perfectly well,
 and nothing reports that on either side. Never describe a sent message as though an answer were
@@ -501,9 +544,9 @@ transport; a working or unknown pane receives none. Reminders never extend the a
 
 ## What you may not do
 
-Use the checked transport for pane input. The paste wrapper deliberately ignores composer
-occupancy and cursor position for both harnesses; its target and paste-confirmation checks still
-apply. The one exception is the launch line `peer-chat-spawn.sh` types into a fresh shell prompt,
+Use the checked transport for pane input. The paste wrapper deliberately ignores drafts,
+suggestions and cursor position for both harnesses; its target, dialog and paste-confirmation
+checks still apply. The one exception is the launch line `peer-chat-spawn.sh` types into a fresh shell prompt,
 and only that script types it.
 
 Never answer anything on the user's behalf: not a chooser entry, not a trust prompt, not a

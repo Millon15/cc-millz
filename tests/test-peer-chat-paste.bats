@@ -6,7 +6,11 @@
 # the suite stubs agtermctl with a state machine (empty composer, pasted, submitted) and pbcopy /
 # pbpaste with a clipboard file. The assertions read what was pasted (the label, the preserved
 # line breaks), the single submit keystroke, the clipboard restore, and paste confirmation.
-# Composer state never blocks either target, before paste or after submission.
+# A draft, a suggestion or a hint in the composer never blocks either target. A pane with no live
+# composer (a question dialog, an approval modal, an unknown rendering) holds the send: the stub
+# shows `dialog` for the first `dialog-reads` reads before the paste, for the pasted reads from
+# `dialog-from` up to `dialog-until`, and `pasted-screen` verbatim from read `pasted-screen-from`.
+# Otherwise a pasted read draws the text inside the composer, as tests/fixtures/peer-chat/pasted-pane.py does.
 
 setup() {
     REPO_ROOT="$(cd "${BATS_TEST_DIRNAME}/.." && pwd)"
@@ -20,7 +24,8 @@ setup() {
     export AGTERM_SESSION_ID="${SID}" AGTERM_PANE=left PEER_CHAT_TRANSPORT="${PLUGIN}/scripts/peer-chat.py"
     unset PEER_CHAT_NAME PEER_CHAT_CLAUDE_COMMAND PEER_CHAT_CODEX_COMMAND
     export PEER_CHAT_PASTE_TIMEOUT=1 PEER_CHAT_ACCEPT_TIMEOUT=1
-    unset AGTERM_WINDOW_ID
+    export PEER_CHAT_DELIVERY_POLL=0.1 PEER_CHAT_LOCK_WAIT=0.5
+    unset AGTERM_WINDOW_ID PEER_CHAT_DELIVERY_WAIT PEER_CHAT_COMPOSER_GATE
     printf 'user clipboard' > "${TMP}/clip"
     printf 'empty' > "${TMP}/state"
     cp "${FIX}/tree-split-codex.json" "${TMP}/tree.json"
@@ -42,17 +47,36 @@ case "\$1 \$2" in
     "tree --json") cat "${TMP}/tree.json" ;;
     "surface cursor") [ ! -f "${TMP}/cursor-unavailable" ] || exit 9; echo 2 ;;
     "session text")
+        screen="${TMP}/composer"
+        [ -f "\$screen" ] || screen="${FIX}/codex-pane-empty.txt"
+        left="\$(cat "${TMP}/dialog-reads" 2>/dev/null || echo 0)"
+        if [ "\$state" != pasted ] && [ "\$left" -gt 0 ]; then
+            echo \$((left - 1)) > "${TMP}/dialog-reads"
+            cat "${TMP}/dialog"
+            exit 0
+        fi
         case "\$state" in
-            pasted) cat "${TMP}/clip-last-set"; echo; cat "${TMP}/composer" 2>/dev/null || cat "${FIX}/codex-pane-empty.txt" ;;
+            pasted)
+                read_no="\$(cat "${TMP}/pasted-reads" 2>/dev/null || echo 0)"
+                echo \$((read_no + 1)) > "${TMP}/pasted-reads"
+                if [ -f "${TMP}/dialog-from" ] && [ "\$read_no" -ge "\$(cat "${TMP}/dialog-from")" ] && [ "\$read_no" -lt "\$(cat "${TMP}/dialog-until")" ]; then
+                    cat "${TMP}/dialog"
+                elif [ -f "${TMP}/pasted-screen" ] && [ "\$read_no" -ge "\$(cat "${TMP}/pasted-screen-from" 2>/dev/null || echo 0)" ]; then
+                    cat "${TMP}/pasted-screen"
+                else
+                    python3 "${FIX}/pasted-pane.py" "${TMP}/clip-last-set" "\$screen"
+                fi ;;
             busy) printf '› half a line the user typed\n \n  footer row\n' ;;
             submitted) cat "${TMP}/after-submit" 2>/dev/null || cat "${FIX}/codex-pane-empty.txt" ;;
-            *) cat "${TMP}/composer" 2>/dev/null || cat "${FIX}/codex-pane-empty.txt" ;;
+            *) cat "\$screen" ;;
         esac ;;
     "session paste")
         [ -f "${TMP}/paste-ignored" ] || printf 'pasted' > "${TMP}/state"
         [ ! -f "${TMP}/composer-after-paste" ] || cp "${TMP}/composer-after-paste" "${TMP}/composer"
+        echo 0 > "${TMP}/pasted-reads"
         echo ok ;;
     "session type") cat >> "${TMP}/typed.log"; printf 'submitted' > "${TMP}/state"; echo ok ;;
+    notify\ *) [ ! -f "${TMP}/notify-fails" ] || exit 9; echo ok ;;
     *) echo "stub: unexpected \$*" >&2; exit 9 ;;
 esac
 EOF
@@ -95,22 +119,22 @@ send_file() { # send_file <message-file> [extra args]
 }
 
 composer_matrix() {
-    local target="$1" prompt pane sender state after expected_label
+    local target="$1" prompt pane sender state after expected_label box_end=''
     if [ "$target" = claude ]; then
         prompt='❯'; pane=left; sender=right; expected_label='Chat from codex (right):'
+        box_end=$'────────────────────────────────\n  ? for shortcuts\n'
     else
         prompt='›'; pane=right; sender=left; expected_label='Chat from claude (left):'
     fi
-    for state in empty suggestion startup_hint ide_context draft multiline queued unknown; do
+    for state in empty suggestion startup_hint ide_context draft multiline queued; do
         case "$state" in
             empty) printf '%s \n' "$prompt" > "${TMP}/composer" ;;
             suggestion) printf '%s keep grilling, dont wait for me\n' "$prompt" > "${TMP}/composer" ;;
             startup_hint) printf '%s Try "fix a bug"\n' "$prompt" > "${TMP}/composer" ;;
             ide_context) printf '%s ⧉ In file.php\n' "$prompt" > "${TMP}/composer" ;;
             draft) printf '%s half a line the user typed\n' "$prompt" > "${TMP}/composer" ;;
-            multiline) printf '%s draft line one\n  draft line two\n' "$prompt" > "${TMP}/composer" ;;
+            multiline) printf '%s draft line one\n  draft line two\n%s' "$prompt" "$box_end" > "${TMP}/composer" ;;
             queued) printf '%s Press up to edit queued messages\n' "$prompt" > "${TMP}/composer" ;;
-            unknown) printf 'unrecognized composer rendering\n' > "${TMP}/composer" ;;
         esac
         for after in empty occupied; do
             printf 'empty' > "${TMP}/state"
@@ -241,18 +265,18 @@ PY
     assert_not_contains "${output}" "mid-turn"
     printf 'empty' > "${TMP}/state"
     printf 'unrecognized composer rendering\n' > "${TMP}/composer"
-    send_file "${TMP}/msg"
+    PEER_CHAT_COMPOSER_GATE=off send_file "${TMP}/msg"
     assert_status 0
     assert_not_contains "${output}" "mid-turn"
 }
 
-@test "busy peer: a refused send reads no screen and prints no warning" {
+@test "busy peer: a refused send prints no warning and pastes nothing" {
     seed_codex_ask "" "" ""
     printf '🎯 no disposition here\n' > "${TMP}/msg"
     send_file "${TMP}/msg" --slug seatos
     assert_status 2
     assert_not_contains "${output}" "mid-turn"
-    assert_not_contains "$(cat "${TMP}/calls.log")" "session text"
+    assert_not_contains "$(cat "${TMP}/calls.log")" "session paste"
 }
 
 # ----------------------------------------------------------------- queue --
@@ -273,10 +297,10 @@ typed_keys() { od -An -c "${TMP}/typed.log" | tr -d ' \n'; }
     [ "$(typed_keys)" = '\t' ]
 }
 
-@test "queue: --queue to a codex screen that reads as unknown submits with Return" {
+@test "queue: --queue to a codex screen that reads as unknown submits with Return once the gate is off" {
     printf '1. Approve\n2. Deny\n' > "${TMP}/composer"
     printf '🎯 the background check finished\n' > "${TMP}/msg"
-    send_file "${TMP}/msg" --queue
+    PEER_CHAT_COMPOSER_GATE=off send_file "${TMP}/msg" --queue
     assert_status 0
     assert_not_contains "${output}" "mid-turn"
     [ "$(typed_keys)" = '\n' ]
@@ -888,7 +912,7 @@ with open(sys.argv[1], "a") as lock:
 PY2
     holder=$!
     while [ ! -f "${TMP}/held" ]; do sleep 0.05; done
-    recover
+    PEER_CHAT_LOCK_WAIT=10 recover
     wait "${holder}"
     assert_status 0
     released=$(grep -n 'holder released' "${TMP}/calls.log" | cut -d: -f1)
@@ -912,4 +936,340 @@ PY2
     run python3 "${PASTE}" --to peer --recover-delivery
     assert_status 2
     assert_contains "${output}" '--recover-delivery needs --slug'
+}
+
+# ----------------------------------------------------------- dialog gate --
+
+HELD_NO_COMPOSER="peer-chat-paste: held: the peer pane shows no live composer (a dialog is open); nothing typed; rerun this send, --wait <dur> to wait longer"
+GATE_OFF="peer-chat-paste: PEER_CHAT_COMPOSER_GATE=off: the dialog checks are skipped"
+HELD_LOCK="peer-chat-paste: held: an earlier send is waiting for the peer's composer; nothing typed"
+UNSUBMITTED_NO_COMPOSER="peer-chat-paste: pasted, not submitted: the peer pane shows no live composer; read the pane before any resend"
+UNSUBMITTED_NO_TEXT="peer-chat-paste: pasted, not submitted: the composer does not hold the message; read the pane before any resend"
+HELD_NOTICE="notify message for right held: the peer shows a dialog --title peer-chat"
+
+dialog_before_paste() { # dialog_before_paste <fixture> <reads it stays for>
+    cp "${FIX}/$1" "${TMP}/dialog"
+    echo "$2" > "${TMP}/dialog-reads"
+}
+
+# The first pasted read confirms the paste; the dialog covers the reads after it.
+dialog_after_paste() { # dialog_after_paste <fixture> <reads it stays for>
+    cp "${FIX}/$1" "${TMP}/dialog"
+    echo 1 > "${TMP}/dialog-from"
+    echo $((1 + $2)) > "${TMP}/dialog-until"
+}
+
+claude_peer() {
+    cp "${FIX}/tree-pair-claude-claude.json" "${TMP}/tree.json"
+    printf '❯ \n' > "${TMP}/composer"
+}
+
+logged_calls() { touch "${TMP}/calls.log"; grep -c "^$1 " "${TMP}/calls.log" || true; }
+paste_calls() { logged_calls 'session paste'; }
+notify_calls() { logged_calls notify; }
+message_states() { jq -r '[.messages[].state] | join(",")' "${TMP}/${LEDGER}"; }
+
+nothing_recorded() {
+    [ ! -f "${TMP}/${LEDGER}" ] || jq -e '(.messages | length) == 0 and (.asks | length) == 0' "${TMP}/${LEDGER}"
+}
+
+hold_lock() { # hold_lock <lock file> <seconds> — returns once the lock is held
+    local held="${TMP}/held.${RANDOM}"
+    mkdir -p "$(dirname "$1")"
+    python3 - "$1" "$2" "${held}" <<'PY' &
+import fcntl, sys, time
+from pathlib import Path
+with open(sys.argv[1], "a") as lock:
+    fcntl.flock(lock, fcntl.LOCK_EX)
+    Path(sys.argv[3]).touch()
+    time.sleep(float(sys.argv[2]))
+PY
+    HOLDER=$!
+    while [ ! -f "${held}" ]; do sleep 0.05; done
+}
+
+@test "gate: a Claude question dialog holds the send, which lands once when the dialog closes" {
+    claude_peer
+    dialog_before_paste claude-dialog-askuserquestion.txt 3
+    printf '🎯 the answer\n\n🔎 path.go:12\n' > "${TMP}/msg"
+    send_file "${TMP}/msg" --wait 20s
+    assert_status 0
+    assert_not_contains "${output}" "held"
+    [ "$(paste_calls)" = 1 ]
+    [ "$(wc -l < "${TMP}/typed.log")" -eq 1 ]
+    [ "$(notify_calls)" = 0 ]
+}
+
+@test "gate: a Codex approval modal that outlasts the budget exits 2 with nothing prepared, pasted or typed" {
+    dialog_before_paste codex-approval-modal.txt 9999
+    printf '🔎 Processor.php:23\n\n❓ does a retry create a second bid?\n' > "${TMP}/msg"
+    send_file "${TMP}/msg" --slug seatos --wait 1s
+    assert_status 2
+    assert_contains "${output}" "${HELD_NO_COMPOSER}"
+    [ "$(paste_calls)" = 0 ]
+    [ ! -f "${TMP}/typed.log" ]
+    [ ! -f "${TMP}/clip-first-set" ]
+    [ "$(cat "${TMP}/clip")" = "user clipboard" ]
+    nothing_recorded
+
+    echo 0 > "${TMP}/dialog-reads"
+    send_file "${TMP}/msg" --slug seatos --wait 1s
+    assert_status 0
+    assert_contains "$(cat "${TMP}/clip-first-set")" "❓ #left-001 does a retry create a second bid?"
+    [ "$(message_states)" = submit_sent ]
+}
+
+@test "gate: a send without --slug is held the same way" {
+    dialog_before_paste codex-approval-modal.txt 9999
+    printf '🎯 x\n' > "${TMP}/msg"
+    send_file "${TMP}/msg" --wait 1s
+    assert_status 2
+    assert_contains "${output}" "${HELD_NO_COMPOSER}"
+    [ "$(paste_calls)" = 0 ]
+    [ ! -f "${TMP}/typed.log" ]
+}
+
+@test "gate: a working Codex with a readable composer is not held" {
+    cp "${FIX}/codex-working-composer.txt" "${TMP}/composer"
+    printf '🎯 a steer\n' > "${TMP}/msg"
+    send_file "${TMP}/msg" --wait 1s
+    assert_status 0
+    assert_contains "${output}" "the peer is mid-turn"
+    [ "$(paste_calls)" = 1 ]
+    [ "$(wc -l < "${TMP}/typed.log")" -eq 1 ]
+}
+
+@test "gate: a Codex composer holding a message with blank lines still gets its Return" {
+    printf '  Worked for 54s • 23:43\n\n› Ask Codex to do anything\n\n  gpt high · repo · Context 28%% used\n' > "${TMP}/composer"
+    printf '🎯 the guard is blind\n\n🔎 Processor.php:23\n\n🎯 on your side of the flow too\n' > "${TMP}/msg"
+    send_file "${TMP}/msg" --wait 1s
+    assert_status 0
+    [ "$(wc -l < "${TMP}/typed.log")" -eq 1 ]
+}
+
+@test "gate: a tail that a narrow pane wrapped inside the composer still gets its Return" {
+    claude_peer
+    printf '%s\n' '────────────────────────────────' '❯ Chat from claude (left): 🎯 it happens on your side of' '  the flow too' '────────────────────────────────' '  ? for shortcuts' > "${TMP}/pasted-screen"
+    printf '🎯 it happens on your side of the flow too\n' > "${TMP}/msg"
+    PEER_CHAT_WRAP=0 send_file "${TMP}/msg" --wait 1s
+    assert_status 0
+    [ "$(wc -l < "${TMP}/typed.log")" -eq 1 ]
+}
+
+@test "gate: an unknown composer rendering is held, and PEER_CHAT_COMPOSER_GATE=off sends as before" {
+    printf 'unrecognized composer rendering\n' > "${TMP}/composer"
+    printf '🎯 x\n' > "${TMP}/msg"
+    send_file "${TMP}/msg" --wait 1s
+    assert_status 2
+    assert_contains "${output}" "${HELD_NO_COMPOSER}"
+    assert_not_contains "${output}" "PEER_CHAT_COMPOSER_GATE"
+    [ "$(paste_calls)" = 0 ]
+
+    PEER_CHAT_COMPOSER_GATE=off send_file "${TMP}/msg" --wait 1s
+    assert_status 0
+    assert_contains "${output}" "${GATE_OFF}"
+    [ "$(paste_calls)" = 1 ]
+    [ "$(wc -l < "${TMP}/typed.log")" -eq 1 ]
+}
+
+@test "gate: a dialog that opens after the paste holds Return until a composer with the paste marker is back" {
+    claude_peer
+    dialog_after_paste claude-dialog-askuserquestion.txt 3
+    claude_composer "${TMP}/pasted-screen" '[Pasted text #1 +3 lines]'
+    echo 4 > "${TMP}/pasted-screen-from"
+    printf '🎯 one\n\n🔎 two\n\n🎯 three\n' > "${TMP}/msg"
+    send_file "${TMP}/msg" --slug seatos --wait 20s
+    assert_status 0
+    [ "$(paste_calls)" = 1 ]
+    [ "$(wc -l < "${TMP}/typed.log")" -eq 1 ]
+    [ "$(message_states)" = submit_sent ]
+    [ "$(notify_calls)" = 0 ]
+}
+
+@test "gate: a composer that comes back without the message exits 1 at once, with no Return and no notice" {
+    printf 'Chat from claude (left): 🎯 lost in a dialog\n\n› Ask Codex to do anything\n\n  gpt high · repo\n' > "${TMP}/pasted-screen"
+    echo 1 > "${TMP}/pasted-screen-from"
+    printf '🎯 lost in a dialog\n' > "${TMP}/msg"
+    SECONDS=0
+    send_file "${TMP}/msg" --slug seatos --wait 60s
+    assert_status 1
+    [ "${SECONDS}" -lt 20 ]
+    assert_contains "${output}" "${UNSUBMITTED_NO_TEXT}"
+    [ ! -f "${TMP}/typed.log" ]
+    [ "$(message_states)" = uncertain ]
+    [ "$(notify_calls)" = 0 ]
+}
+
+@test "gate: PEER_CHAT_COMPOSER_GATE=off presses Return without reading the composer after the paste" {
+    printf 'Chat from claude (left): 🎯 as before\n\n› Ask Codex to do anything\n\n  gpt high · repo\n' > "${TMP}/pasted-screen"
+    echo 1 > "${TMP}/pasted-screen-from"
+    printf '🎯 as before\n' > "${TMP}/msg"
+    PEER_CHAT_COMPOSER_GATE=off send_file "${TMP}/msg" --slug seatos
+    assert_status 0
+    assert_contains "${output}" "${GATE_OFF}"
+    [ "$(wc -l < "${TMP}/typed.log")" -eq 1 ]
+    [ "$(message_states)" = submit_sent ]
+}
+
+@test "gate: a dialog that outlasts the budget after the paste exits 1, uncertain, with one notice" {
+    dialog_after_paste codex-approval-modal.txt 9999
+    printf '🎯 pasted then covered\n' > "${TMP}/msg"
+    send_file "${TMP}/msg" --slug seatos --wait 1s
+    assert_status 1
+    assert_contains "${output}" "${UNSUBMITTED_NO_COMPOSER}"
+    [ "$(paste_calls)" = 1 ]
+    [ ! -f "${TMP}/typed.log" ]
+    [ "$(message_states)" = uncertain ]
+    [ "$(notify_calls)" = 1 ]
+    assert_contains "$(cat "${TMP}/calls.log")" "${HELD_NOTICE}"
+}
+
+@test "notify: a held send notifies once, --no-notify stays silent, a failed notice keeps exit 2" {
+    dialog_before_paste codex-approval-modal.txt 9999
+    printf '🎯 x\n' > "${TMP}/msg"
+    send_file "${TMP}/msg" --wait 1s
+    assert_status 2
+    [ "$(notify_calls)" = 1 ]
+    assert_contains "$(cat "${TMP}/calls.log")" "${HELD_NOTICE}"
+
+    : > "${TMP}/calls.log"
+    send_file "${TMP}/msg" --wait 1s --no-notify
+    assert_status 2
+    [ "$(notify_calls)" = 0 ]
+
+    touch "${TMP}/notify-fails"
+    send_file "${TMP}/msg" --wait 1s
+    assert_status 2
+    assert_contains "${output}" "${HELD_NO_COMPOSER}"
+}
+
+@test "lock: a send behind a waiting send exits 2 inside the lock wait, with nothing recorded or typed" {
+    hold_lock "${TMP}/tmp/peer-chat/seatos/outbox-${SID}-right.delivery.lock" 5
+    printf '❓ x?\n' > "${TMP}/msg"
+    SECONDS=0
+    send_file "${TMP}/msg" --slug seatos
+    kill "${HOLDER}"
+    assert_status 2
+    [ "${SECONDS}" -lt 4 ]
+    assert_contains "${output}" "${HELD_LOCK}"
+    [ "$(paste_calls)" = 0 ]
+    [ ! -f "${TMP}/typed.log" ]
+    nothing_recorded
+    [ "$(notify_calls)" = 0 ]
+}
+
+@test "lock: a send whose lock frees inside the lock wait goes through" {
+    hold_lock "${TMP}/tmp/peer-chat/seatos/outbox-${SID}-right.delivery.lock" 0.3
+    printf '🎯 x\n' > "${TMP}/msg"
+    PEER_CHAT_LOCK_WAIT=5 send_file "${TMP}/msg" --slug seatos
+    wait "${HOLDER}"
+    assert_status 0
+    [ "$(wc -l < "${TMP}/typed.log")" -eq 1 ]
+}
+
+@test "recover: a transport lock held past the lock wait exits 2 and presses nothing" {
+    recorded_outbox
+    recorded_composer "${TMP}/composer"
+    hold_lock "${TMP}/tmp/peer-chat/t/outbox-${SID}-left.delivery.lock" 5
+    recover
+    kill "${HOLDER}"
+    assert_status 2
+    assert_contains "${output}" "${HELD_LOCK}"
+    [ ! -f "${TMP}/typed.log" ]
+    [ -f "$(outbox left.msg)" ]
+}
+
+@test "budget: --wait beats PEER_CHAT_DELIVERY_WAIT, which beats delivery_wait_minutes, which beats 60 s" {
+    printf '🎯 x\n' > "${TMP}/msg"
+    printf '{"delivery_wait_minutes":0.005}\n' > "${TMP}/.peer-chat.json"
+    dialog_before_paste codex-approval-modal.txt 9999
+    SECONDS=0
+    send_file "${TMP}/msg" --slug seatos --no-notify
+    assert_status 2
+    [ "${SECONDS}" -lt 20 ]
+
+    dialog_before_paste codex-approval-modal.txt 8
+    PEER_CHAT_DELIVERY_WAIT=0.5 send_file "${TMP}/msg" --slug seatos --no-notify
+    assert_status 0
+
+    printf 'empty' > "${TMP}/state"
+    dialog_before_paste codex-approval-modal.txt 9999
+    SECONDS=0
+    PEER_CHAT_DELIVERY_WAIT=0.5 send_file "${TMP}/msg" --slug seatos --no-notify --wait 0.3s
+    assert_status 2
+    [ "${SECONDS}" -lt 20 ]
+}
+
+@test "budget: a zero or unitless --wait is a usage error before any paste" {
+    printf '🎯 x\n' > "${TMP}/msg"
+    for value in 0s 30 -5s soon "$(printf '1%.0s' {1..400})s"; do
+        send_file "${TMP}/msg" --wait "${value}"
+        assert_status 2
+    done
+    [ "$(paste_calls)" = 0 ]
+}
+
+@test "budget: a zero, negative or non-numeric env or config value exits 2 before any paste" {
+    printf '🎯 x\n' > "${TMP}/msg"
+    PEER_CHAT_DELIVERY_WAIT=0 send_file "${TMP}/msg" --slug seatos
+    assert_status 2
+    assert_contains "${output}" "peer-chat-paste: PEER_CHAT_DELIVERY_WAIT must be a positive number, got '0'"
+    PEER_CHAT_DELIVERY_POLL=abc send_file "${TMP}/msg" --slug seatos
+    assert_status 2
+    assert_contains "${output}" "PEER_CHAT_DELIVERY_POLL must be a positive number, got 'abc'"
+    PEER_CHAT_LOCK_WAIT=-1 send_file "${TMP}/msg" --slug seatos
+    assert_status 2
+    assert_contains "${output}" "PEER_CHAT_LOCK_WAIT must be a positive number, got '-1'"
+    printf '{"delivery_wait_minutes":"soon"}\n' > "${TMP}/.peer-chat.json"
+    send_file "${TMP}/msg" --slug seatos
+    assert_status 2
+    assert_contains "${output}" "delivery_wait_minutes must be a positive number, got 'soon'"
+    [ "$(paste_calls)" = 0 ]
+    [ ! -f "${TMP}/typed.log" ]
+    nothing_recorded
+}
+
+@test "gate: a Codex draft with a blank line in the composer does not hold the send" {
+    printf '• Done\n\n› first paragraph of a draft\n\n  second paragraph\n\n  gpt high · repo\n' > "${TMP}/composer"
+    printf '🎯 x\n' > "${TMP}/msg"
+    send_file "${TMP}/msg" --wait 1s
+    assert_status 0
+    [ "$(paste_calls)" = 1 ]
+    [ "$(wc -l < "${TMP}/typed.log")" -eq 1 ]
+}
+
+@test "gate: a numbered Codex overlay under an old user message holds the send" {
+    printf '› run the tests\n\n  Select a model\n\n  1. gpt high\n  2. gpt low\n\n  Press enter to confirm or esc to cancel\n' > "${TMP}/composer"
+    printf '🎯 x\n' > "${TMP}/msg"
+    send_file "${TMP}/msg" --wait 1s --no-notify
+    assert_status 2
+    assert_contains "${output}" "${HELD_NO_COMPOSER}"
+    [ "$(paste_calls)" = 0 ]
+}
+
+@test "gate: a message with a numbered list still gets its Return from a Codex composer" {
+    printf '  Worked for 54s • 23:43\n\n› Ask Codex to do anything\n\n  gpt high · repo\n' > "${TMP}/composer"
+    printf '🎯 two steps\n\n1. read the pane\n2. rerun the send\n\n🎯 then report\n' > "${TMP}/msg"
+    send_file "${TMP}/msg" --wait 1s
+    assert_status 0
+    [ "$(wc -l < "${TMP}/typed.log")" -eq 1 ]
+}
+
+@test "spool: a held --message-file send restores the spool, and the rerun delivers and consumes it" {
+    export TMPDIR="${TMP}"
+    python3 "${PLUGIN}/scripts/peer-chat.py" --prepare-message peer-chat-held-a91f.txt >/dev/null
+    spool="$(ls -d "${TMP}"/agterm-peer-chat-*)/peer-chat-held-a91f.txt"
+    printf '🎯 held behind a dialog\n' > "${spool}"
+    dialog_before_paste codex-approval-modal.txt 9999
+    run python3 "${PASTE}" --to codex --message-file peer-chat-held-a91f.txt --slug seatos --wait 1s
+    assert_status 2
+    assert_contains "${output}" "${HELD_NO_COMPOSER}"
+    assert_contains "${output}" "message file restored: peer-chat-held-a91f.txt"
+    [ "$(cat "${spool}")" = '🎯 held behind a dialog' ]
+
+    echo 0 > "${TMP}/dialog-reads"
+    run python3 "${PASTE}" --to codex --message-file peer-chat-held-a91f.txt --slug seatos --wait 1s
+    assert_status 0
+    [ ! -e "${spool}" ]
+    [ "$(wc -l < "${TMP}/typed.log")" -eq 1 ]
 }

@@ -25,11 +25,18 @@ ended during the paste wait, an idle or an unreadable screen gets Return, becaus
 not submit would leave the note in the composer while the send reports success.
 
 Guards, in order: the target pane runs a known peer harness; every new ask from the peer carries
-a disposition; after the paste the pane shows the message's last line (or the TUI's collapsed-paste
-marker). Composer occupancy checks before paste and after submit are intentionally disabled for
-both agents: suggestions, existing drafts, and cursor state do not block delivery. Existing text
+a disposition; the delivery lock frees within PEER_CHAT_LOCK_WAIT seconds; the peer pane shows a
+live composer (gate A: a dialog, an approval modal or an unrecognised screen holds the send before
+anything is prepared or typed); after the paste the pane shows the message's last line (or the
+TUI's collapsed-paste marker); before the submit key the composer holds that tail or the marker
+(gate B: a dialog that opened over the paste is waited out, a composer without the text is left
+untouched). Gates A and B poll every PEER_CHAT_DELIVERY_POLL seconds on one budget: --wait, then
+PEER_CHAT_DELIVERY_WAIT minutes, then `delivery_wait_minutes` in the coordinator's .peer-chat.json,
+else 60 s; PEER_CHAT_COMPOSER_GATE=off skips both. A held send shows one agterm notice unless
+--no-notify. Suggestions, existing drafts and cursor state never block delivery, and existing text
 is not cleared before pasting. Success reports that paste was observed and the submit key was
-sent, not that the target accepted the message. Exit 0 sent, 1 transport failure, 2 usage or state refusal.
+sent, not that the target accepted the message. Exit 0 sent; 1 transport failure, or pasted and
+not submitted; 2 usage or state refusal, a send held before anything was typed.
 
 The topic's `tmp/peer-chat/<slug>/state.json` stores atomic reservations and delivery observations:
 every `❓` line gets a topic-scoped id named after the asker's pane (`#left-004`), and the peer's
@@ -68,6 +75,9 @@ from pathlib import Path
 from typing import Any
 
 from contextlib import contextmanager
+from dataclasses import dataclass
+import math
+from typing import Callable
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from peer_chat_core import (  # noqa: E402
@@ -115,6 +125,42 @@ PROMPT_MARKERS = {
 MID_TURN_WARNING = (
     "peer-chat-paste: the peer is mid-turn; this send queues behind its current task"
 )
+DEFAULT_WAIT_SECONDS = 60.0
+DEFAULT_POLL_SECONDS = 5.0
+DEFAULT_LOCK_SECONDS = 10.0
+WAIT_RE = re.compile(r"(\d+(?:\.\d+)?)([smh])")
+UNIT_SECONDS = {"s": 1, "m": 60, "h": 3600}
+GATE_ENV = "PEER_CHAT_COMPOSER_GATE"
+HELD_NO_COMPOSER = (
+    "held: the peer pane shows no live composer (a dialog is open); nothing typed; "
+    "rerun this send, --wait <dur> to wait longer"
+)
+GATE_OFF_WARNING = "peer-chat-paste: PEER_CHAT_COMPOSER_GATE=off: the dialog checks are skipped"
+HELD_LOCK = "held: an earlier send is waiting for the peer's composer; nothing typed"
+NOT_SUBMITTED = "peer-chat-paste: pasted, not submitted: {}; read the pane before any resend"
+NO_LIVE_COMPOSER = "the peer pane shows no live composer"
+COMPOSER_LACKS_MESSAGE = "the composer does not hold the message"
+NOTIFY_BODY = "message for {} held: the peer shows a dialog"
+
+
+class DeliveryHeld(StateError):
+    """Nothing was typed: the send waits on a dialog or on another send's lock."""
+
+
+@dataclass(frozen=True)
+class Gate:
+    """One wait budget shared by the composer checks before the paste and before the submit key."""
+
+    enabled: bool
+    deadline: float
+    poll: float
+    alert: Callable[[], None]
+
+    def expired(self) -> bool:
+        return time.monotonic() >= self.deadline
+
+    def pause(self) -> None:
+        time.sleep(max(0.0, min(self.poll, self.deadline - time.monotonic())))
 
 
 # -------------------------------------------------------------------- body --
@@ -221,15 +267,75 @@ def wait_until(predicate, timeout: float) -> bool:
     return False
 
 
+def message_probe(message: str) -> str:
+    return message.splitlines()[-1].strip()[-24:]
+
+
 def pasted_visible(
     t: dict[str, Any], sid: str, profile: Any, window: str, message: str
 ) -> bool:
-    text = t["_pane_text_unchecked"](sid, profile, window)
-    tail = message.splitlines()[-1].strip()
-    probe = tail[-24:] if len(tail) > 24 else tail
-    if probe and probe in text:
-        return True
-    return any(marker in text for marker in COLLAPSED_PASTE_MARKERS)
+    return holds_message(t["_pane_text_unchecked"](sid, profile, window), message)
+
+
+def without_whitespace(text: str) -> str:
+    return "".join(text.split())
+
+
+def holds_message(content: str, message: str) -> bool:
+    """The text shows the message's tail, re-wrapped or not, or a collapsed-paste marker."""
+    probe = without_whitespace(message_probe(message))
+    return bool(probe) and probe in without_whitespace(content) or collapsed(content)
+
+
+def codex_draft_text(t: dict[str, Any], screen: str, untouched: bool) -> str | None:
+    """A Codex composer whose draft holds blank lines, which the strict reader cuts at the first one.
+
+    On a screen we have not pasted into, a numbered row below the prompt is an overlay: no composer.
+    """
+    lines = screen.splitlines()[-t["BOX_LINES"]:]
+    prompts = [index for index, line in enumerate(lines) if t["CODEX_PROMPT_RE"].match(line)]
+    if not prompts:
+        return None
+    first = t["CODEX_PROMPT_RE"].match(lines[prompts[-1]]).group(1)
+    below = lines[prompts[-1] + 1:]
+    choice = t["CODEX_CHOICE_RE"]
+    if choice.match(first) or untouched and any(choice.match(line.strip()) for line in below):
+        return None
+    if any(line.strip() and not line[:1].isspace() for line in below):
+        return None
+    return "\n".join(part for part in (first, *(line.strip() for line in below)) if part)
+
+
+def composer_text(t: dict[str, Any], sid: str, profile: Any, window: str, untouched: bool = False) -> str | None:
+    """The peer's live composer content, or None while a dialog or an unknown screen covers it."""
+    screen = t["_pane_text_unchecked"](sid, profile, window)
+    content = t["live_prompt_text"](profile, screen)
+    if content is None and profile.agent == "codex":
+        return codex_draft_text(t, screen, untouched)
+    return content
+
+
+def await_live_composer(t: dict[str, Any], sid: str, profile: Any, window: str, gate: Gate) -> None:
+    """Gate A: hold the send, nothing prepared or typed, until the peer shows a live composer."""
+    if not gate.enabled:
+        return
+    while composer_text(t, sid, profile, window, untouched=True) is None:
+        if gate.expired():
+            gate.alert()
+            raise DeliveryHeld(HELD_NO_COMPOSER)
+        gate.pause()
+
+
+def submit_refusal(t: dict[str, Any], sid: str, profile: Any, window: str, message: str, gate: Gate) -> str | None:
+    """Gate B: why the submit key must not be sent, or None when the composer holds the message."""
+    if not gate.enabled:
+        return None
+    while (content := composer_text(t, sid, profile, window)) is None:
+        if gate.expired():
+            gate.alert()
+            return NO_LIVE_COMPOSER
+        gate.pause()
+    return None if holds_message(content, message) else COMPOSER_LACKS_MESSAGE
 
 
 def composer_empty_now(t: dict[str, Any], sid: str, profile: Any, window: str) -> bool:
@@ -239,7 +345,7 @@ def composer_empty_now(t: dict[str, Any], sid: str, profile: Any, window: str) -
 
 def paste_and_submit(
     t: dict[str, Any], sid: str, profile: Any, window: str, message: str, queue: bool,
-    observed=None,
+    gate: Gate, observed=None,
 ) -> int:
     t["ctl"](
         "session",
@@ -261,6 +367,10 @@ def paste_and_submit(
     time.sleep(PASTE_SETTLE)
     if observed:
         observed("pasted")
+    refusal = submit_refusal(t, sid, profile, window, message, gate)
+    if refusal:
+        print(NOT_SUBMITTED.format(refusal), file=sys.stderr)
+        return 1
     t["type_text"](sid, profile, submit_key(t, sid, profile, window, queue), window)
     if observed:
         observed("submit_sent")
@@ -278,12 +388,12 @@ def paste_and_submit(
 
 def deliver(
     t: dict[str, Any], sid: str, profile: Any, window: str, message: str, queue: bool,
-    observed=None,
+    gate: Gate, observed=None,
 ) -> int:
     saved = clipboard_get()
     clipboard_set(message)
     try:
-        return paste_and_submit(t, sid, profile, window, message, queue, observed)
+        return paste_and_submit(t, sid, profile, window, message, queue, gate, observed)
     finally:
         if saved is not None:
             try:
@@ -321,14 +431,23 @@ def topic_store(args: argparse.Namespace) -> Store | None:
                       legacy_dir=path.parent)
 
 
-def message_budgets(args: argparse.Namespace, store: Store):
-    profile_path = Path(store.read()["repo"]) / ".peer-chat.json"
+def coordinator_profile(repo: Path) -> dict[str, Any]:
+    profile_path = repo / ".peer-chat.json"
     try:
         profile = json.loads(profile_path.read_text()) if profile_path.exists() else {}
     except (ValueError, OSError) as error:
         raise StateError(f"cannot read coordinator profile {profile_path}: {error}") from error
     if not isinstance(profile, dict):
         raise StateError("coordinator profile must be a JSON object")
+    return profile
+
+
+def store_profile(store: Store) -> dict[str, Any]:
+    return coordinator_profile(Path(store.read()["repo"]))
+
+
+def message_budgets(args: argparse.Namespace, store: Store):
+    profile = store_profile(store)
     return resolve_budgets("agterm", args.blocking,
                            flags={name: getattr(args, name) for name in ("deadline", "grace", "wake")},
                            estimates={name: getattr(args, "est_" + name) for name in ("deadline", "grace", "wake")},
@@ -347,11 +466,77 @@ def bind_panes(t: dict[str, Any], store: Store, peer) -> None:
         })
 
 
+def positive_number(raw: Any, name: str) -> float:
+    try:
+        value = float(raw) if not isinstance(raw, bool) else math.nan
+    except (TypeError, ValueError):
+        value = math.nan
+    if not (math.isfinite(value) and value > 0):
+        raise StateError(f"{name} must be a positive number, got {raw!r}")
+    return value
+
+
+def env_seconds(name: str, default: float) -> float:
+    raw = os.environ.get(name)
+    return positive_number(raw, name) if raw else default
+
+
+def wait_duration(raw: str) -> float:
+    match = WAIT_RE.fullmatch(raw.strip())
+    seconds = float(match.group(1)) * UNIT_SECONDS[match.group(2)] if match else 0.0
+    if not (math.isfinite(seconds) and seconds > 0):
+        raise argparse.ArgumentTypeError(f"takes a positive duration such as 90s, 20m or 1h, got {raw!r}")
+    return seconds
+
+
+def delivery_budget(args: argparse.Namespace, profile: dict[str, Any]) -> float:
+    """--wait, then PEER_CHAT_DELIVERY_WAIT minutes, then delivery_wait_minutes, else 60 s."""
+    if args.wait is not None:
+        return args.wait
+    if os.environ.get("PEER_CHAT_DELIVERY_WAIT"):
+        return positive_number(os.environ["PEER_CHAT_DELIVERY_WAIT"], "PEER_CHAT_DELIVERY_WAIT") * 60
+    if "delivery_wait_minutes" in profile:
+        return positive_number(profile["delivery_wait_minutes"], "delivery_wait_minutes") * 60
+    return DEFAULT_WAIT_SECONDS
+
+
+def notify_held(t: dict[str, Any], sid: str, pane: str) -> None:
+    try:
+        t["ctl"]("notify", NOTIFY_BODY.format(pane), "--title", "peer-chat", "--target", sid)
+    except (RuntimeError, OSError, subprocess.SubprocessError):
+        print("peer-chat-paste: the held notice could not be shown", file=sys.stderr)
+
+
+def delivery_gate(t: dict[str, Any], args: argparse.Namespace, profile: dict[str, Any], peer) -> Gate:
+    alert = (lambda: None) if args.no_notify else (lambda: notify_held(t, peer.session, peer.profile.pane))
+    enabled = os.environ.get(GATE_ENV) != "off"
+    if not enabled:
+        print(GATE_OFF_WARNING, file=sys.stderr)
+    return Gate(
+        enabled=enabled,
+        deadline=time.monotonic() + delivery_budget(args, profile),
+        poll=env_seconds("PEER_CHAT_DELIVERY_POLL", DEFAULT_POLL_SECONDS),
+        alert=alert,
+    )
+
+
+def lock_within(handle, timeout: float) -> None:
+    deadline = time.monotonic() + timeout
+    while True:
+        try:
+            fcntl.flock(handle, fcntl.LOCK_EX | fcntl.LOCK_NB)
+            return
+        except BlockingIOError:
+            if time.monotonic() >= deadline:
+                raise DeliveryHeld(HELD_LOCK) from None
+            time.sleep(PROBE)
+
+
 @contextmanager
 def delivery_lock(path: Path):
     path.parent.mkdir(parents=True, exist_ok=True)
     with path.open("a") as handle:
-        fcntl.flock(handle, fcntl.LOCK_EX)
+        lock_within(handle, env_seconds("PEER_CHAT_LOCK_WAIT", DEFAULT_LOCK_SECONDS))
         try:
             yield
         finally:
@@ -370,50 +555,80 @@ def send(t: dict[str, Any], args: argparse.Namespace, body: str) -> int:
     peer = t["resolve_peer"](
         args.to, args.session, args.window, args.target_command, args.queue
     )
-    profile, window, sid, sender = peer.profile, peer.window, peer.session, peer.sender
     store = topic_store(args)
     if store is None:
-        plan = plan_body(clean_lines(profile, body), sender, None, now_utc())
-        for warning in plan.warnings:
-            print(warning, file=sys.stderr)
-        message = profile.label + plan.text
-        warn_if_mid_turn(peer_turn(t, sid, profile, window))
-        status = deliver(t, sid, profile, window, message, args.queue)
-        if status == 0:
-            report(message, plan)
-        return status
+        return send_untracked(t, args, peer, body)
+    return send_tracked(t, args, peer, store, body)
+
+
+def send_untracked(t: dict[str, Any], args: argparse.Namespace, peer, body: str) -> int:
+    profile, window, sid = peer.profile, peer.window, peer.session
+    plan = plan_body(clean_lines(profile, body), peer.sender, None, now_utc())
+    for warning in plan.warnings:
+        print(warning, file=sys.stderr)
+    message = profile.label + plan.text
+    gate = delivery_gate(t, args, coordinator_profile(repo_root()), peer)
+    await_live_composer(t, sid, profile, window, gate)
+    warn_if_mid_turn(peer_turn(t, sid, profile, window))
+    status = deliver(t, sid, profile, window, message, args.queue, gate)
+    if status == 0:
+        report(message, plan)
+    return status
+
+
+def send_tracked(t: dict[str, Any], args: argparse.Namespace, peer, store: Store, body: str) -> int:
+    profile, window, sid = peer.profile, peer.window, peer.session
     bind_panes(t, store, peer)
     path = outbox_path(store.path.parent, sid, profile.pane)
     with delivery_lock(path.with_suffix(".delivery.lock")):
-        require_reconciled(store, sender, "")
-        prepared = prepare_message(store, sender=sender, lines=clean_lines(profile, body),
-                                   key=args.key or uuid.uuid4().hex, budgets=message_budgets(args, store), width=WRAP)
-        for warning in prepared["warnings"]:
-            print(warning, file=sys.stderr)
-        mid = prepared["message_id"]
-        if not claim_delivery(store, mid):
-            raise StateError("message already claimed; inspect its recorded delivery, never paste it again")
-        message = profile.label + prepared["text"]
-        record_outbox(path, message)
-        metadata = json.dumps({"message_id": mid, "state": str(store.path),
-                               "sha256": hashlib.sha256(message.encode()).hexdigest()})
-        record_outbox(path.with_suffix(".json"), metadata)
+        require_reconciled(store, peer.sender, "")
+        gate = delivery_gate(t, args, store_profile(store), peer)
+        await_live_composer(t, sid, profile, window, gate)
+        prepared, message = claim_outbox(args, store, peer, body, path)
         warn_if_mid_turn(peer_turn(t, sid, profile, window))
-        try:
-            result = deliver(t, sid, profile, window, message, args.queue,
-                             lambda event: observe(store, mid, event))
-            if result:
-                observe(store, mid, "uncertain")
-                return result
-        except (OSError, RuntimeError, subprocess.CalledProcessError):
-            observe(store, mid, "uncertain")
-            raise
-    current = store.read()["messages"][mid]
-    print(json.dumps({"sent": len(message), "lines": message.count("\n") + 1, "message_id": mid,
+        result = deliver_claimed(t, args, store, peer, message, prepared["message_id"], gate)
+        if result:
+            return result
+    report_tracked(store, prepared, message)
+    return 0
+
+
+def claim_outbox(args: argparse.Namespace, store: Store, peer, body: str, path: Path) -> tuple[dict, str]:
+    """Prepare and claim the message, then record the exact text for --recover-delivery."""
+    prepared = prepare_message(store, sender=peer.sender, lines=clean_lines(peer.profile, body),
+                               key=args.key or uuid.uuid4().hex, budgets=message_budgets(args, store), width=WRAP)
+    for warning in prepared["warnings"]:
+        print(warning, file=sys.stderr)
+    mid = prepared["message_id"]
+    if not claim_delivery(store, mid):
+        raise StateError("message already claimed; inspect its recorded delivery, never paste it again")
+    message = peer.profile.label + prepared["text"]
+    record_outbox(path, message)
+    metadata = json.dumps({"message_id": mid, "state": str(store.path),
+                           "sha256": hashlib.sha256(message.encode()).hexdigest()})
+    record_outbox(path.with_suffix(".json"), metadata)
+    return prepared, message
+
+
+def deliver_claimed(t: dict[str, Any], args: argparse.Namespace, store: Store, peer, message: str,
+                    mid: str, gate: Gate) -> int:
+    try:
+        result = deliver(t, peer.session, peer.profile, peer.window, message, args.queue, gate,
+                         lambda event: observe(store, mid, event))
+    except (OSError, RuntimeError, subprocess.CalledProcessError):
+        observe(store, mid, "uncertain")
+        raise
+    if result:
+        observe(store, mid, "uncertain")
+    return result
+
+
+def report_tracked(store: Store, prepared: dict, message: str) -> None:
+    current = store.read()["messages"][prepared["message_id"]]
+    print(json.dumps({"sent": len(message), "lines": message.count("\n") + 1, "message_id": prepared["message_id"],
                       "asks": ["#" + ask_id for ask_id in prepared["ask_ids"]],
                       "disposed": ["#" + item.id for item in parse_dispositions(prepared["text"].splitlines())],
                       "state": str(store.path), "submitted_at": current.get("submitted_at")}))
-    return 0
 
 
 def outbox_path(directory: Path, sid: str, pane: str) -> Path:
@@ -527,6 +742,10 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--state", help="the coordinator topic's state.json")
     parser.add_argument("--key", help="stable idempotency key; replays never authorize another paste")
     parser.add_argument("--blocking", action="store_true")
+    parser.add_argument("--wait", type=wait_duration,
+                        help="how long to wait for the peer's composer when a dialog covers it (90s, 20m, 1h)")
+    parser.add_argument("--no-notify", action="store_true",
+                        help="no agterm notice when the send is held; for a rerun of a message already notified")
     for name in ("deadline", "grace", "wake"):
         parser.add_argument("--" + name)
         parser.add_argument("--est-" + name)

@@ -1,5 +1,17 @@
 # Changelog
 
+## peer-chat v0.10.1 - 2026-11-20
+
+### Fixed
+
+- A send no longer answers a dialog in the peer pane. Before, a Claude Code question chooser read as an idle composer (its `❯ 1. Option` cursor matched the prompt marker), so the paste landed in the dialog and Return picked an option with the message as the answer; a Codex approval prompt had the same shape. `peer-chat-paste.py` now waits while the peer pane shows no live composer, before anything is prepared or typed, and again before the submit key when a dialog opened over the paste. A held send exits 2 with nothing recorded and shows one agterm notice (`--no-notify` skips it); a composer that comes back without the message is left untouched and exits 1, `uncertain`.
+- The paste check and the new composer check ignore whitespace, so a tail that a narrow pane re-wrapped still confirms. A Codex draft with blank lines between paragraphs reads as a live composer.
+
+### Added
+
+- `--wait <dur>` (`90s`, `20m`, `1h`), then `PEER_CHAT_DELIVERY_WAIT` minutes, then `delivery_wait_minutes` in `.peer-chat.json`, else 60 s: how long a send waits for the composer. `PEER_CHAT_DELIVERY_POLL` and `PEER_CHAT_LOCK_WAIT` set the poll interval (5 s) and the delivery-lock wait (10 s); a second send to a pane whose lock stays held exits 2. `PEER_CHAT_COMPOSER_GATE=off` restores the 0.10.0 behaviour for a harness update that breaks composer detection.
+- The skill says who reruns a held send: Claude Code in the background with `--wait 30m --no-notify`, Codex at the start of its next turn; and that an `AskUserQuestion` answer starting with `Chat from ` is a peer message, so the question is asked again.
+
 ## peer-chat v0.10.0 - 2026-11-18
 
 ### Changed
