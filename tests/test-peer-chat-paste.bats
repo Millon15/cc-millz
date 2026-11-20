@@ -61,6 +61,8 @@ case "\$1 \$2" in
                 echo \$((read_no + 1)) > "${TMP}/pasted-reads"
                 if [ -f "${TMP}/dialog-from" ] && [ "\$read_no" -ge "\$(cat "${TMP}/dialog-from")" ] && [ "\$read_no" -lt "\$(cat "${TMP}/dialog-until")" ]; then
                     cat "${TMP}/dialog"
+                elif [ -f "${TMP}/dialog-on-even-reads" ] && [ "\$read_no" -ge 2 ] && [ \$((read_no % 2)) -eq 0 ]; then
+                    cat "${TMP}/dialog"
                 elif [ -f "${TMP}/pasted-screen" ] && [ "\$read_no" -ge "\$(cat "${TMP}/pasted-screen-from" 2>/dev/null || echo 0)" ]; then
                     cat "${TMP}/pasted-screen"
                 else
@@ -75,7 +77,7 @@ case "\$1 \$2" in
         [ ! -f "${TMP}/composer-after-paste" ] || cp "${TMP}/composer-after-paste" "${TMP}/composer"
         echo 0 > "${TMP}/pasted-reads"
         echo ok ;;
-    "session type") cat >> "${TMP}/typed.log"; printf 'submitted' > "${TMP}/state"; echo ok ;;
+    "session type") cat >> "${TMP}/typed.log"; cat "${TMP}/pasted-reads" > "${TMP}/typed-at-read" 2>/dev/null; printf 'submitted' > "${TMP}/state"; echo ok ;;
     notify\ *) [ ! -f "${TMP}/notify-fails" ] || exit 9; echo ok ;;
     *) echo "stub: unexpected \$*" >&2; exit 9 ;;
 esac
@@ -952,12 +954,14 @@ dialog_before_paste() { # dialog_before_paste <fixture> <reads it stays for>
     echo "$2" > "${TMP}/dialog-reads"
 }
 
-# The first pasted read confirms the paste; the dialog covers the reads after it.
-dialog_after_paste() { # dialog_after_paste <fixture> <reads it stays for>
+dialog_from_read() { # dialog_from_read <fixture> <first read after the paste it covers> <reads it stays for>
     cp "${FIX}/$1" "${TMP}/dialog"
-    echo 1 > "${TMP}/dialog-from"
-    echo $((1 + $2)) > "${TMP}/dialog-until"
+    echo "$2" > "${TMP}/dialog-from"
+    echo $(($2 + $3)) > "${TMP}/dialog-until"
 }
+
+# The first pasted read confirms the paste; the dialog covers the reads after it.
+dialog_after_paste() { dialog_from_read "$1" 1 "$2"; }
 
 claude_peer() {
     cp "${FIX}/tree-pair-claude-claude.json" "${TMP}/tree.json"
@@ -1272,4 +1276,173 @@ PY
     assert_status 0
     [ ! -e "${spool}" ]
     [ "$(wc -l < "${TMP}/typed.log")" -eq 1 ]
+}
+
+# ------------------------------------- whole-message probe, second read --
+
+PASTE_UNCONFIRMED="paste not confirmed in the composer; read the pane before any resend"
+LOCK_SYMLINK="peer-chat-paste: delivery lock path is a symlink; inspect it before any send"
+CODEX_IDLE='  Worked for 54s • 23:43'
+CODEX_FOOTER='  gpt high · repo · Context 28% used'
+
+key_read() { cat "${TMP}/typed-at-read"; }
+
+@test "probe: a last line an older message in the pane also ends with does not confirm the paste" {
+    printf '  Chat from claude (left): 🎯 the first build is green\n\n  🎯 done\n\n%s\n\n› Ask Codex to do anything\n\n%s\n' "${CODEX_IDLE}" "${CODEX_FOOTER}" > "${TMP}/composer"
+    touch "${TMP}/paste-ignored"
+    printf '🎯 the second build is green\n\n🎯 done\n' > "${TMP}/msg"
+    send_file "${TMP}/msg" --slug seatos --wait 1s
+    assert_status 1
+    assert_contains "${output}" "${PASTE_UNCONFIRMED}"
+    assert_not_contains "${output}" "pasted, not submitted"
+    [ ! -f "${TMP}/typed.log" ]
+    [ "$(message_states)" = uncertain ]
+}
+
+@test "probe: a composer holding other text that ends in the same last line gets no Return" {
+    printf '%s\n\n› an older draft about the first build\n\n  🎯 done\n\n%s\n' "${CODEX_IDLE}" "${CODEX_FOOTER}" > "${TMP}/pasted-screen"
+    echo 1 > "${TMP}/pasted-screen-from"
+    printf '🎯 the second build is green\n\n🎯 done\n' > "${TMP}/msg"
+    send_file "${TMP}/msg" --slug seatos --wait 1s
+    assert_status 1
+    assert_contains "${output}" "${UNSUBMITTED_NO_TEXT}"
+    [ ! -f "${TMP}/typed.log" ]
+    [ "$(message_states)" = uncertain ]
+}
+
+@test "second read: a dialog on the read right before the key gets no Return, and the message lands once when the composer is back" {
+    claude_peer
+    dialog_from_read claude-dialog-askuserquestion.txt 2 3
+    printf '🎯 one\n\n🔎 two\n' > "${TMP}/msg"
+    send_file "${TMP}/msg" --slug seatos --wait 20s
+    assert_status 0
+    [ "$(paste_calls)" = 1 ]
+    [ "$(wc -l < "${TMP}/typed.log")" -eq 1 ]
+    [ "$(key_read)" -ge 7 ]
+    [ "$(message_states)" = submit_sent ]
+    [ "$(notify_calls)" = 0 ]
+}
+
+@test "second read: --queue reads the composer again after it picked the key" {
+    codex_working_screen
+    dialog_from_read codex-approval-modal.txt 3 3
+    printf '🎯 the background check finished\n' > "${TMP}/msg"
+    send_file "${TMP}/msg" --queue --slug seatos --wait 20s
+    assert_status 0
+    [ "$(typed_keys)" = '\t' ]
+    [ "$(key_read)" -ge 6 ]
+    [ "$(message_states)" = submit_sent ]
+}
+
+@test "second read: --queue picks the key again when the dialog closed over a finished turn" {
+    codex_working_screen
+    dialog_from_read codex-approval-modal.txt 3 3
+    printf '%s\n\n› Chat from claude (left): 🎯 the background check finished\n' "${CODEX_IDLE}" > "${TMP}/pasted-screen"
+    echo 6 > "${TMP}/pasted-screen-from"
+    printf '🎯 the background check finished\n' > "${TMP}/msg"
+    send_file "${TMP}/msg" --queue --slug seatos --wait 20s
+    assert_status 0
+    [ "$(typed_keys)" = '\n' ]
+    [ "$(wc -l < "${TMP}/typed.log")" -eq 1 ]
+}
+
+# ------------------------------------------------------ lock path symlink --
+
+symlinked_lock() { # symlinked_lock <topic> <pane> <target>
+    mkdir -p "${TMP}/tmp/peer-chat/$1"
+    ln -s "$3" "${TMP}/tmp/peer-chat/$1/outbox-${SID}-$2.delivery.lock"
+}
+
+@test "lock: a symlink at the lock path exits 2 with nothing typed or recorded, and its target is left alone" {
+    symlinked_lock seatos right "${TMP}/elsewhere"
+    printf '❓ x?\n' > "${TMP}/msg"
+    send_file "${TMP}/msg" --slug seatos
+    assert_status 2
+    assert_contains "${output}" "${LOCK_SYMLINK}"
+    [ ! -e "${TMP}/elsewhere" ]
+    [ "$(paste_calls)" = 0 ]
+    [ ! -f "${TMP}/typed.log" ]
+    [ "$(cat "${TMP}/clip")" = "user clipboard" ]
+    nothing_recorded
+    [ "$(notify_calls)" = 0 ]
+
+    printf 'kept' > "${TMP}/elsewhere"
+    send_file "${TMP}/msg" --slug seatos
+    assert_status 2
+    assert_contains "${output}" "${LOCK_SYMLINK}"
+    [ "$(cat "${TMP}/elsewhere")" = kept ]
+    [ "$(paste_calls)" = 0 ]
+}
+
+@test "recover: a symlink at the lock path exits 2 and presses nothing" {
+    recorded_outbox
+    recorded_composer "${TMP}/composer"
+    symlinked_lock t left "${TMP}/elsewhere"
+    recover
+    assert_status 2
+    assert_contains "${output}" "${LOCK_SYMLINK}"
+    [ ! -e "${TMP}/elsewhere" ]
+    [ ! -f "${TMP}/typed.log" ]
+    [ -f "$(outbox left.msg)" ]
+}
+
+# ------------------------------------------------- real Codex choosers --
+
+chooser_holds_send() { # chooser_holds_send <fixture>
+    dialog_before_paste "$1" 9999
+    printf '🎯 x\n' > "${TMP}/msg"
+    send_file "${TMP}/msg" --slug seatos --wait 1s
+    assert_status 2
+    assert_contains "${output}" "${HELD_NO_COMPOSER}"
+    [ "$(paste_calls)" = 0 ]
+    [ ! -f "${TMP}/typed.log" ]
+    nothing_recorded
+}
+
+@test "gate: the Codex folder-trust chooser, captured live, holds the send" {
+    chooser_holds_send codex-trust-chooser.txt
+}
+
+@test "gate: the Codex hooks-review chooser, captured live, holds the send" {
+    chooser_holds_send codex-hooks-chooser.txt
+}
+
+@test "gate: the Codex hooks-review chooser opening after the paste gets no Return" {
+    dialog_after_paste codex-hooks-chooser.txt 9999
+    printf '🎯 x\n' > "${TMP}/msg"
+    send_file "${TMP}/msg" --slug seatos --wait 1s
+    assert_status 1
+    assert_contains "${output}" "${UNSUBMITTED_NO_COMPOSER}"
+    [ ! -f "${TMP}/typed.log" ]
+    [ "$(message_states)" = uncertain ]
+    [ "$(notify_calls)" = 1 ]
+}
+
+@test "second read: a message gone from a live composer between the two reads exits 1 at once, with no Return and no notice" {
+    printf '%s\n\n› Ask Codex to do anything\n\n%s\n' "${CODEX_IDLE}" "${CODEX_FOOTER}" > "${TMP}/pasted-screen"
+    echo 2 > "${TMP}/pasted-screen-from"
+    printf '🎯 gone between the two reads\n' > "${TMP}/msg"
+    SECONDS=0
+    PEER_CHAT_DELIVERY_POLL=30 send_file "${TMP}/msg" --slug seatos --wait 60s
+    assert_status 1
+    [ "${SECONDS}" -lt 20 ]
+    assert_contains "${output}" "${UNSUBMITTED_NO_TEXT}"
+    [ ! -f "${TMP}/typed.log" ]
+    [ "$(message_states)" = uncertain ]
+    [ "$(notify_calls)" = 0 ]
+}
+
+@test "second read: a pane that shows the message on every first read and a dialog on every second one exits 1 when the budget runs out" {
+    claude_peer
+    cp "${FIX}/claude-dialog-askuserquestion.txt" "${TMP}/dialog"
+    touch "${TMP}/dialog-on-even-reads"
+    printf '🎯 one\n\n🔎 two\n' > "${TMP}/msg"
+    SECONDS=0
+    send_file "${TMP}/msg" --slug seatos --wait 1s
+    assert_status 1
+    [ "${SECONDS}" -lt 15 ]
+    assert_contains "${output}" "${UNSUBMITTED_NO_COMPOSER}"
+    [ ! -f "${TMP}/typed.log" ]
+    [ "$(message_states)" = uncertain ]
+    [ "$(notify_calls)" = 1 ]
 }

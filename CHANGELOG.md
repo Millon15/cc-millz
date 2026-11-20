@@ -1,5 +1,17 @@
 # Changelog
 
+## peer-chat v0.10.2 - 2026-11-20
+
+### Fixed
+
+- The paste check matched only the last 24 characters of the last line, so a short or repeated last line ("🎯 done") could match an older message still on screen. It now matches the message's last 48 non-whitespace characters, across its line breaks.
+- A dialog that opened right before the submit key still got it. The key is now sent only after two composer reads 0.15 s apart both show the message, the second after the key is picked, so `--queue` picks Tab or Return inside the same pair; a failed second read waits again on the same budget.
+- The delivery lock file was opened through a symlink. It is now opened with `O_NOFOLLOW`, mode 0600; a symlink at the lock path exits 2 with nothing typed or recorded, for a send and for `--recover-delivery`, and its target is never created.
+
+### Added
+
+- Real Codex trust and hook-review chooser captures as test fixtures.
+
 ## peer-chat v0.10.1 - 2026-11-20
 
 ### Fixed

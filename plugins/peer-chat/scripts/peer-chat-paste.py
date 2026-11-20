@@ -27,16 +27,19 @@ not submit would leave the note in the composer while the send reports success.
 Guards, in order: the target pane runs a known peer harness; every new ask from the peer carries
 a disposition; the delivery lock frees within PEER_CHAT_LOCK_WAIT seconds; the peer pane shows a
 live composer (gate A: a dialog, an approval modal or an unrecognised screen holds the send before
-anything is prepared or typed); after the paste the pane shows the message's last line (or the
-TUI's collapsed-paste marker); before the submit key the composer holds that tail or the marker
-(gate B: a dialog that opened over the paste is waited out, a composer without the text is left
-untouched). Gates A and B poll every PEER_CHAT_DELIVERY_POLL seconds on one budget: --wait, then
+anything is prepared or typed); after the paste the pane shows the message's last 48 non-whitespace
+characters, whitespace ignored on both sides (or the TUI's collapsed-paste marker); before the
+submit key two composer reads PROBE seconds apart, the second after the key is picked, both hold
+them or the marker (gate B: a dialog that opened over the paste is waited out and the pair starts
+again, a composer without the text is left untouched). A symlink at the delivery lock path is
+refused, never followed. Gates A and B poll every PEER_CHAT_DELIVERY_POLL seconds on one budget: --wait, then
 PEER_CHAT_DELIVERY_WAIT minutes, then `delivery_wait_minutes` in the coordinator's .peer-chat.json,
 else 60 s; PEER_CHAT_COMPOSER_GATE=off skips both. A held send shows one agterm notice unless
 --no-notify. Suggestions, existing drafts and cursor state never block delivery, and existing text
 is not cleared before pasting. Success reports that paste was observed and the submit key was
 sent, not that the target accepted the message. Exit 0 sent; 1 transport failure, or pasted and
-not submitted; 2 usage or state refusal, a send held before anything was typed.
+not submitted; 2 usage or state refusal (a symlinked lock path included), a send held before
+anything was typed.
 
 The topic's `tmp/peer-chat/<slug>/state.json` stores atomic reservations and delivery observations:
 every `❓` line gets a topic-scoped id named after the asker's pane (`#left-004`), and the peer's
@@ -92,6 +95,7 @@ PASTE_SETTLE = 0.4
 PASTE_TIMEOUT = float(os.environ.get("PEER_CHAT_PASTE_TIMEOUT", "8"))
 ACCEPT_TIMEOUT = float(os.environ.get("PEER_CHAT_ACCEPT_TIMEOUT", "8"))
 PROBE = 0.15
+PROBE_CHARS = 48
 COLLAPSED_PASTE_MARKERS = ("[Pasted Content", "[Pasted text")
 TARGETS = ("peer", "left", "right", "claude", "codex")
 RETURN_KEY = "\n"
@@ -141,10 +145,16 @@ NOT_SUBMITTED = "peer-chat-paste: pasted, not submitted: {}; read the pane befor
 NO_LIVE_COMPOSER = "the peer pane shows no live composer"
 COMPOSER_LACKS_MESSAGE = "the composer does not hold the message"
 NOTIFY_BODY = "message for {} held: the peer shows a dialog"
+LOCK_SYMLINK = "delivery lock path is a symlink; inspect it before any send"
+LOCK_FLAGS = os.O_WRONLY | os.O_CREAT | os.O_APPEND | os.O_NOFOLLOW | os.O_CLOEXEC
 
 
 class DeliveryHeld(StateError):
     """Nothing was typed: the send waits on a dialog or on another send's lock."""
+
+
+class NotSubmitted(Exception):
+    """The paste landed, the submit key was not sent."""
 
 
 @dataclass(frozen=True)
@@ -268,7 +278,8 @@ def wait_until(predicate, timeout: float) -> bool:
 
 
 def message_probe(message: str) -> str:
-    return message.splitlines()[-1].strip()[-24:]
+    """The message's last PROBE_CHARS non-whitespace characters, so a short last line carries the lines above it."""
+    return without_whitespace(message)[-PROBE_CHARS:]
 
 
 def pasted_visible(
@@ -283,7 +294,7 @@ def without_whitespace(text: str) -> str:
 
 def holds_message(content: str, message: str) -> bool:
     """The text shows the message's tail, re-wrapped or not, or a collapsed-paste marker."""
-    probe = without_whitespace(message_probe(message))
+    probe = message_probe(message)
     return bool(probe) and probe in without_whitespace(content) or collapsed(content)
 
 
@@ -330,12 +341,42 @@ def submit_refusal(t: dict[str, Any], sid: str, profile: Any, window: str, messa
     """Gate B: why the submit key must not be sent, or None when the composer holds the message."""
     if not gate.enabled:
         return None
-    while (content := composer_text(t, sid, profile, window)) is None:
+    while (refusal := composer_refusal_now(t, sid, profile, window, message)) == NO_LIVE_COMPOSER:
         if gate.expired():
             gate.alert()
             return NO_LIVE_COMPOSER
         gate.pause()
+    return refusal
+
+
+def composer_refusal_now(t: dict[str, Any], sid: str, profile: Any, window: str, message: str) -> str | None:
+    """One composer read: None when it holds the message, else why the key must not be sent yet."""
+    content = composer_text(t, sid, profile, window)
+    if content is None:
+        return NO_LIVE_COMPOSER
     return None if holds_message(content, message) else COMPOSER_LACKS_MESSAGE
+
+
+def gated_submit_key(
+    t: dict[str, Any], sid: str, profile: Any, window: str, message: str, queue: bool, gate: Gate
+) -> str:
+    """Gate B: the submit key, picked between two reads PROBE apart that both show the message in the composer."""
+    while True:
+        refusal = submit_refusal(t, sid, profile, window, message, gate)
+        if refusal:
+            raise NotSubmitted(refusal)
+        key = submit_key(t, sid, profile, window, queue)
+        if not gate.enabled:
+            return key
+        time.sleep(PROBE)
+        second = composer_refusal_now(t, sid, profile, window, message)
+        if second is None:
+            return key
+        if second == COMPOSER_LACKS_MESSAGE:
+            raise NotSubmitted(second)
+        if gate.expired():
+            gate.alert()
+            raise NotSubmitted(NO_LIVE_COMPOSER)
 
 
 def composer_empty_now(t: dict[str, Any], sid: str, profile: Any, window: str) -> bool:
@@ -367,11 +408,12 @@ def paste_and_submit(
     time.sleep(PASTE_SETTLE)
     if observed:
         observed("pasted")
-    refusal = submit_refusal(t, sid, profile, window, message, gate)
-    if refusal:
+    try:
+        key = gated_submit_key(t, sid, profile, window, message, queue, gate)
+    except NotSubmitted as refusal:
         print(NOT_SUBMITTED.format(refusal), file=sys.stderr)
         return 1
-    t["type_text"](sid, profile, submit_key(t, sid, profile, window, queue), window)
+    t["type_text"](sid, profile, key, window)
     if observed:
         observed("submit_sent")
     # Post-submit occupancy check disabled too: new suggestions/drafts are not failures.
@@ -532,10 +574,20 @@ def lock_within(handle, timeout: float) -> None:
             time.sleep(PROBE)
 
 
+def open_lock(path: Path) -> int:
+    """The lock file's descriptor; a symlink at the path is refused, never followed or created through."""
+    try:
+        return os.open(path, LOCK_FLAGS, 0o600)
+    except OSError as error:
+        if error.errno == errno.ELOOP:
+            raise StateError(LOCK_SYMLINK) from None
+        raise
+
+
 @contextmanager
 def delivery_lock(path: Path):
     path.parent.mkdir(parents=True, exist_ok=True)
-    with path.open("a") as handle:
+    with os.fdopen(open_lock(path), "a") as handle:
         lock_within(handle, env_seconds("PEER_CHAT_LOCK_WAIT", DEFAULT_LOCK_SECONDS))
         try:
             yield

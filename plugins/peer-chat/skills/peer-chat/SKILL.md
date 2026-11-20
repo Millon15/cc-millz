@@ -163,13 +163,14 @@ same pane waits up to 10 s for the first one's lock.
 | 0 | the usual JSON on stdout | sent |
 | 2 | `held: the peer pane shows no live composer …` | nothing typed or recorded, one agterm notice went to the user: rerun |
 | 2 | `held: an earlier send is waiting for the peer's composer …` | your earlier send holds the pane and owns the notice: rerun after it exits |
+| 2 | `delivery lock path is a symlink …` | nothing typed or recorded: do not rerun; tell the user, the link is theirs to inspect |
 | 1 | `pasted, not submitted: …` | the text is in the peer's composer or was lost, the ledger says `uncertain`: read the pane before any resend |
 
 After an exit 1 the text may still wait under the dialog. Once the dialog closes, the peer submits
 it with `--recover-delivery` from its own pane (§ A stalled ask) or the user presses Return; until
 the pane is reconciled as § Asks says, your next send to that pane is refused.
 
-Who reruns a held send (exit 2), with the identical command:
+Who reruns a held send (exit 2 with `held:`), with the identical command:
 
 - Claude Code: add `--wait 30m --no-notify` and run it with `run_in_background`; its exit wakes
   this session. When that rerun fails too, tell the user and run
@@ -190,8 +191,9 @@ of the topic must use that same file. The coordinator's `.peer-chat.json` suppli
 character is dropped, so a body quoted verbatim from a web page or a bot comment pastes as it is.
 It resolves the peer pane, refuses a send that leaves
 a new ask from the peer without a disposition (see Asks), puts the body in through a bracketed
-paste with the clipboard saved and restored around it, confirms the last line is visible in the
-pane, checks the composer still holds it, and sends the submit key. A draft or a suggestion in the
+paste with the clipboard saved and restored around it, confirms the message's last 48
+non-whitespace characters are visible in the pane, checks twice that the composer still holds
+them, and sends the submit key. A draft or a suggestion in the
 composer never blocks a send and is not erased, and the script does not check that the composer
 cleared. Every refusal names the step;
 nothing is typed after a failed one. `peer-chat.py` without `--slug` or `--queue` is the one-line
