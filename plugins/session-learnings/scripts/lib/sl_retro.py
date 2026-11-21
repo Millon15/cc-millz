@@ -887,14 +887,24 @@ def spill(lines, parts, limit, lines_seen):
     return lines, parts
 
 
-def redact(text):
+def redact(text, *flags):
     script = Path(__file__).resolve().parent.parent / "sl-redact.sh"
     result = subprocess.run(
-        [str(script)], input=text, capture_output=True, text=True, check=False
+        [str(script), *flags], input=text, capture_output=True, text=True, check=False
     )
     if result.returncode != 0:
         raise RetroError(f"sl-redact.sh failed: {result.stderr.strip()}")
     return result.stdout
+
+
+def redact_previews(candidates):
+    stream = "".join(json.dumps(c.first_prompt) + "\n" for c in candidates)
+    previews = [json.loads(line) for line in redact(stream, "--jsonl").splitlines()] if candidates else []
+    if len(previews) != len(candidates):
+        raise RetroError("redaction changed the preview count; refusing to print")
+    for candidate, preview in zip(candidates, previews):
+        candidate.first_prompt = preview
+    return candidates
 
 
 def part_ranges(parts):
@@ -1380,7 +1390,7 @@ def run(args):
         print(json.dumps(explain(Path.cwd())))
         return 0
     if args.verb == "find":
-        for candidate in find(build_filters(args), home):
+        for candidate in redact_previews(find(build_filters(args), home)):
             print(json.dumps(candidate.row(), ensure_ascii=False))
         return 0
     if args.verb == "render":

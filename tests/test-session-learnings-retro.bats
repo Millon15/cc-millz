@@ -65,6 +65,30 @@ reader() {
 	[ "$("$RETRO" find retro --since 2026-11-19 --project /repo --include-caller | ids)" = "claude:44444444:ok " ]
 }
 
+@test "find: a secret in a first prompt or a history line is redacted before it is printed" {
+	jq -nc '{type:"user", timestamp:"2026-11-18T09:40:00Z", cwd:"/repo", entrypoint:"cli", origin:{kind:"human"}, message:{content:"retro with token=SUPERSECRETVALUE123"}}' \
+		>"$CLAUDE_CONFIG_DIR/projects/-repo/66666666-6666-4666-8666-666666666666.jsonl"
+	jq -nc '{display:"retro password=HISTORYSECRET999", timestamp:1760000000000, project:"/repo", sessionId:"77777777-7777-4777-8777-777777777777"}' >>"$CLAUDE_CONFIG_DIR/history.jsonl"
+	jq -nc '{type:"user", timestamp:"2026-11-18T09:41:00Z", cwd:"/repo", entrypoint:"cli", origin:{kind:"human"}, message:{content:"retro ends in token=FAKESECRETVALUE"}}' \
+		>"$CLAUDE_CONFIG_DIR/projects/-repo/69696969-6666-4666-8666-666666666666.jsonl"
+	run "$RETRO" find retro --project /repo
+	[ "$status" -eq 0 ]
+	[[ "$output" != *SUPERSECRET* && "$output" != *HISTORYSECRET* && "$output" != *FAKESECRET* ]]
+	[ "$(printf '%s\n' "$output" | grep -c 'REDACTED')" -eq 3 ]
+}
+
+@test "find: a secret-shaped project path stays intact, so find pipes into render" {
+	local dir="$CLAUDE_CONFIG_DIR/projects/-repo-token=synthetic-label"
+	mkdir -p "$dir"
+	jq -nc '{type:"user", timestamp:"2026-11-18T09:50:00Z", cwd:"/repo/token=synthetic-label", entrypoint:"cli", origin:{kind:"human"}, message:{content:"retro piping check"}}' \
+		>"$dir/88888888-8888-4888-8888-888888888888.jsonl"
+	"$RETRO" find 'retro piping' --project /repo >"$TMP/rows.jsonl"
+	[ "$(jq -r .path "$TMP/rows.jsonl")" = "$dir/88888888-8888-4888-8888-888888888888.jsonl" ]
+	[ "$(jq -r .project "$TMP/rows.jsonl")" = "/repo/token=synthetic-label" ]
+	"$RETRO" render --slug pipe --out "$TMP/out" <"$TMP/rows.jsonl" >"$TMP/render.jsonl"
+	grep -q '^retro piping check$' "$(jq -r .file "$TMP/render.jsonl")"
+}
+
 @test "find: no topic, command or id is a usage error; a bad regex is exit 2" {
 	run "$RETRO" find
 	[ "$status" -eq 2 ]

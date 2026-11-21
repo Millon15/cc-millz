@@ -1,5 +1,11 @@
 # Changelog
 
+## session-learnings v0.4.1 - 2026-11-21
+
+### Fixed
+
+- `sl-retro.sh find` printed each session's first prompt and prompt-history text unredacted, so a secret pasted into an old prompt reached the agent that ran it. Its JSONL output now goes through `sl-redact.sh --jsonl`, like `render`.
+
 ## session-learnings v0.4.0 - 2026-11-21
 
 ### Added
