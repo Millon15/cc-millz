@@ -372,7 +372,8 @@ the record.
   acceptance checks and the lane agreement (owners, files, contracts, integrator, marked
   `proposed` or `accepted`) as `design.md` at the path the command selects, the topic directory
   or a scratch directory outside the repo, written by the integrator only and citing the source.
-  Defaults, amendments, findings and every argument still go to chat
+  `/peer-chat:design` may also persist the exact proposed task input as immutable `proposal-vN.md`
+  in the ignored topic directory. Keep discussion, defaults and findings in chat.
 - `tmp/peer-chat/<slug>/` and `tmp/a/` are outside the ownership agreement below: either agent
   writes there, never the worktree's code
 

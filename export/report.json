@@ -163,12 +163,16 @@
     },
     {
       "name": "peer-chat",
-      "version": "0.10.2",
+      "version": "0.11.0",
       "included": [],
       "skipped": [
         {
           "source": "skills/build/SKILL.md",
           "reason": "relative dependency escapes the skill directory"
+        },
+        {
+          "source": "skills/design/SKILL.md",
+          "reason": "referenced skill peer-chat:build was skipped: relative dependency escapes the skill directory"
         },
         {
           "source": "skills/peer-chat/SKILL.md",
@@ -179,11 +183,15 @@
     },
     {
       "name": "peer-chat-bg",
-      "version": "0.3.1",
+      "version": "0.4.0",
       "included": [],
       "skipped": [
         {
           "source": "skills/build/SKILL.md",
+          "reason": "relative dependency escapes the skill directory"
+        },
+        {
+          "source": "skills/design/SKILL.md",
           "reason": "relative dependency escapes the skill directory"
         },
         {
@@ -296,11 +304,15 @@
     },
     {
       "name": "session-learnings",
-      "version": "0.3.0",
+      "version": "0.4.0",
       "included": [],
       "skipped": [
         {
           "source": "skills/recall/SKILL.md",
+          "reason": "_plugin/scripts/sl-hook.sh: runtime plugin-root dependency; script bytes must remain unchanged"
+        },
+        {
+          "source": "skills/retro/SKILL.md",
           "reason": "_plugin/scripts/sl-hook.sh: runtime plugin-root dependency; script bytes must remain unchanged"
         },
         {

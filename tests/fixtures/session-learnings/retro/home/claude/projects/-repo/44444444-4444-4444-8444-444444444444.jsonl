@@ -1,0 +1,1 @@
+{"type": "user", "timestamp": "2026-11-19T08:00:00.000Z", "cwd": "/repo", "entrypoint": "cli", "message": {"role": "user", "content": "the caller session talks about retro"}, "origin": {"kind": "human"}}

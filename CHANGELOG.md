@@ -1,5 +1,26 @@
 # Changelog
 
+## session-learnings v0.4.0 - 2026-11-21
+
+### Added
+
+- `retro` skill: reads past Claude and Codex sessions in full through subagents and turns them into an id'd fix list (R1..Rn, each with evidence, fix, scope, rationale and applicability) you approve by id; with `--design` it hands the redacted findings to `/peer-chat:design`. Finder subagents that read every candidate in full pick the sessions; grep hits only nominate them.
+- `sl-retro.sh find` lists candidates from Claude transcripts, Codex rollouts and both prompt histories, scoped to the current repository, without the calling session, headless runs or Codex guardian subagents, and keeps a history row whose transcript was pruned as `pruned`.
+- `sl-retro.sh render` writes wrapped, never clipped, redacted parts of at most 4000 lines (`retro_part_lines`) per session window, the main thread then each subagent in spawn order, split at compactions, with a manifest that lists every omitted block by kind, source and line; `--delta` renders what a live session or one of its subagents grew by.
+- `sl-retro.sh coverage` gates a reader on the exact union of lines its successful `Read` results returned, joined by tool id and matched against the part's current text; requested offsets, `sed`/`rg` output, failed reads and reads of replaced bytes count for nothing, and several reader transcripts union.
+
+## peer-chat v0.11.0 - 2026-11-21
+
+### Added
+
+- Add Design to agree on a versioned proposal with a peer and hand the approved revision to Build under the same slug.
+
+## peer-chat-bg v0.4.0 - 2026-11-21
+
+### Added
+
+- Add Design to agree on a versioned proposal with a peer and hand the approved revision to Build under the same slug.
+
 ## peer-chat v0.10.2 - 2026-11-20
 
 ### Fixed

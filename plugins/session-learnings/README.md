@@ -10,6 +10,7 @@ Learn from finished Claude Code sessions without letting a single session teach 
 - **`/session-learnings:review`** walks ready candidates and challenged stable lessons with you, writes a skill only after you approve the exact content and destination, and records the decision in the ledger.
 - **A weekly usage report** counts skill and command loads, project script runs, repeated hand-typed commands and knowledge-path reads from the last 7 days of transcripts. Fixed rules turn it into proposals the same review walks, one decision each.
 - **An opt-in weekly agent** opens the review in a background agterm session when a proposal or a ready lesson is waiting.
+- **The `retro` skill** reads past Claude and Codex sessions in full through subagents, gates every reader on the Read lines it actually got back, and turns what they found into an id'd fix list you approve by id, optionally handed to `/peer-chat:design`.
 
 ## 📦 Install
 
@@ -121,6 +122,45 @@ When a review session is already open (found by its command line, since a pane-l
 does nothing. Otherwise it opens a session in the agterm workspace `session-learnings` without taking focus, marks it
 blocked in the sidebar and sends one notification. When agterm is unreachable it only notifies.
 
+## 🔍 Session retro
+
+Ask for it in words ("read my recent /feature sessions", "retro of session 1b8b837f"): the `retro` skill loads, and
+`sl-retro.sh` does the mechanical part.
+
+```text
+find ──▶ candidate rows (Claude + Codex, both prompt histories, pruned rows kept)
+  └▶ render every candidate ──▶ finder subagents READ them in full ──▶ relevant? which L-windows? why
+render chosen windows ──▶ reader subagents (≈4000 lines each, fixed brief, reports on disk)
+coverage gate per reader ──▶ short? re-read the gaps once ──▶ still short: marked incomplete
+merge ──▶ recheck every headline claim ──▶ --delta for sources that grew ──▶ R1..Rn, approve by id
+```
+
+| Command | Effect |
+|---------|--------|
+| `sl-retro.sh find <topic \| ids…> [--since D] [--until D] [--command NAME] [--codex] [--all-projects]` | JSONL candidates: harness, id, path, project, first/last timestamp, bytes, hits, human hits, first prompt, entrypoint, status `ok\|pruned\|partial\|unclassified` |
+| `sl-retro.sh render --slug S [--out DIR] [<id>[:from-to]…]` | readable parts (find rows on stdin, or ids with optional source-line windows) plus `manifest.json` |
+| `sl-retro.sh render --slug S --delta` | parts for whatever a rendered open-ended source grew by since its high-water mark |
+| `sl-retro.sh coverage --manifest M (--transcript F \| --agent ID --parent SESSION) [--files …]` | exit 0 when every assigned part's lines came back from successful `Read` results, 1 with `missing_ranges` when not, 2 when a part changed or a transcript is missing |
+| `sl-retro.sh --explain` | resolved sources, scope root, output root and part size as JSON |
+
+`find` scopes to projects whose working directory is under the current repository root, skips the calling session
+(`CLAUDE_CODE_SESSION_ID`), headless runs (`sdk-*` entrypoints, Codex subagents such as the approval guardian) unless
+named by id, and keeps a prompt-history row whose transcript is gone as `pruned` with `path: null`. Its grep hits only
+nominate: the skill lets finder subagents that read each candidate in full decide what is relevant.
+
+`render` writes one file per session window: the main thread, then each subagent transcript in spawn order. It wraps a
+line longer than 1000 characters onto `↳ ` continuation lines and never clips, starts a new part at each compaction and
+at `retro_part_lines` lines (default 4000), and scrubs every part through `sl-redact.sh` before hashing it. Skill
+bodies, system reminders, thinking blocks and harness bookkeeping rows are left out, and the manifest lists each one by
+kind, source and line, in the part that covers it.
+
+`coverage` reads a reader subagent's transcript, joins each `Read` call to its result by tool id, and takes the union of
+the line numbers the successful results returned. The offset and limit a call asked for never count, and neither do
+`sed`, `rg` or `cat -n` output.
+
+Parts and reports land in `tmp/retro/<slug>/` when `tmp/` is git-ignored there; otherwise pass `--out` with a
+`mktemp -d` directory. A project can set `{"retro_part_lines": 2000}` in `.session-learnings.json`.
+
 ## 🗂 Store
 
 `${SESSION_LEARNINGS_HOME:-~/.claude/learnings}`
@@ -168,6 +208,7 @@ A card is markdown with JSON frontmatter (valid YAML): id, scope, kind, status, 
 | `SESSION_LEARNINGS_REVIEW_WEEKDAY` | `1` | weekly review day for `--review-weekly`, launchd numbering (0 and 7 = Sunday) |
 | `SESSION_LEARNINGS_REVIEW_HOUR` | `10` | weekly review hour, local time |
 | `SESSION_LEARNINGS_REVIEW_CWD` | `$HOME` | directory the review session starts in, so project-scoped skills land in that repository |
+| `CLAUDE_CONFIG_DIR`, `CODEX_HOME` | `~/.claude`, `~/.codex` | where `sl-retro.sh` finds Claude and Codex transcripts and prompt histories |
 | `CLAUDE_LEARN_SKIP` | unset | `1` turns the hook, the worker and the review launcher off for that process |
 
 ### Choosing the model

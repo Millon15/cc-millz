@@ -1,0 +1,1 @@
+{"type": "user", "timestamp": "2026-11-18T11:00:00.000Z", "cwd": "/other", "entrypoint": "cli", "message": {"role": "user", "content": "retro in another project"}, "origin": {"kind": "human"}}

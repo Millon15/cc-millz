@@ -1,0 +1,2 @@
+{"type": "session_meta", "timestamp": "2026-11-18T12:05:00.000Z", "payload": {"id": "01a1bbbb-0000-7000-8000-000000000002", "cwd": "/repo", "originator": "codex-tui", "source": {"subagent": {"other": "guardian"}}}}
+{"type": "response_item", "timestamp": "2026-11-18T12:05:01.000Z", "payload": {"type": "message", "role": "user", "content": [{"type": "input_text", "text": "judge this retro action"}]}}

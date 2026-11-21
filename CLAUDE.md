@@ -51,14 +51,14 @@ Millon15 personal Claude Code plugin marketplace — skills, agents, (future) ho
 - `plugins/gws-workspace/` — Google Workspace through the `gws` CLI (1 skill + references)
 - `plugins/idea-config/` — JetBrains `.idea/` reading, diagnosis and hand-editing for any IntelliJ-platform IDE (1 skill + references + doctor script)
 - `plugins/merge-kit/` — conflict resolution and merge forensics (2 commands + scripts)
-- `plugins/peer-chat/` — two coding agents, any harness and model, talking in one agterm split (2 skills + 1 opt-in SessionStart hook + vendored engine + adapter + spawn/install scripts)
-- `plugins/peer-chat-bg/` — equal native background peers in Claude Code or Codex, no agterm (2 skills + 1 opt-in SessionStart hook + state helper script); shares `shared/peer-chat/` sources with peer-chat through the two sync scripts
+- `plugins/peer-chat/` — two coding agents, any harness and model, talking in one agterm split (3 skills + 1 opt-in SessionStart hook + vendored engine + adapter + spawn/install scripts)
+- `plugins/peer-chat-bg/` — equal native background peers in Claude Code or Codex, no agterm (3 skills + 1 opt-in SessionStart hook + state helper script); shares `shared/peer-chat/` sources with peer-chat through the two sync scripts
 - `plugins/plan/` — `/plan:research` with empirical proof (1 command + 2 agents + headless runner)
 - `plugins/phpstorm/` — PhpStorm MCP + Xdebug agent surface (2 skills)
 - `plugins/ralphex-revmux/` — revmux as ralphex's external reviewer (1 skill + 1 command + 2 agents + scripts)
 - `plugins/revmux-kit/` — revmux project layer bootstrap (1 skill + templates)
 - `plugins/security-audit/` — pre-adoption security audit of a repo, MCP server or package (1 command)
-- `plugins/session-learnings/` — SessionEnd learning pipeline: queue hook, launchd worker, tool-less extractor, deterministic merger, weekly usage report and proposals, review command, opt-in weekly review agent (1 hook + 1 command + scripts, macOS)
+- `plugins/session-learnings/` — SessionEnd learning pipeline: queue hook, launchd worker, tool-less extractor, deterministic merger, weekly usage report and proposals, review command, opt-in weekly review agent, coverage-gated session retro (1 hook + 1 command + 2 skills + scripts, macOS)
 - `plugins/statusline/` — two-line status line, self-installs into settings.json (1 SessionStart hook + scripts)
 - `plugins/toolsmith/` — agent dev-tool lifecycle (4 commands + 2 skills + scripts)
 - `plugins/unslop-kit/` — reply contract over a vendored pstack unslop (4 skills + 1 SessionStart hook + sync script)

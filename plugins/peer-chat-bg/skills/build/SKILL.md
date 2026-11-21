@@ -16,6 +16,8 @@ adds the build flow; where the two disagree, the skill wins.
 
 ## Engine
 
+For a Design handoff, verify and reuse its coordinator repo, run ID and bound peer. Load the engine below and resume that peer. Start and bind a peer only for a new run.
+
 1. Load `peer-chat-bg:peer-chat` (Claude: `Skill`; Codex: read `../peer-chat/SKILL.md` relative to this skill).
 2. Apply its Peer selection rules to `<peer>` or `--peer`, complete preflight and bind the returned native child identity. Without a model, the child inherits; a different runtime is refused.
 
@@ -25,7 +27,8 @@ The paths below use the default `tmp/peer-chat-bg`. Substitute `values.state_dir
 
 `$ARGUMENTS`: `[<design>] [<peer>] [--slug <topic>]`. `<peer>` is `claude` or `codex`, with an
 optional model in parentheses (`codex(astra)`, `claude(fable)`) or after a colon (`codex:astra`).
-A word matching `^(claude|codex)(\(.+\)|:.+)?$` is the peer, anything else is the design.
+After parsing flags, a positional value matching `^(claude|codex)(\(.+\)|:.+)?$` is the peer.
+Any other positional value is the design.
 `--peer=<value>` and the older `--peer <value>` accept the same forms. Pass that value to the
 engine's peer-selection step; when absent, pass no model override. `<design>` is a file path, a
 ticket url or key (fetched with the project's tracker tooling), or empty: the one proposal the user
@@ -33,11 +36,12 @@ approved in this conversation. Several incompatible proposals: ask the user whic
 send. `--slug` defaults to the design title in kebab-case, at most four words; every send of this
 build carries it.
 
-For a build spanning repositories, the integrator names one coordinator topic state path in
-the opening message. Every lane passes that same `--state <path>` to its sends and freezes;
-the caller's repository does not become a second coordinator. Timing budgets come from the
-engine skill; a blocking review ask needs explicit or configured budgets, while ownership
-handovers and held experiments never get timers.
+Resolve `values.state_dir` with `BG --explain`. A Design proposal's reserved checks are
+`acceptance` and `security`. Record the acceptance check as passed only when its evidence
+records every proposal check passing.
+
+Use the engine's timing budgets for blocking review asks. Ownership handovers and held
+experiments never get timers.
 
 ## Phase 0: Snapshot the design (HARD GATE)
 
@@ -51,6 +55,8 @@ grow orchestration state. Every input form gets ONE task file, written by the in
 2. Content: the design verbatim (sections, tables, acceptance checks, open decisions) plus a
    `Source:` line (chat, path, or ticket url). This is the skill's task-input exception
    (§ Artifacts): design, acceptance checks and lane agreement, nothing else.
+   For `proposal-vN.md`, verify the approved SHA-256, copy the bytes verbatim and cite the path,
+   SHA-256 and user's approval in the single `Source:` line.
 3. Open decisions: a reversible implementation choice takes the design's recommendation, else the
    safer default, listed as `defaults taken`. A decision the user's authorization does not cover
    goes to the user before the first send.

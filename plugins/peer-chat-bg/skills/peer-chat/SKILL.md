@@ -203,5 +203,9 @@ directly. Its receipts are evidence-backed records, not authentication or a sand
    and both peers confirmed that target. Report files/commits, proof paths and any blocker.
    Missing physical/device/runtime checks are incomplete, never inferred from unit tests.
 
-Keep only task input, protocol state, evidence, scripts and outputs in the topic directory;
-do not store secrets. State is local and owner-private. Review artifacts before publication.
+### Artifacts
+
+Keep task input, protocol state, evidence, scripts and outputs in the topic directory.
+`/peer-chat-bg:design` may persist the exact proposed task input as immutable `proposal-vN.md`.
+`/peer-chat-bg:build` Phase 0 owns the `design.md` snapshot. Keep discussion in chat and scrub
+secrets from saved artifacts. State is local and owner-private. Review artifacts before publication.

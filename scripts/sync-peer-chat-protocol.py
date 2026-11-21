@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Package one build protocol into independent Claude/Codex plugin caches."""
+"""Package the shared design and build protocols into both peer plugins."""
 
 from pathlib import Path
 import argparse
@@ -15,11 +15,57 @@ FRESH = {
         "   `peer-chat-fresh.sh --focus \"<slug> build, design at <absolute design path>\" --resume\n"
         "   \"/peer-chat:build <absolute design path> --slug <slug>\"` and end the turn: once the turn is over it\n"
         "   types `/compact`, waits for the compaction, then types the resume line, each submitted by a\n"
-        "   separate Return. Exit 3 (another harness, no agterm, no session id): continue in this context."
+        "   separate Return. Exit 3 (another harness, no agterm, no session id): continue in this context.\n"
+        "   Carry any explicit `--state <path>` in the resume line as well."
     ),
     "peer-chat-bg": (
         "none in this engine; after a long conversation the user may run `/compact`, then this\n"
         "   command again on the snapshot."
+    ),
+}
+
+ARTIFACT_ROOT = {
+    "peer-chat": "tmp/peer-chat",
+    "peer-chat-bg": "tmp/peer-chat-bg",
+}
+
+BUILD_COORDINATOR = {
+    "peer-chat": (
+        "An optional `--state <path>` names the coordinator's existing `state.json`. Parse it as a flag\n"
+        "before resolving the design input. Verify the state and use its repo for Phase 0. When the flag\n"
+        "is omitted, use the initiator's topic state. For a build spanning repositories, name one\n"
+        "coordinator state path in the opening message. Every lane passes that path with `--state`\n"
+        "on sends and freezes from another repo. Preserve the coordinator across resume."
+    ),
+    "peer-chat-bg": (
+        "Resolve `values.state_dir` with `BG --explain`. A Design proposal's reserved checks are\n"
+        "`acceptance` and `security`. Record the acceptance check as passed only when its evidence\n"
+        "records every proposal check passing."
+    ),
+}
+
+DESIGN_TOPIC = {
+    "peer-chat": (
+        "Use the coordinator's `tmp/peer-chat/<slug>/` and verify Git ignores the directory and\n"
+        "tracks no files there. When sending or reading status from another repo, pass the same\n"
+        "`--state <coordinator topic>/state.json`. Read the ledger with `peer-chat-state.py ... status`."
+    ),
+    "peer-chat-bg": (
+        "Read `values.state_dir` from `BG --explain`. Use its ignored `<slug>/` topic directory.\n"
+        "For a new design run, reserve `--check acceptance --check security` at `BG ... init` so Build\n"
+        "can reuse the same run. Keep the coordinator `--repo`, `--slug`, `--run` and native peer bound.\n"
+        "Read the ledger with `BG ... status`."
+    ),
+}
+
+DESIGN_HANDOFF = {
+    "peer-chat": (
+        "Invoke\n  `/peer-chat:build <absolute proposal path> --slug <same slug>`. "
+        "Include `--state <coordinator state path>`\n  for a cross-repo build."
+    ),
+    "peer-chat-bg": (
+        "Invoke\n  `/peer-chat-bg:build <absolute proposal path> --slug <same slug>` in the coordinator repo, "
+        "preserving its\n  run ID, peer identity and state directory."
     ),
 }
 
@@ -80,6 +126,7 @@ def invocation_keys(frontmatter):
 
 def outputs():
     template = (ROOT / "shared/peer-chat/build.md").read_text()
+    design = (ROOT / "shared/peer-chat/design.md").read_text()
     for plugin, peer, engine, lifecycle in (
         (
             "peer-chat",
@@ -102,16 +149,23 @@ def outputs():
             .replace("@ENGINE@", engine)
             .replace("@LIFECYCLE@", lifecycle)
             .replace("@FRESH@", FRESH[plugin])
+            .replace("@BUILD_STATE_ARGUMENT@", " [--state <path>]" if plugin == "peer-chat" else "")
+            .replace("@BUILD_COORDINATOR@", BUILD_COORDINATOR[plugin])
             .replace("@FREEZE@", FREEZE[plugin])
             .replace("@GATE@", AGTERM_GATE if plugin == "peer-chat" else "")
         )
         rendered = rendered.replace(
-            "@ARTIFACT_ROOT@",
-            "tmp/peer-chat-bg" if plugin == "peer-chat-bg" else "tmp/peer-chat",
+            "@ARTIFACT_ROOT@", ARTIFACT_ROOT[plugin],
         ).replace(
             "@ASK_STATE@", "state.json"
         )
         if plugin == "peer-chat-bg":
+            rendered = rendered.replace(
+                "## Engine\n\n",
+                "## Engine\n\n"
+                "For a Design handoff, verify and reuse its coordinator repo, run ID and bound peer. "
+                "Load the engine below and resume that peer. Start and bind a peer only for a new run.\n\n",
+            )
             rendered = rendered.replace(
                 "## Input",
                 "The paths below use the default `tmp/peer-chat-bg`. Substitute `values.state_dir` from `BG --explain` when configured. The ask/message ledger is `<state_dir>/<slug>/state.json`, not a TSV file. Use the engine's target/check/finalize commands to validate the unchanged integrated tree and close both peer confirmations.\n\n## Input",
@@ -134,6 +188,21 @@ def outputs():
             skill_front
             + header
             + "Start only when the user requests implementation of an agreed design. In a host without the `Skill` tool, load `../peer-chat/SKILL.md` relative to this file instead of calling `Skill`.\n\n"
+            + body.lstrip(),
+        )
+        frontmatter, body = (
+            design.replace("@PLUGIN@", plugin)
+            .replace("@PEER@", peer)
+            .replace("@ENGINE@", engine)
+            .replace("@LIFECYCLE@", lifecycle)
+            .replace("@DESIGN_TOPIC@", DESIGN_TOPIC[plugin])
+            .replace("@ASK_STATE@", "state.json")
+            .replace("@DESIGN_HANDOFF@", DESIGN_HANDOFF[plugin])
+        ).split("---\n", 2)[1:]
+        yield (
+            ROOT / f"plugins/{plugin}/skills/design/SKILL.md",
+            "---\n" + frontmatter + "---\n"
+            + "<!-- Generated from shared/peer-chat/design.md; edit the source and run scripts/sync-peer-chat-protocol.py. -->\n\n"
             + body.lstrip(),
         )
 

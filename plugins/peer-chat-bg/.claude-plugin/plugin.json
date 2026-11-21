@@ -1,7 +1,7 @@
 {
   "name": "peer-chat-bg",
-  "version": "0.3.1",
-  "description": "Equal background coding peers in Claude Code and Codex, without agterm: durable questions and delivery receipts, shared build protocol, accepted file ownership, frozen cross-review targets and empirical acceptance checks. Native peers remain in their host runtime. An opt-in SessionStart hook (first line of `~/.claude/peer-chat.mode` = `bg`) starts every interactive session in peer mode: it injects a tiered directive only, and no peer starts before the first use.",
+  "version": "0.4.0",
+  "description": "Equal background coding peers in Claude Code and Codex, without agterm: durable questions and delivery receipts, shared design and build protocols, accepted file ownership, frozen cross-review targets and empirical acceptance checks. Native peers remain in their host runtime. An opt-in SessionStart hook (first line of `~/.claude/peer-chat.mode` = `bg`) starts every interactive session in peer mode: it injects a tiered directive only, and no peer starts before the first use.",
   "author": {
     "name": "Millon15"
   },
