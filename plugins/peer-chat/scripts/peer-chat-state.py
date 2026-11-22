@@ -7,7 +7,7 @@ from datetime import datetime, timezone
 import hashlib
 import json
 import os
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 import re
 import stat
 import subprocess
@@ -115,10 +115,38 @@ def file_snapshot(path: Path) -> dict:
             "sha256": hashlib.sha256(path.read_bytes()).hexdigest()}
 
 
-def repo_snapshot(repo: Path) -> dict:
-    names = set(git(repo, "ls-files", "-z", "--cached", "--others", "--exclude-standard").split(b"\0")) - {b""}
+def repo_snapshot(repo: Path, paths: list[str] | None = None) -> dict:
+    """Every visible file of the worktree, or only those under the literal `paths` of a scoped target."""
+    scope = ("--literal-pathspecs",) if paths else ()
+    listed = git(repo, *scope, "ls-files", "-z", "--cached", "--others", "--exclude-standard", "--", *(paths or ()))
+    names = set(listed.split(b"\0")) - {b""}
+    for name in names if paths else ():
+        require(not symlinked_parent(repo, os.fsdecode(name)),
+                f"scoped file {os.fsdecode(name)} resolves through a symlinked directory; scope the link itself")
     return {"files": {os.fsdecode(name): file_snapshot(repo / os.fsdecode(name)) for name in sorted(names)
                       if (repo / os.fsdecode(name)).exists() or (repo / os.fsdecode(name)).is_symlink()}}
+
+
+def symlinked_parent(repo: Path, name: str) -> bool:
+    return any((repo / parent).is_symlink() for parent in PurePosixPath(name).parents if str(parent) != ".")
+
+
+def scope_path_valid(path) -> bool:
+    return isinstance(path, str) and path != "" and not path.startswith("/") and ".." not in PurePosixPath(path).parts
+
+
+def scope_paths(entry: dict) -> list[str] | None:
+    if "paths" not in entry:
+        return None
+    paths = entry["paths"]
+    require(isinstance(paths, list) and paths and all(scope_path_valid(path) for path in paths)
+            and len(paths) == len(set(paths)), "paths must be a nonempty list of unique repo-relative paths without ..")
+    return sorted(paths)
+
+
+def repo_row(root: Path, names: list[str], paths: list[str] | None) -> dict:
+    row = {"snapshot": repo_snapshot(root, paths), "required_checks": sorted(names)}
+    return {**row, "paths": paths} if paths else row
 
 
 def read_spec(path: Path, coordinator: Path) -> dict:
@@ -128,7 +156,8 @@ def read_spec(path: Path, coordinator: Path) -> dict:
             "spec must contain a nonempty repos array")
     repos = {}
     for entry in spec["repos"]:
-        require(isinstance(entry, dict) and set(entry) == {"repo", "checks"}, "each repo needs repo and checks")
+        require(isinstance(entry, dict) and set(entry) in ({"repo", "checks"}, {"repo", "checks", "paths"}),
+                "each repo needs repo and checks, and may name paths")
         path = Path(entry["repo"])
         root = worktree_root(path if path.is_absolute() else coordinator / path)
         names = entry["checks"]
@@ -136,7 +165,7 @@ def read_spec(path: Path, coordinator: Path) -> dict:
                 "each repo needs nonempty check names")
         require(len(names) == len(set(names)), "duplicate required check")
         require(str(root) not in repos, "duplicate worktree in target spec")
-        repos[str(root)] = {"snapshot": repo_snapshot(root), "required_checks": sorted(names)}
+        repos[str(root)] = repo_row(root, names, scope_paths(entry))
     return repos
 
 
@@ -171,7 +200,7 @@ def current_target(state: dict, expected: str) -> dict:
     require(target and target["id"] == expected and hash_json(target["repos"]) == expected,
             "target set missing or changed; capture and check the current set")
     for name, entry in target["repos"].items():
-        require(str(worktree_root(Path(name))) == name and repo_snapshot(Path(name)) == entry["snapshot"],
+        require(str(worktree_root(Path(name))) == name and repo_snapshot(Path(name), entry.get("paths")) == entry["snapshot"],
                 f"target working tree changed: {name}; capture a new target and rerun checks")
     return target
 

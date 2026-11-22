@@ -1,5 +1,13 @@
 # Changelog
 
+## peer-chat v0.12.0 - 2026-11-22
+
+### Added
+
+- Build target specs accept optional literal `paths` per repository. Use them to verify build files and check
+  inputs when a peer cannot read unrelated files. The target id binds the selected scope. Specs without `paths`
+  retain the whole-worktree format, so existing targets keep their ids.
+
 ## peer-chat v0.11.1 - 2026-11-21
 
 ### Fixed

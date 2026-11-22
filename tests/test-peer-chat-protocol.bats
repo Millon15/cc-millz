@@ -390,3 +390,93 @@ PY
     [ "$status" = 0 ]
     [ "$(jq -r .phase <<<"${output}")" = finalized ]
 }
+
+scope_spec() {
+    jq --argjson paths "$1" '.repos |= map(if (.repo | endswith("/component")) then . + {paths: $paths} else . end)' "${SPEC}" > "${SPEC}.next"
+    mv "${SPEC}.next" "${SPEC}"
+}
+
+capture() {
+    run python3 "${CLI}" --slug topic --state "${STATE}" target --spec "${SPEC}"
+}
+
+@test "P2 gate: a scoped target finalizes beside a tracked file nobody can read" {
+    gate_fixture
+    printf 'SECRET=1\n' > "${OTHER}/secret.env"
+    git -C "${OTHER}" add secret.env
+    git -C "${OTHER}" -c user.name=T -c user.email=t@example.invalid -c commit.gpgsign=false commit -qm 'tracked secret'
+    chmod 000 "${OTHER}/secret.env"
+    scope_spec '["code.txt"]'
+    capture
+    [ "$status" = 0 ]
+    target="$(jq -r .id <<<"${output}")"
+    jq -e --arg repo "${OTHER}" '.target_set.repos[$repo] | .paths == ["code.txt"] and (.snapshot.files | keys) == ["code.txt"]' "${STATE}"
+    gate_checks
+    gate_confirm left
+    [ "$status" = 0 ]
+    gate_confirm right
+    [ "$status" = 0 ]
+    run python3 "${CLI}" --slug topic --state "${STATE}" finalize --target-set "${target}" --actor-id left
+    chmod 600 "${OTHER}/secret.env"
+    [ "$status" = 0 ]
+    [ "$(jq -r .phase <<<"${output}")" = finalized ]
+}
+
+@test "P2 gate: a scoped target sees edits inside its paths and ignores edits outside them" {
+    gate_fixture
+    printf 'lane\n' > "${OTHER}/lane.txt"
+    mkdir -p "${OTHER}/src" && printf 'deep\n' > "${OTHER}/src/deep.txt"
+    scope_spec '["src", "code.txt"]'
+    capture
+    target="$(jq -r .id <<<"${output}")"
+    jq -e --arg repo "${OTHER}" '(.target_set.repos[$repo].snapshot.files | keys) == ["code.txt", "src/deep.txt"]' "${STATE}"
+    gate_checks
+    printf 'outside edit\n' > "${OTHER}/lane.txt"
+    gate_confirm left
+    [ "$status" = 0 ]
+    printf 'inside edit\n' > "${OTHER}/src/deep.txt"
+    gate_confirm right
+    [ "$status" = 2 ]
+    [[ "$output" == *"target working tree changed"* ]]
+}
+
+@test "P2 gate: the paths belong to the target identity" {
+    gate_fixture
+    whole="${target}"
+    scope_spec '["code.txt"]'
+    capture
+    [ "$(jq -r .id <<<"${output}")" != "${whole}" ]
+    scoped="$(jq -r .id <<<"${output}")"
+    scope_spec '["code.txt", ".gitignore"]'
+    capture
+    [ "$(jq -r .id <<<"${output}")" != "${scoped}" ]
+}
+
+@test "P2 gate: scope paths must be unique, relative and inside the repo" {
+    gate_fixture
+    for bad in '[]' '["/etc/passwd"]' '["../outside"]' '["src/../../x"]' '["code.txt", "code.txt"]' '[""]' '[7]'; do
+        scope_spec "${bad}"
+        capture
+        [ "$status" = 2 ]
+        [[ "$output" == *"paths"* ]]
+    done
+}
+
+@test "P2 gate: a scoped file reached through a symlinked parent is refused" {
+    gate_fixture
+    mkdir -p "${OTHER}/src" "${BATS_TEST_TMPDIR}/outside"
+    printf 'lane\n' > "${OTHER}/src/code.txt"
+    git -C "${OTHER}" add src/code.txt
+    git -C "${OTHER}" -c user.name=T -c user.email=t@example.invalid -c commit.gpgsign=false commit -qm 'scoped file'
+    scope_spec '["src/code.txt"]'
+    capture
+    [ "$status" = 0 ]
+    target="$(jq -r .id <<<"${output}")"
+    gate_checks
+    cp "${OTHER}/src/code.txt" "${BATS_TEST_TMPDIR}/outside/code.txt"
+    mv "${OTHER}/src" "${BATS_TEST_TMPDIR}/real-src"
+    ln -s "${BATS_TEST_TMPDIR}/outside" "${OTHER}/src"
+    gate_confirm left
+    [ "$status" = 2 ]
+    [[ "$output" == *"scoped file src/code.txt resolves through a symlinked directory"* ]]
+}

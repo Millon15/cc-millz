@@ -92,11 +92,15 @@ FREEZE = {
 AGTERM_GATE = """
 ### Record the integrated target set
 
-The integrator writes an ignored JSON spec with every repository and its required check names:
-`{"repos":[{"repo":"/absolute/worktree","checks":["suite","security"]}]}`. Include the coordinator.
-Run `peer-chat-state.py --slug <slug> --state <coordinator state> target --spec <spec path>`;
-its `id` covers visible tracked/untracked file bytes, kinds, modes and the required checks
-across the entire set. A changed target or required-check set clears both confirmations and checks.
+The integrator writes an ignored JSON spec with every repository and its required checks. Include the coordinator:
+`{"repos":[{"repo":"/absolute/worktree","checks":["suite","security"],"paths":["src","tests"]}]}`.
+Optional `paths` selects a nonempty list of unique, literal repo-relative paths without a `..` segment.
+A directory covers its tracked and unignored untracked files. Omit `paths` to cover the whole worktree.
+Include the build files and the inputs its required checks use in a scoped target.
+
+Run `peer-chat-state.py --slug <slug> --state <coordinator state> target --spec <spec path>`.
+The target id covers file bytes, kinds, modes, the selected paths and the required checks.
+A change within scope or to the selected paths or checks clears both confirmations and checks.
 Record each actual result using `... check --repo <worktree> --name <check>
 --state passed|failed|incomplete --target-set <id> --evidence <receipt>`. Receipts stay inside
 the coordinator's ignored topic directory. Committing exactly the checked files preserves the id;
@@ -105,11 +109,12 @@ any hook-induced edit still requires a fresh target and checks.
 During Phase 5, exchange the closing messages and record each recipient's actual observed peer
 text with `... observe --message-id <id> --event acknowledged|answered --actor-id <recipient>
 --evidence <received text>`. Pasted text and a submit key cannot finalize a build.
-Both peers then run `... confirm --target-set <id> --actor-id <own identity> --evidence <proof>`;
-the integrator runs `... finalize --target-set <id> --actor-id <own identity>`. Finalize rechecks
+Both peers then run `... confirm --target-set <id> --actor-id <own identity> --evidence <proof>`.
+Name the covered paths or whole worktree for each repository in the proof.
+The integrator runs `... finalize --target-set <id> --actor-id <own identity>`. Finalize rechecks
 all repository snapshots and evidence hashes, requires zero open asks, unresolved messages,
 timer intents or unreleased stopped scopes, passed checks and both current confirmations.
-Completion requires `phase: finalized`. Any later file edit needs a new target and checks.
+Completion requires `phase: finalized`. A later edit within scope needs a new target and checks.
 """
 
 

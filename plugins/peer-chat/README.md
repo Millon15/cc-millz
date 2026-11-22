@@ -123,12 +123,19 @@ configuration can supply values too; each value's source appears in the message.
 clock or automatic progress extension applies. `peer-chat-state.py --slug <slug> status|wake`
 reports timers without driving the pane; the skill gives the intent/action/receipt procedure.
 
-Builds declare all repositories and required checks with `peer-chat-state.py --slug <slug>
-target --spec <file>`. Its target-set id covers every repository's actual visible files plus
-the check names. Record each check with evidence, exchange recipient-evidenced closing messages,
-then both peers `confirm` the same set and the integrator `finalize`s it. Keystrokes alone,
-changed targets, open asks or unreconciled stopped peers cannot produce a finalized build.
-Committing exactly the checked files preserves the id; hook-induced file changes do not.
+Builds declare repositories and required checks with `peer-chat-state.py --slug <slug>
+target --spec <file>`. Include the coordinator in the spec:
+
+```json
+{"repos":[{"repo":"/absolute/worktree","checks":["suite","security"],"paths":["src","tests"]}]}
+```
+
+- **Scope.** Omit `paths` to cover the whole worktree. To narrow it, name a nonempty list of unique, literal
+  repo-relative files or directories without `..` segments. Include the build files and inputs the checks use.
+- **Identity.** The target id binds the path selection, in-scope tracked and unignored untracked file bytes, kinds,
+  modes and required checks. An edit inside scope invalidates the target. Committing the checked bytes preserves it.
+- **Confirmation.** Record checks, exchange recipient acknowledgments, and have both peers `confirm` the same id.
+  Name the verified scope in each confirmation receipt. The integrator calls `finalize` after both confirmations.
 
 Re-run `peer-chat-install.sh` after a plugin version bump: the files on PATH are copies, not symlinks, because a symlink into the plugin cache breaks the moment the cache dir changes. Then `peer-chat-spawn.sh --restart`, since a running agent never reloads its skills.
 
