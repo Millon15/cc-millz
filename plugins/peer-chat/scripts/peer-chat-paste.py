@@ -2,9 +2,10 @@
 """peer-chat-paste: a multi-line send, for a message the user reads in a thin pane.
 
 peer-chat.py types the body as keystrokes, and a typed newline submits, so it collapses every
-message to one line. This companion keeps the line breaks: the body goes in through a bracketed
-paste (`agtermctl session paste`, the system clipboard, saved and restored around the call), which
-both TUIs insert as multi-line composer text without submitting. It reuses peer-chat.py's own
+message to one line. This companion keeps the line breaks: the body goes in as one bracketed
+paste typed through `agtermctl session type --stdin` (ESC[200~, the body, ESC[201~), which both
+TUIs insert as multi-line composer text without submitting. The system clipboard is never touched,
+so a sandboxed sender that cannot run pbcopy still sends. It reuses peer-chat.py's own
 peer resolution by loading the installed script as a module.
 
     peer-chat-paste.py --to peer --stdin --slug <topic> < message.txt
@@ -84,7 +85,8 @@ from typing import Callable
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from peer_chat_core import (  # noqa: E402
-    WRAP, Plan, LedgerRefusal, now_utc, repo_root, clean_lines, parse_dispositions, plan_body,
+    WRAP, Plan, LedgerRefusal, now_utc, repo_root, clean_lines, drop_control, parse_dispositions,
+    plan_body,
 )
 from peer_chat_state import (
     StateError, Store, bind_participant, claim_delivery, observe, open_topic,
@@ -97,6 +99,8 @@ ACCEPT_TIMEOUT = float(os.environ.get("PEER_CHAT_ACCEPT_TIMEOUT", "8"))
 PROBE = 0.15
 PROBE_CHARS = 48
 COLLAPSED_PASTE_MARKERS = ("[Pasted Content", "[Pasted text")
+PASTE_START = "\x1b[200~"
+PASTE_END = "\x1b[201~"
 TARGETS = ("peer", "left", "right", "claude", "codex")
 RETURN_KEY = "\n"
 QUEUE_KEY = "\t"
@@ -255,19 +259,6 @@ def submit_key(
     )
 
 
-def clipboard_get() -> str | None:
-    try:
-        return subprocess.run(
-            ["pbpaste"], capture_output=True, text=True, check=False
-        ).stdout
-    except OSError:
-        return None
-
-
-def clipboard_set(text: str) -> None:
-    subprocess.run(["pbcopy"], input=text, text=True, check=True)
-
-
 def wait_until(predicate, timeout: float) -> bool:
     deadline = time.monotonic() + timeout
     while time.monotonic() < deadline:
@@ -384,19 +375,16 @@ def composer_empty_now(t: dict[str, Any], sid: str, profile: Any, window: str) -
     return state is not None and t["composer_is_empty"](profile, state[0])
 
 
+def labelled(profile: Any, text: str) -> str:
+    """The exact bytes a send types, records and matches: the cleaned label, then the body."""
+    return drop_control(profile.label).replace("\n", " ") + text
+
+
 def paste_and_submit(
     t: dict[str, Any], sid: str, profile: Any, window: str, message: str, queue: bool,
     gate: Gate, observed=None,
 ) -> int:
-    t["ctl"](
-        "session",
-        "paste",
-        "--pane",
-        profile.pane,
-        "--target",
-        sid,
-        *t["window_option"](window),
-    )
+    t["type_text"](sid, profile, PASTE_START + message + PASTE_END, window)
     if not wait_until(
         lambda: pasted_visible(t, sid, profile, window, message), PASTE_TIMEOUT
     ):
@@ -432,16 +420,7 @@ def deliver(
     t: dict[str, Any], sid: str, profile: Any, window: str, message: str, queue: bool,
     gate: Gate, observed=None,
 ) -> int:
-    saved = clipboard_get()
-    clipboard_set(message)
-    try:
-        return paste_and_submit(t, sid, profile, window, message, queue, gate, observed)
-    finally:
-        if saved is not None:
-            try:
-                clipboard_set(saved)
-            except (OSError, subprocess.CalledProcessError):
-                pass
+    return paste_and_submit(t, sid, profile, window, message, queue, gate, observed)
 
 
 def report(message: str, plan: Plan) -> None:
@@ -618,7 +597,7 @@ def send_untracked(t: dict[str, Any], args: argparse.Namespace, peer, body: str)
     plan = plan_body(clean_lines(profile, body), peer.sender, None, now_utc())
     for warning in plan.warnings:
         print(warning, file=sys.stderr)
-    message = profile.label + plan.text
+    message = labelled(profile, plan.text)
     gate = delivery_gate(t, args, coordinator_profile(repo_root()), peer)
     await_live_composer(t, sid, profile, window, gate)
     warn_if_mid_turn(peer_turn(t, sid, profile, window))
@@ -654,7 +633,7 @@ def claim_outbox(args: argparse.Namespace, store: Store, peer, body: str, path: 
     mid = prepared["message_id"]
     if not claim_delivery(store, mid):
         raise StateError("message already claimed; inspect its recorded delivery, never paste it again")
-    message = peer.profile.label + prepared["text"]
+    message = labelled(peer.profile, prepared["text"])
     record_outbox(path, message)
     metadata = json.dumps({"message_id": mid, "state": str(store.path),
                            "sha256": hashlib.sha256(message.encode()).hexdigest()})

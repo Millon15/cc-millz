@@ -190,8 +190,8 @@ of the topic must use that same file. The coordinator's `.peer-chat.json` suppli
 `peer-chat-paste.py` keeps the line breaks; a tab becomes one space and CR or any other control
 character is dropped, so a body quoted verbatim from a web page or a bot comment pastes as it is.
 It resolves the peer pane, refuses a send that leaves
-a new ask from the peer without a disposition (see Asks), puts the body in through a bracketed
-paste with the clipboard saved and restored around it, confirms the message's last 48
+a new ask from the peer without a disposition (see Asks), types the body as one bracketed paste
+(`agtermctl session type`, never the clipboard, so a sandbox without pbcopy still sends), confirms the message's last 48
 non-whitespace characters are visible in the pane, checks twice that the composer still holds
 them, and sends the submit key. A draft or a suggestion in the
 composer never blocks a send and is not erased, and the script does not check that the composer

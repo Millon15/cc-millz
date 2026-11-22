@@ -3,9 +3,8 @@
 # tests/test-peer-chat-paste.bats
 #
 # peer-chat-paste.py loads the vendored transport as a module and drives agterm through it, so
-# the suite stubs agtermctl with a state machine (empty composer, pasted, submitted) and pbcopy /
-# pbpaste with a clipboard file. The assertions read what was pasted (the label, the preserved
-# line breaks), the single submit keystroke, the clipboard restore, and paste confirmation.
+# the suite stubs agtermctl with a state machine (empty composer, pasted, submitted).
+# It records bracketed paste bytes and submit keys separately and rejects clipboard calls.
 # A draft, a suggestion or a hint in the composer never blocks either target. A pane with no live
 # composer (a question dialog, an approval modal, an unknown rendering) holds the send: the stub
 # shows `dialog` for the first `dialog-reads` reads before the paste, for the pasted reads from
@@ -26,11 +25,11 @@ setup() {
     export PEER_CHAT_PASTE_TIMEOUT=1 PEER_CHAT_ACCEPT_TIMEOUT=1
     export PEER_CHAT_DELIVERY_POLL=0.1 PEER_CHAT_LOCK_WAIT=0.5
     unset AGTERM_WINDOW_ID PEER_CHAT_DELIVERY_WAIT PEER_CHAT_COMPOSER_GATE
-    printf 'user clipboard' > "${TMP}/clip"
+    : > "${TMP}/paste-calls.log"
     printf 'empty' > "${TMP}/state"
     cp "${FIX}/tree-split-codex.json" "${TMP}/tree.json"
-    stub pbcopy "cat > '${TMP}/clip'; grep -q '^Chat from' '${TMP}/clip' || exit 0; cp '${TMP}/clip' '${TMP}/clip-last-set'; [ -f '${TMP}/clip-first-set' ] || cp '${TMP}/clip' '${TMP}/clip-first-set'"
-    stub pbpaste "cat '${TMP}/clip'"
+    stub pbcopy "echo pbcopy >> '${TMP}/clipboard-calls'; exit 1"
+    stub pbpaste "echo pbpaste >> '${TMP}/clipboard-calls'; exit 1"
     stub_agtermctl
     cd "${TMP}"
 }
@@ -66,18 +65,36 @@ case "\$1 \$2" in
                 elif [ -f "${TMP}/pasted-screen" ] && [ "\$read_no" -ge "\$(cat "${TMP}/pasted-screen-from" 2>/dev/null || echo 0)" ]; then
                     cat "${TMP}/pasted-screen"
                 else
-                    python3 "${FIX}/pasted-pane.py" "${TMP}/clip-last-set" "\$screen"
+                    python3 "${FIX}/pasted-pane.py" "${TMP}/pasted-body" "\$screen"
                 fi ;;
             busy) printf '› half a line the user typed\n \n  footer row\n' ;;
             submitted) cat "${TMP}/after-submit" 2>/dev/null || cat "${FIX}/codex-pane-empty.txt" ;;
             *) cat "\$screen" ;;
         esac ;;
-    "session paste")
-        [ -f "${TMP}/paste-ignored" ] || printf 'pasted' > "${TMP}/state"
-        [ ! -f "${TMP}/composer-after-paste" ] || cp "${TMP}/composer-after-paste" "${TMP}/composer"
-        echo 0 > "${TMP}/pasted-reads"
+    "session type")
+        cat > "${TMP}/typed-input"
+        payload="\$(cat "${TMP}/typed-input")"
+        start=\$'\\033[200~'
+        end=\$'\\033[201~'
+        case "\$payload" in
+            "\$start"*"\$end")
+                printf '%s\n' "\$*" >> "${TMP}/paste-calls.log"
+                cp "${TMP}/typed-input" "${TMP}/paste-input"
+                payload="\${payload#"\$start"}"
+                printf '%s' "\${payload%"\$end"}" > "${TMP}/pasted-body"
+                [ -f "${TMP}/pasted-first" ] || cp "${TMP}/pasted-body" "${TMP}/pasted-first"
+                if [ -f "${TMP}/check-lock.py" ]; then
+                    python3 "${TMP}/check-lock.py" "${TMP}/tmp/peer-chat/seatos/state.lock" || exit 9
+                fi
+                [ -f "${TMP}/paste-ignored" ] || printf 'pasted' > "${TMP}/state"
+                [ ! -f "${TMP}/composer-after-paste" ] || cp "${TMP}/composer-after-paste" "${TMP}/composer"
+                echo 0 > "${TMP}/pasted-reads" ;;
+            *)
+                cat "${TMP}/typed-input" >> "${TMP}/typed.log"
+                cat "${TMP}/pasted-reads" > "${TMP}/typed-at-read" 2>/dev/null
+                printf 'submitted' > "${TMP}/state" ;;
+        esac
         echo ok ;;
-    "session type") cat >> "${TMP}/typed.log"; cat "${TMP}/pasted-reads" > "${TMP}/typed-at-read" 2>/dev/null; printf 'submitted' > "${TMP}/state"; echo ok ;;
     notify\ *) [ ! -f "${TMP}/notify-fails" ] || exit 9; echo ok ;;
     *) echo "stub: unexpected \$*" >&2; exit 9 ;;
 esac
@@ -91,23 +108,28 @@ send_file() { # send_file <message-file> [extra args]
     run python3 "${PASTE}" --to peer --stdin "$@" < "${file}"
 }
 
-@test "paste: a multi-line body is pasted with the label, submitted once, and the clipboard is restored" {
+@test "paste: a multi-line ledger send types one bracketed body with the clipboard unavailable" {
     printf '🎯 the guard is blind across bids\n\n🔎 DoublePaymentProcessor.php:23-31\n\n❓ does a retry create a second bid?\n' > "${TMP}/msg"
-    send_file "${TMP}/msg"
+    send_file "${TMP}/msg" --slug seatos
     assert_status 0
     assert_contains "${output}" '"lines": 5'
-    [ "$(head -1 "${TMP}/clip-first-set")" = "Chat from claude (left): 🎯 the guard is blind across bids" ]
-    [ "$(tail -1 "${TMP}/clip-first-set")" = "❓ does a retry create a second bid?" ]
-    assert_contains "$(cat "${TMP}/calls.log")" "session paste --pane right --target ${SID}"
-    [ "$(wc -l < "${TMP}/typed.log")" -eq 1 ]
-    [ "$(cat "${TMP}/clip")" = "user clipboard" ]
+    expected=$'Chat from claude (left): 🎯 the guard is blind across bids\n\n🔎 DoublePaymentProcessor.php:23-31\n\n❓ #left-001 does a retry create a second bid?'
+    printf '\033[200~%s\033[201~' "$expected" > "${TMP}/expected-paste"
+    cmp "${TMP}/expected-paste" "${TMP}/paste-input"
+    [ "$(paste_calls)" = 1 ]
+    [ ! -e "${TMP}/clipboard-calls" ]
+    assert_not_contains "$(cat "${TMP}/calls.log")" "session paste"
+    assert_contains "$(cat "${TMP}/paste-calls.log")" "session type --stdin --pane right --target ${SID}"
+    cmp <(printf '\n') "${TMP}/typed.log"
+    [ "$(cat "${TMP}/state")" = submitted ]
+    [ "$(message_states)" = submit_sent ]
 }
 
 @test "paste: an existing label is not doubled and trailing blank lines are dropped" {
     printf 'Chat from claude (left): 🎯 one line\n\n\n' > "${TMP}/msg"
     send_file "${TMP}/msg"
     assert_status 0
-    [ "$(cat "${TMP}/clip-first-set")" = "Chat from claude (left): 🎯 one line" ]
+    [ "$(cat "${TMP}/pasted-first")" = "Chat from claude (left): 🎯 one line" ]
 }
 
 @test "paste: existing draft text does not block paste or submit" {
@@ -115,9 +137,8 @@ send_file() { # send_file <message-file> [extra args]
     printf '🎯 x\n' > "${TMP}/msg"
     send_file "${TMP}/msg"
     assert_status 0
-    assert_contains "$(cat "${TMP}/calls.log")" "session paste"
+    [ "$(paste_calls)" = 1 ]
     [ "$(wc -l < "${TMP}/typed.log")" -eq 1 ]
-    [ "$(cat "${TMP}/clip")" = "user clipboard" ]
 }
 
 composer_matrix() {
@@ -141,6 +162,7 @@ composer_matrix() {
         for after in empty occupied; do
             printf 'empty' > "${TMP}/state"
             : > "${TMP}/calls.log"
+            : > "${TMP}/paste-calls.log"
             : > "${TMP}/typed.log"
             # No cursor probe is needed even if it is unavailable or moved into a draft.
             touch "${TMP}/cursor-unavailable"
@@ -152,10 +174,9 @@ composer_matrix() {
             printf '🎯 occupancy matrix %s %s %s\n' "$target" "$state" "$after" > "${TMP}/msg"
             AGTERM_PANE="$sender" run python3 "${PASTE}" --to peer --stdin < "${TMP}/msg"
             assert_status 0
-            assert_contains "$(cat "${TMP}/clip-last-set")" "$expected_label"
-            assert_contains "$(cat "${TMP}/calls.log")" "session paste --pane ${pane} --target ${SID}"
+            assert_contains "$(cat "${TMP}/pasted-body")" "$expected_label"
+            assert_contains "$(cat "${TMP}/paste-calls.log")" "session type --stdin --pane ${pane} --target ${SID}"
             [ "$(wc -l < "${TMP}/typed.log")" -eq 1 ]
-            [ "$(cat "${TMP}/clip")" = "user clipboard" ]
             assert_not_contains "$(cat "${TMP}/calls.log")" 'surface cursor'
             assert_not_contains "$output" 'composer is not empty'
             assert_not_contains "$output" 'composer did not clear'
@@ -172,23 +193,22 @@ composer_matrix() {
     composer_matrix codex
 }
 
-@test "paste: an unconfirmed paste gets no submit key and the clipboard is still restored" {
+@test "paste: an unconfirmed paste gets no submit key" {
     touch "${TMP}/paste-ignored"
     printf '🎯 x\n' > "${TMP}/msg"
     send_file "${TMP}/msg"
     assert_status 1
     assert_contains "${output}" "paste not confirmed"
     [ ! -f "${TMP}/typed.log" ]
-    [ "$(cat "${TMP}/clip")" = "user clipboard" ]
 }
 
 @test "paste: a tab becomes a space, CR and other control characters are dropped, the send goes through" {
-    printf '🎯 x\ty\r\n\n🔎 a\033[0mb\r\n' > "${TMP}/msg"
+    printf '🎯 x\ty\r\n\n🔎 a\033[201~b\r\n' > "${TMP}/msg"
     send_file "${TMP}/msg"
     assert_status 0
-    [ "$(head -1 "${TMP}/clip-first-set")" = "Chat from claude (left): 🎯 x y" ]
-    [ "$(tail -1 "${TMP}/clip-first-set")" = "🔎 a[0mb" ]
-    ! grep -q $'\r' "${TMP}/clip-first-set"
+    [ "$(head -1 "${TMP}/pasted-first")" = "Chat from claude (left): 🎯 x y" ]
+    [ "$(tail -1 "${TMP}/pasted-first")" = "🔎 a[201~b" ]
+    ! grep -q $'\r' "${TMP}/pasted-first"
 }
 
 @test "paste: exit 1 naming peer-chat.py when the transport is not on PATH" {
@@ -245,7 +265,7 @@ PY
     send_file "${TMP}/msg"
     assert_status 0
     assert_contains "${output}" "peer-chat-paste: the peer is mid-turn; this send queues behind its current task"
-    assert_contains "$(cat "${TMP}/calls.log")" "session paste --pane right --target ${SID}"
+    assert_contains "$(cat "${TMP}/paste-calls.log")" "session type --stdin --pane right --target ${SID}"
     [ "$(wc -l < "${TMP}/typed.log")" -eq 1 ]
 }
 
@@ -256,7 +276,7 @@ PY
     send_file "${TMP}/msg"
     assert_status 0
     assert_contains "${output}" "the peer is mid-turn"
-    assert_contains "$(cat "${TMP}/calls.log")" "session paste --pane right --target ${SID}"
+    assert_contains "$(cat "${TMP}/paste-calls.log")" "session type --stdin --pane right --target ${SID}"
 }
 
 @test "busy peer: an idle or unknown screen prints no warning" {
@@ -278,7 +298,7 @@ PY
     send_file "${TMP}/msg" --slug seatos
     assert_status 2
     assert_not_contains "${output}" "mid-turn"
-    assert_not_contains "$(cat "${TMP}/calls.log")" "session paste"
+    [ "$(paste_calls)" = 0 ]
 }
 
 # ----------------------------------------------------------------- queue --
@@ -295,7 +315,7 @@ typed_keys() { od -An -c "${TMP}/typed.log" | tr -d ' \n'; }
     send_file "${TMP}/msg" --queue --slug seatos
     assert_status 0
     assert_contains "${output}" "queues behind its current task"
-    assert_contains "$(cat "${TMP}/calls.log")" "session paste --pane right --target ${SID}"
+    assert_contains "$(cat "${TMP}/paste-calls.log")" "session type --stdin --pane right --target ${SID}"
     [ "$(typed_keys)" = '\t' ]
 }
 
@@ -333,9 +353,8 @@ typed_keys() { od -An -c "${TMP}/typed.log" | tr -d ' \n'; }
     send_file "${TMP}/msg" --queue --slug seatos
     assert_status 1
     assert_contains "${output}" "--queue works only when the recipient runs codex"
-    assert_not_contains "$(cat "${TMP}/calls.log")" "session paste"
+    [ "$(paste_calls)" = 0 ]
     [ ! -f "${TMP}/typed.log" ]
-    [ "$(cat "${TMP}/clip")" = "user clipboard" ]
 }
 
 # --------------------------------------------------------------- handoff --
@@ -345,7 +364,7 @@ typed_keys() { od -An -c "${TMP}/typed.log" | tr -d ' \n'; }
     run python3 "${PLUGIN}/scripts/peer-chat.py" --to peer --slug seatos --stdin < "${TMP}/msg"
     assert_status 0
     assert_contains "${output}" '"asks": ["#left-001"]'
-    assert_contains "$(cat "${TMP}/calls.log")" "session paste --pane right --target ${SID}"
+    assert_contains "$(cat "${TMP}/paste-calls.log")" "session type --stdin --pane right --target ${SID}"
     assert_contains "$(ledger_rows)" $'left-001\tleft\t'
     assert_not_contains "${output}" "unrecognized arguments"
 }
@@ -355,7 +374,7 @@ typed_keys() { od -An -c "${TMP}/typed.log" | tr -d ' \n'; }
     printf '🎯 the background check finished\n' > "${TMP}/msg"
     run python3 "${PLUGIN}/scripts/peer-chat.py" --to peer --queue --slug seatos --stdin < "${TMP}/msg"
     assert_status 0
-    assert_contains "$(cat "${TMP}/calls.log")" "session paste"
+    [ "$(paste_calls)" = 1 ]
     assert_not_contains "${output}" "not recognisable"
     [ "$(typed_keys)" = '\t' ]
 }
@@ -366,7 +385,7 @@ typed_keys() { od -An -c "${TMP}/typed.log" | tr -d ' \n'; }
     printf '🎯 the finding, verbatim\n\n🔎 CLEAN=$(x) | grep -f <(y)\n' > "${TMP}/tmp/peer-chat/seatos/01.msg"
     run python3 "${PLUGIN}/scripts/peer-chat.py" --to peer --queue --message-file tmp/peer-chat/seatos/01.msg --slug seatos
     assert_status 0
-    assert_contains "$(cat "${TMP}/clip-first-set")" '🔎 CLEAN=$(x) | grep -f <(y)'
+    assert_contains "$(cat "${TMP}/pasted-first")" '🔎 CLEAN=$(x) | grep -f <(y)'
     [ "$(typed_keys)" = '\t' ]
     [ -f "${TMP}/tmp/peer-chat/seatos/01.msg" ]
     assert_not_contains "${output}" "message file restored"
@@ -380,7 +399,7 @@ typed_keys() { od -An -c "${TMP}/typed.log" | tr -d ' \n'; }
     run python3 "${PLUGIN}/scripts/peer-chat.py" --prepare-message=peer-chat-left-q1ab.txt --slug seatos
     assert_status 0
     assert_contains "${output}" '"messageFile"'
-    assert_not_contains "$(cat "${TMP}/calls.log" 2>/dev/null)" "session paste"
+    [ "$(paste_calls)" = 0 ]
 }
 
 @test "handoff: an abbreviated --slug is refused, never sent without its ledger" {
@@ -405,7 +424,7 @@ typed_keys() { od -An -c "${TMP}/typed.log" | tr -d ' \n'; }
     PATH="${STUB_BIN}:/usr/bin:/bin" run "${py}" "${PLUGIN}/scripts/peer-chat.py" --to peer --slug seatos --stdin < "${TMP}/msg"
     assert_status 0
     assert_not_contains "${output}" "not on PATH"
-    assert_contains "$(cat "${TMP}/calls.log")" "session paste"
+    [ "$(paste_calls)" = 1 ]
 }
 
 @test "handoff: PEER_CHAT_SLUG in the environment keeps peer-chat.py on its own transport" {
@@ -422,7 +441,7 @@ typed_keys() { od -An -c "${TMP}/typed.log" | tr -d ' \n'; }
     run python3 "${TMP}/peer-chat.py" --to peer --slug seatos --stdin < "${TMP}/msg"
     assert_status 1
     assert_contains "${output}" "peer-chat-paste.py is missing beside peer-chat.py; run peer-chat-install.sh"
-    assert_not_contains "$(cat "${TMP}/calls.log" 2>/dev/null)" "session paste"
+    [ "$(paste_calls)" = 0 ]
 }
 
 # ------------------------------------------------------------- path form --
@@ -432,7 +451,7 @@ typed_keys() { od -An -c "${TMP}/typed.log" | tr -d ' \n'; }
     printf '🎯 the finding, verbatim\n\n🔎 CLEAN=$(printf %%s $FILES | grep -Fxv -f <(partially_staged) || true)\n' > "${TMP}/tmp/peer-chat/seatos/03-left-body.msg"
     PEER_CHAT_WRAP=0 run python3 "${PASTE}" --to peer --message-file tmp/peer-chat/seatos/03-left-body.msg
     assert_status 0
-    assert_contains "$(cat "${TMP}/clip-first-set")" '🔎 CLEAN=$(printf %s $FILES | grep -Fxv -f <(partially_staged) || true)'
+    assert_contains "$(cat "${TMP}/pasted-first")" '🔎 CLEAN=$(printf %s $FILES | grep -Fxv -f <(partially_staged) || true)'
     [ "$(sed -n 3p "${TMP}/tmp/peer-chat/seatos/03-left-body.msg")" = '🔎 CLEAN=$(printf %s $FILES | grep -Fxv -f <(partially_staged) || true)' ]
     assert_not_contains "${output}" "message file restored"
 }
@@ -443,7 +462,7 @@ typed_keys() { od -An -c "${TMP}/typed.log" | tr -d ' \n'; }
     run python3 "${PASTE}" --to peer --message-file "${TMP}/link.msg"
     assert_status 1
     assert_contains "${output}" "message path must be an owned regular file, not a symlink"
-    assert_not_contains "$(cat "${TMP}/calls.log" 2>/dev/null)" "session paste"
+    [ "$(paste_calls)" = 0 ]
 }
 
 @test "path form: a file owned by another user is refused before any paste" {
@@ -452,7 +471,7 @@ typed_keys() { od -An -c "${TMP}/typed.log" | tr -d ' \n'; }
     run python3 "${PASTE}" --to peer --message-file /etc/hosts
     assert_status 1
     assert_contains "${output}" "message path must be an owned regular file, not a symlink"
-    assert_not_contains "$(cat "${TMP}/calls.log" 2>/dev/null)" "session paste"
+    [ "$(paste_calls)" = 0 ]
 }
 
 @test "path form: a directory and an oversized file are refused with their own reasons" {
@@ -463,7 +482,7 @@ typed_keys() { od -An -c "${TMP}/typed.log" | tr -d ' \n'; }
     run python3 "${PASTE}" --to peer --message-file "${TMP}/big.msg"
     assert_status 1
     assert_contains "${output}" "message path exceeds 65536 bytes"
-    assert_not_contains "$(cat "${TMP}/calls.log" 2>/dev/null)" "session paste"
+    [ "$(paste_calls)" = 0 ]
 }
 
 @test "path form: a ledger refusal leaves the file as it was, no restore message" {
@@ -482,7 +501,7 @@ typed_keys() { od -An -c "${TMP}/typed.log" | tr -d ' \n'; }
     printf '🎯 the double payment guard groups by bid so a purchase retried after a 409 lands a second PAID row on a second bid\n\n🔎 front/src/Service/Payment/DoublePaymentProcessor/VeryLongClassNameHere.php:23-31\n' > "${TMP}/msg"
     send_file "${TMP}/msg"
     assert_status 0
-    pasted="$(cat "${TMP}/clip-first-set")"
+    pasted="$(cat "${TMP}/pasted-first")"
     assert_contains "${pasted}" $'🎯 the double payment guard groups by bid so a\n   purchase retried after a 409 lands a second\n   PAID row on a second bid'
     assert_contains "${pasted}" $'\n🔎 front/src/Service/Payment/DoublePaymentProcessor/VeryLongClassNameHere.php:23-31'
     assert_contains "${output}" '"lines": 5'
@@ -525,7 +544,7 @@ seed_codex_ask() { # seed_codex_ask <disposition> <due> <reason>
     printf '🔎 Processor.php:23\n\n❓ does a retry create a second bid?\n\n❓ is the 409 retried at all?\n' > "${TMP}/msg"
     send_file "${TMP}/msg" --slug seatos
     assert_status 0
-    pasted="$(cat "${TMP}/clip-first-set")"
+    pasted="$(cat "${TMP}/pasted-first")"
     assert_contains "${pasted}" "❓ #left-001 does a retry create a second bid?"
     assert_contains "${pasted}" "❓ #left-002 is the 409 retried at all?"
     assert_contains "${output}" '"asks": ["#left-001", "#left-002"]'
@@ -548,9 +567,9 @@ seed_codex_ask() { # seed_codex_ask <disposition> <due> <reason>
     printf '🔎 evidence\n❓ return the result\n' > "${TMP}/msg"
     PEER_CHAT_WAKE_MINUTES=3 send_file "${TMP}/msg" --slug seatos --blocking --deadline 20m --est-grace 5m
     assert_status 0
-    assert_contains "$(cat "${TMP}/clip-first-set")" "deadline 20m after"
-    assert_contains "$(cat "${TMP}/clip-first-set")" "(flag)"
-    assert_contains "$(cat "${TMP}/clip-first-set")" "(agent)"
+    assert_contains "$(cat "${TMP}/pasted-first")" "deadline 20m after"
+    assert_contains "$(cat "${TMP}/pasted-first")" "(flag)"
+    assert_contains "$(cat "${TMP}/pasted-first")" "(agent)"
     [ "$(jq -r '.timers["left-001"].budgets.wake.source' "${TMP}/${LEDGER}")" = env ]
     jq -e '.timers["left-001"].budgets.wake.seconds == 180' "${TMP}/${LEDGER}"
     [ "$(jq -r '.asks[0].question' "${TMP}/${LEDGER}")" = "return the result" ]
@@ -563,7 +582,7 @@ seed_codex_ask() { # seed_codex_ask <disposition> <due> <reason>
     send_file "${TMP}/msg" --slug seatos --blocking --deadline 20m
     assert_status 2
     assert_contains "${output}" "grace"
-    assert_not_contains "$(cat "${TMP}/calls.log")" "session paste"
+    [ "$(paste_calls)" = 0 ]
     [ ! -f "${TMP}/typed.log" ]
 }
 
@@ -589,7 +608,7 @@ seed_codex_ask() { # seed_codex_ask <disposition> <due> <reason>
     send_file "${TMP}/msg" --slug seatos --key stable
     assert_status 2
     assert_contains "${output}" "already claimed"
-    [ "$(grep -c '^session paste ' "${TMP}/calls.log")" = 1 ]
+    [ "$(paste_calls)" = 1 ]
     [ "$(jq '.messages | length' "${TMP}/${LEDGER}")" = 1 ]
 }
 
@@ -602,11 +621,11 @@ seed_codex_ask() { # seed_codex_ask <disposition> <due> <reason>
     send_file "${TMP}/msg" --slug seatos
     assert_status 2
     assert_contains "${output}" "earlier delivery is unresolved"
-    [ "$(grep -c '^session paste ' "${TMP}/calls.log")" = 1 ]
+    [ "$(paste_calls)" = 1 ]
     [ "$(jq '.messages | length' "${TMP}/${LEDGER}")" = 1 ]
 }
 
-@test "delivery: state.lock is available throughout clipboard and pane IO" {
+@test "delivery: state.lock is available during the bracketed paste" {
     cat > "${TMP}/check-lock.py" <<'PY'
 import fcntl, pathlib, sys
 path = pathlib.Path(sys.argv[1])
@@ -615,7 +634,6 @@ if path.exists():
         fcntl.flock(handle, fcntl.LOCK_EX | fcntl.LOCK_NB)
         path.with_suffix('.checked').write_text('storage lock free during IO')
 PY
-    stub pbcopy "python3 '${TMP}/check-lock.py' '${TMP}/tmp/peer-chat/seatos/state.lock' || exit 9; cat > '${TMP}/clip'; grep -q '^Chat from' '${TMP}/clip' || exit 0; cp '${TMP}/clip' '${TMP}/clip-last-set'"
     printf '🎯 lock check\n' > "${TMP}/msg"
     send_file "${TMP}/msg" --slug seatos
     assert_status 0
@@ -629,8 +647,7 @@ PY
     assert_status 2
     assert_contains "${output}" "refused: the peer's asks below have no disposition"
     assert_contains "${output}" "#codex-001: does the refund path reuse the bid?"
-    assert_not_contains "$(cat "${TMP}/calls.log")" "session paste"
-    [ "$(cat "${TMP}/clip")" = "user clipboard" ]
+    [ "$(paste_calls)" = 0 ]
 }
 
 @test "ledger: answered closes the ask and keeps the reason" {
@@ -653,7 +670,7 @@ PY
     printf '🎯 next claim\n' > "${TMP}/msg"
     send_file "${TMP}/msg" --slug seatos
     assert_status 0
-    assert_not_contains "$(cat "${TMP}/clip-last-set")" "overdue"
+    assert_not_contains "$(cat "${TMP}/pasted-body")" "overdue"
 }
 
 @test "ledger: a deferral past its due time is prepended to the deferrer's next send as overdue" {
@@ -661,9 +678,9 @@ PY
     printf '🎯 next claim\n' > "${TMP}/msg"
     send_file "${TMP}/msg" --slug seatos
     assert_status 0
-    [ "$(head -1 "${TMP}/clip-first-set")" = "Chat from claude (left): overdue: #codex-001 deferred(after the fixture" ]
-    [ "$(sed -n 2p "${TMP}/clip-first-set")" = "   run): does the refund path reuse the bid?" ]
-    [ "$(sed -n 4p "${TMP}/clip-first-set")" = "🎯 next claim" ]
+    [ "$(head -1 "${TMP}/pasted-first")" = "Chat from claude (left): overdue: #codex-001 deferred(after the fixture" ]
+    [ "$(sed -n 2p "${TMP}/pasted-first")" = "   run): does the refund path reuse the bid?" ]
+    [ "$(sed -n 4p "${TMP}/pasted-first")" = "🎯 next claim" ]
 }
 
 @test "ledger: a refused --message-file send restores the spool file so the body can be fixed and resent" {
@@ -686,8 +703,8 @@ PY
     printf '🎯 same harness on both sides\n' > "${TMP}/msg"
     send_file "${TMP}/msg"
     assert_status 0
-    [ "$(cat "${TMP}/clip-first-set")" = "Chat from claude (left): 🎯 same harness on both sides" ]
-    assert_contains "$(cat "${TMP}/calls.log")" "session paste --pane right --target ${SID}"
+    [ "$(cat "${TMP}/pasted-first")" = "Chat from claude (left): 🎯 same harness on both sides" ]
+    assert_contains "$(cat "${TMP}/paste-calls.log")" "session type --stdin --pane right --target ${SID}"
 }
 
 @test "pair: codex+codex, right sends to left with the Codex protocol" {
@@ -695,15 +712,15 @@ PY
     printf '🎯 codex to codex\n' > "${TMP}/msg"
     AGTERM_PANE=right send_file "${TMP}/msg"
     assert_status 0
-    [ "$(cat "${TMP}/clip-first-set")" = "Chat from codex (right): 🎯 codex to codex" ]
-    assert_contains "$(cat "${TMP}/calls.log")" "session paste --pane left --target ${SID}"
+    [ "$(cat "${TMP}/pasted-first")" = "Chat from codex (right): 🎯 codex to codex" ]
+    assert_contains "$(cat "${TMP}/paste-calls.log")" "session type --stdin --pane left --target ${SID}"
 }
 
 @test "pair: PEER_CHAT_NAME names the sender in the label" {
     printf '🎯 named\n' > "${TMP}/msg"
     PEER_CHAT_NAME="claude opus" send_file "${TMP}/msg"
     assert_status 0
-    [ "$(cat "${TMP}/clip-first-set")" = "Chat from claude opus: 🎯 named" ]
+    [ "$(cat "${TMP}/pasted-first")" = "Chat from claude opus: 🎯 named" ]
 }
 
 @test "pair: legacy --to claude refuses when both panes run claude, before any paste" {
@@ -712,8 +729,7 @@ PY
     run python3 "${PASTE}" --to claude --stdin < "${TMP}/msg"
     assert_status 1
     assert_contains "${output}" "2 panes run claude"
-    assert_not_contains "$(cat "${TMP}/calls.log")" "session paste"
-    [ "$(cat "${TMP}/clip")" = "user clipboard" ]
+    [ "$(paste_calls)" = 0 ]
 }
 
 @test "pair: --to the sender's own pane is refused" {
@@ -721,7 +737,7 @@ PY
     run python3 "${PASTE}" --to left --stdin < "${TMP}/msg"
     assert_status 1
     assert_contains "${output}" "resolves to this pane (left)"
-    assert_not_contains "$(cat "${TMP}/calls.log")" "session paste"
+    [ "$(paste_calls)" = 0 ]
 }
 
 @test "pair: a peer pane running no known harness is refused before any paste" {
@@ -730,7 +746,7 @@ PY
     send_file "${TMP}/msg"
     assert_status 1
     assert_contains "${output}" "the right pane runs no known peer"
-    assert_not_contains "$(cat "${TMP}/calls.log")" "session paste"
+    [ "$(paste_calls)" = 0 ]
 }
 
 @test "pair: a sender outside a left or right pane is refused" {
@@ -747,7 +763,7 @@ PY
     printf '🔎 Processor.php:23\n\n❓ next question\n' > "${TMP}/msg"
     send_file "${TMP}/msg" --slug seatos
     assert_status 0
-    assert_contains "$(cat "${TMP}/clip-first-set")" "❓ #left-003 next question"
+    assert_contains "$(cat "${TMP}/pasted-first")" "❓ #left-003 next question"
     assert_contains "$(ledger_rows)" $'claude-002\tleft\t'
 }
 
@@ -765,15 +781,15 @@ PY
     assert_contains "${output}" "message file restored"
     cmp "${spool}" "${TMP}/expected"
     [ ! -f "${TMP}/typed.log" ]
-    assert_not_contains "$(cat "${TMP}/calls.log")" 'session paste'
+    [ "$(paste_calls)" = 0 ]
     [ ! -f "${TMP}/tmp/peer-chat/recovery/asks.tsv" ]
 
     run python3 "${PASTE}" --to peer --message-file peer-chat-recovery.txt --slug recovery --session "${SID}" --window win-1
     assert_status 0
     [ ! -e "${spool}" ]
     [ "$(wc -l < "${TMP}/typed.log")" -eq 1 ]
-    assert_contains "$(cat "${TMP}/clip-last-set")" 'recovered conversation'
-    assert_contains "$(cat "${TMP}/calls.log")" "session paste --pane right --target ${SID} --window win-1"
+    assert_contains "$(cat "${TMP}/pasted-body")" 'recovered conversation'
+    assert_contains "$(cat "${TMP}/paste-calls.log")" "session type --stdin --pane right --target ${SID} --window win-1"
 }
 
 @test "recovery: ambiguous selector preserves spool and never chooses the active pane" {
@@ -793,7 +809,7 @@ PY
     assert_contains "${output}" "ambiguous"
     [ "$(cat "${spool}")" = '🎯 do not guess' ]
     [ ! -f "${TMP}/typed.log" ]
-    assert_not_contains "$(cat "${TMP}/calls.log")" 'session paste'
+    [ "$(paste_calls)" = 0 ]
 }
 
 @test "recovery: unconfirmed paste preserves spool without submitting or retrying" {
@@ -808,7 +824,7 @@ PY
     assert_contains "${output}" "inspect the failure and peer screen before retrying"
     [ "$(cat "${spool}")" = '🎯 inspect before retrying' ]
     [ ! -f "${TMP}/typed.log" ]
-    [ "$(grep -c '^session paste ' "${TMP}/calls.log")" -eq 1 ]
+    [ "$(paste_calls)" -eq 1 ]
 }
 
 # --recover-delivery runs in the receiving pane (left = claude in tree-split-codex.json).
@@ -843,7 +859,7 @@ recover() { run python3 "${PASTE}" --to peer --recover-delivery --slug t; }
     printf '🎯 one\n\n🔎 two\n' > "${TMP}/msg"
     send_file "${TMP}/msg" --slug t
     assert_status 0
-    [ "$(cat "$(outbox right.msg)")" = "$(cat "${TMP}/clip-first-set")" ]
+    [ "$(cat "$(outbox right.msg)")" = "$(cat "${TMP}/pasted-first")" ]
     [ "$(stat -f %Lp "$(outbox right.msg)")" = 600 ]
 }
 
@@ -969,7 +985,7 @@ claude_peer() {
 }
 
 logged_calls() { touch "${TMP}/calls.log"; grep -c "^$1 " "${TMP}/calls.log" || true; }
-paste_calls() { logged_calls 'session paste'; }
+paste_calls() { awk 'END { print NR }' "${TMP}/paste-calls.log"; }
 notify_calls() { logged_calls notify; }
 message_states() { jq -r '[.messages[].state] | join(",")' "${TMP}/${LEDGER}"; }
 
@@ -1012,14 +1028,13 @@ PY
     assert_contains "${output}" "${HELD_NO_COMPOSER}"
     [ "$(paste_calls)" = 0 ]
     [ ! -f "${TMP}/typed.log" ]
-    [ ! -f "${TMP}/clip-first-set" ]
-    [ "$(cat "${TMP}/clip")" = "user clipboard" ]
+    [ ! -f "${TMP}/pasted-first" ]
     nothing_recorded
 
     echo 0 > "${TMP}/dialog-reads"
     send_file "${TMP}/msg" --slug seatos --wait 1s
     assert_status 0
-    assert_contains "$(cat "${TMP}/clip-first-set")" "❓ #left-001 does a retry create a second bid?"
+    assert_contains "$(cat "${TMP}/pasted-first")" "❓ #left-001 does a retry create a second bid?"
     [ "$(message_states)" = submit_sent ]
 }
 
@@ -1362,7 +1377,6 @@ symlinked_lock() { # symlinked_lock <topic> <pane> <target>
     [ ! -e "${TMP}/elsewhere" ]
     [ "$(paste_calls)" = 0 ]
     [ ! -f "${TMP}/typed.log" ]
-    [ "$(cat "${TMP}/clip")" = "user clipboard" ]
     nothing_recorded
     [ "$(notify_calls)" = 0 ]
 

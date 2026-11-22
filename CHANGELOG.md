@@ -1,5 +1,11 @@
 # Changelog
 
+## peer-chat v0.11.1 - 2026-11-21
+
+### Fixed
+
+- A `--slug` send from a sandboxed Codex pane failed at `pbcopy` (exit 1) before anything was pasted, so its asks never got a disposition in the ledger. `peer-chat-paste.py` now types the body as one bracketed paste through `agtermctl session type --stdin` and never reads or writes the system clipboard.
+
 ## session-learnings v0.4.1 - 2026-11-21
 
 ### Fixed
