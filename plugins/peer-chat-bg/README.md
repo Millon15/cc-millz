@@ -5,6 +5,10 @@ and Codex's native collaboration tools. `/peer-chat-bg:peer-chat` discusses or r
 `/peer-chat-bg:build` implements an agreed design through accepted lanes, frozen cross-review
 targets and recorded acceptance checks.
 
+- 🎯 **Scoped targets:** Use `target --output tmp/peer-chat-bg/target.json --path src --path tests`
+  to cover selected repository paths in a fresh Git-ignored manifest. Each `--path` is a literal
+  repository-relative file or directory. Choose the paths needed for the build and its checks,
+  and name the scope in confirmation evidence. Omit `--path` to verify the whole worktree.
 - 🧩 **Shared machinery:** question parsing/ledger and the build protocol have canonical sources
   under `shared/peer-chat/`. Deterministic generators package self-contained copies into both
   plugins; CI checks drift. Installed plugin caches need no sibling checkout or symlinks.

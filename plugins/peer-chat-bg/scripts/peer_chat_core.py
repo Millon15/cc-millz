@@ -341,10 +341,35 @@ def git_with_index(repo: Path, index: Path, *args: str) -> str:
 
 def freeze_tree(repo: Path, pathspecs: list[str] | None = None) -> str:
     """Write the working tree as one git tree object through a scratch copy of the index; the real index is untouched."""
-    with tempfile.TemporaryDirectory(prefix="peer-chat-freeze.") as scratch:
-        index = Path(scratch) / "index"
-        real = git_index_path(repo)
-        if real.exists():
-            shutil.copy2(real, index)
+    real = git_index_path(repo)
+    index = scratch_file_beside(real)
+    try:
+        seed_index(real, index)
         git_with_index(repo, index, "add", "-A", "--", *(pathspecs or ["."]))
         return git_with_index(repo, index, "write-tree")
+    finally:
+        index.unlink(missing_ok=True)
+        index.with_name(index.name + ".lock").unlink(missing_ok=True)
+
+
+def scratch_file_beside(real: Path) -> Path:
+    """A temp file in the real index's directory, so the git dir limits access as it does for the index.
+
+    A file, never a directory: a sandbox that may unlink files can still refuse rmdir.
+    """
+    descriptor, name = tempfile.mkstemp(prefix="peer-chat-freeze.", suffix=".index", dir=real.parent)
+    os.close(descriptor)
+    return Path(name)
+
+
+def seed_index(real: Path, index: Path) -> None:
+    """Copy the real index with its mtime, or leave no file when the repo has none: git rejects an empty index.
+
+    The mtime is load-bearing: git judges racily clean entries against it, and a fresh one hides a same-size edit.
+    """
+    if not real.exists():
+        index.unlink()
+        return
+    shutil.copyfile(real, index)
+    stamp = real.stat()
+    os.utime(index, ns=(stamp.st_atime_ns, stamp.st_mtime_ns))

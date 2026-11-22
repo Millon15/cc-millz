@@ -7,7 +7,7 @@ import argparse
 import hashlib
 import json
 import os
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 import re
 import subprocess
 import sys
@@ -110,11 +110,16 @@ def ignored_path(repo, path):
     require(not git(repo, "ls-files", "--", relative), "protocol artifacts must not be tracked: " + relative)
 
 
-def tree_snapshot(repo):
-    """Content-address the whole visible working tree, including new untracked files."""
-    paths = sorted(set(git(repo, "ls-files", "-z", "--cached", "--others", "--exclude-standard").split(b"\0")) - {b""})
+def tree_snapshot(repo, paths=None):
+    """Content-address the visible working tree, new untracked files included, or only a scoped target's paths."""
+    scope = ("--literal-pathspecs",) if paths else ()
+    listed = git(repo, *scope, "ls-files", "-z", "--cached", "--others", "--exclude-standard", "--", *(paths or ()))
+    names = sorted(set(listed.split(b"\0")) - {b""})
+    for raw in names if paths else ():
+        require(not symlinked_parent(repo, os.fsdecode(raw)),
+                "scoped file " + os.fsdecode(raw) + " resolves through a symlinked directory; scope the link itself")
     files = {}
-    for raw in paths:
+    for raw in names:
         name = os.fsdecode(raw)
         path = repo / name
         if path.is_symlink():
@@ -125,10 +130,38 @@ def tree_snapshot(repo):
             require(path.is_file(), "cannot freeze directory/submodule as a file: " + name)
             files[name] = {"kind": "file", "sha256": digest(path.read_bytes()), "executable": bool(path.stat().st_mode & 0o111)}
     head = subprocess.run(["git", "-C", str(repo), "rev-parse", "--verify", "HEAD"], capture_output=True, text=True)
-    return {"schema": 1, "repo": str(repo), "head": head.stdout.strip() if head.returncode == 0 else None, "files": files}
+    snapshot = {"schema": 1, "repo": str(repo), "head": head.stdout.strip() if head.returncode == 0 else None, "files": files}
+    return {**snapshot, "paths": paths} if paths else snapshot
 
 
-def freeze_target(repo, value, since=None):
+def symlinked_parent(repo, name):
+    return any((repo / parent).is_symlink() for parent in PurePosixPath(name).parents if str(parent) != ".")
+
+
+def scope_path_valid(path):
+    return path != "" and not path.startswith("/") and ".." not in PurePosixPath(path).parts
+
+
+def scope_paths(values):
+    """The sorted literal scope of a target, or None for the whole tree."""
+    if not values:
+        return None
+    require(all(scope_path_valid(value) for value in values) and len(values) == len(set(values)),
+            "--path values must be unique repo-relative paths without a leading / or a .. part")
+    return sorted(values)
+
+
+def require_scope_matches(repo, paths):
+    for path in paths or ():
+        listed = git(repo, "--literal-pathspecs", "ls-files", "-z", "--cached", "--others", "--exclude-standard", "--", path)
+        require(bool(listed.strip(b"\0")), "--path " + path + " matches no visible file")
+
+
+def literal_pathspecs(paths):
+    return [":(literal)" + path for path in paths] if paths else None
+
+
+def freeze_target(repo, value, since=None, paths=None):
     path = Path(value)
     if not path.is_absolute():
         path = repo / path
@@ -136,8 +169,12 @@ def freeze_target(repo, value, since=None):
     require(path.is_relative_to(repo), "target manifest must be inside the project")
     ignored_path(repo, path)
     require(not path.exists(), "target manifest exists; freeze to a fresh file")
-    before = load_manifest(repo, since)["files"] if since else None
-    frozen = tree_snapshot(repo)
+    paths = scope_paths(paths)
+    before = load_manifest(repo, since) if since else None
+    require(before is None or before.get("paths") == paths, "--since manifest has a different scope")
+    require_scope_matches(repo, paths)
+    frozen = tree_snapshot(repo, paths)
+    tree = freeze_tree(repo, literal_pathspecs(paths))
     data = (json.dumps(frozen, sort_keys=True, ensure_ascii=False, indent=2) + "\n").encode()
     path.parent.mkdir(parents=True, exist_ok=True)
     with path.open("xb") as stream:
@@ -146,9 +183,9 @@ def freeze_target(repo, value, since=None):
         stream.flush()
         os.fsync(stream.fileno())
     token = "manifest:" + str(path.relative_to(repo)) + "#" + digest(data)
-    result = {"target": token, "manifest": str(path), "files": len(frozen["files"]), "tree": freeze_tree(repo)}
+    result = {"target": token, "manifest": str(path), "files": len(frozen["files"]), "tree": tree}
     if before is not None:
-        result["changed"] = changed_files(before, frozen["files"])
+        result["changed"] = changed_files(before["files"], frozen["files"])
     return result
 
 
@@ -178,7 +215,9 @@ def validate_target(repo, target):
             actual = hashlib.new(algorithm, b"blob " + str(len(data)).encode() + b"\0" + data).hexdigest()
             require(actual == object_id.decode(), "target file bytes changed: " + os.fsdecode(name))
         return
-    require(load_manifest(repo, target) == tree_snapshot(repo), "target working tree changed; freeze a new target and re-run checks")
+    manifest = load_manifest(repo, target)
+    current = tree_snapshot(repo, scope_paths(manifest.get("paths")))
+    require(manifest == current, "target working tree changed; freeze a new target and re-run checks")
 
 
 def load_manifest(repo, target):
@@ -438,7 +477,7 @@ def mutate(args, store, repo, profile):
     )
     require(state["phase"] == "active", "topic is finalized; use a fresh slug")
     if args.command == "target":
-        return freeze_target(repo, args.output, args.since)
+        return freeze_target(repo, args.output, args.since, args.paths)
     if args.command == "bind":
         return bind(args, store, state)
     if args.command == "prepare":
@@ -507,6 +546,12 @@ def parser():
     q.add_argument(
         "--since",
         help="an earlier manifest token; adds the changed files and keeps the full manifest",
+    )
+    q.add_argument(
+        "--path",
+        action="append",
+        dest="paths",
+        help="limit the target to this literal repo-relative path; repeat for more",
     )
     q = sub.add_parser("bind")
     q.add_argument("--role", choices=("right",), default="right")

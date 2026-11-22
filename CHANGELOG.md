@@ -1,5 +1,25 @@
 # Changelog
 
+## peer-chat v0.12.1 - 2026-11-22
+
+### Fixed
+
+- Review freezes use a temporary Git index file and remove it after use. Freezes can finish
+  in sandboxes that allow file removal and refuse directory removal.
+
+## peer-chat-bg v0.5.0 - 2026-11-22
+
+### Added
+
+- `target --output` accepts repeatable `--path` flags to snapshot selected repository paths.
+  The manifest records the scope for checks and confirmations. Whole-worktree targets retain
+  their existing format.
+
+### Fixed
+
+- Target creation uses a temporary Git index file, so it can finish in sandboxes that refuse
+  directory removal.
+
 ## peer-chat v0.12.0 - 2026-11-22
 
 ### Added

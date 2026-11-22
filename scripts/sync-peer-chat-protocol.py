@@ -83,8 +83,9 @@ FREEZE = {
     ),
     "peer-chat-bg": (
         "- Freeze a review target: the integrator commits it when the user's instructions and the project's\n"
-        "  policy allow a commit now; otherwise the engine's `target --output <fresh path>`, with\n"
-        "  `--since <previous token>` on a re-freeze so its `changed` list names the only files to re-read.\n"
+        "  policy allow a commit now. Otherwise use the engine's `target --output <fresh ignored path>`.\n"
+        "  Repeat `--path <repo-relative path>` to scope the manifest to literal files or directories.\n"
+        "  On a re-freeze, use the same scope with `--since <previous token>` to list the changed files.\n"
         "  Edits pause until the findings arrive. `🎯 lane <n> ready for review: <token>`."
     ),
 }
@@ -178,6 +179,12 @@ def outputs():
             rendered = rendered.replace(
                 "a commit or tree sha",
                 "a validated `git:<full-sha>` token on a clean HEAD, or the `manifest:<path>#<sha256>` token returned by the engine's `target --output` command",
+            )
+            rendered = rendered.replace(
+                "  or before the last fix landed, does not count: confirm again on the final target.",
+                "  or before the last fix landed, does not count: confirm again on the final target.\n"
+                "  Include the build files and check inputs in a scoped final manifest. Name the selected paths\n"
+                "  or whole worktree in each confirmation's evidence (engine § 5 Close).",
             )
         else:
             rendered = rendered.replace("a commit or tree sha", "the `target_set` id covering every repository and its required checks")

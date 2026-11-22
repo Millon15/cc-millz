@@ -627,5 +627,109 @@ with ledger.locked():
             self.assertIn("left-1011", ids)
 
 
+class ScopedTargetTests(ProtocolFixture):
+    def scoped(
+        self, *paths, output="tmp/peer-chat-bg/scoped.json", status=0, since=None
+    ):
+        flags = [flag for path in paths for flag in ("--path", path)]
+        extra = ["--since", since] if since else []
+        return self.call("target", "--output", output, *flags, *extra, status=status)
+
+    def unreadable(self, name):
+        path = self.repo / name
+        path.write_text("outside the scope\n")
+        path.chmod(0)
+        self.addCleanup(path.chmod, 0o600)
+        return path
+
+    def manifest(self, output="tmp/peer-chat-bg/scoped.json"):
+        return json.loads((self.repo / output).read_text())
+
+    def test_scoped_target_checks_beside_an_unreadable_file(self):
+        self.unreadable("secret.env")
+        scoped = self.scoped("app.txt")
+        self.assertRegex(scoped["tree"], r"^[0-9a-f]{40}$")
+        self.assertEqual(self.check(target=scoped["target"])["state"], "passed")
+
+    def test_scoped_target_sees_edits_inside_its_paths_only(self):
+        target = self.scoped("app.txt")["target"]
+        (self.repo / "other.txt").write_text("outside\n")
+        self.check(target=target)
+        (self.repo / "app.txt").write_text("version two\n")
+        self.assertIn(
+            "working tree changed", self.check(target=target, status=2)["error"]
+        )
+
+    def test_scoped_manifest_binds_sorted_paths_and_unscoped_keeps_its_shape(self):
+        (self.repo / "dir").mkdir()
+        (self.repo / "dir/f.txt").write_text("f\n")
+        self.scoped("dir", "app.txt")
+        manifest = self.manifest()
+        self.assertEqual(manifest["paths"], ["app.txt", "dir"])
+        self.assertEqual(sorted(manifest["files"]), ["app.txt", "dir/f.txt"])
+        self.assertNotIn("paths", self.manifest("tmp/peer-chat-bg/target.json"))
+
+    def test_scope_paths_must_be_unique_relative_and_inside_the_repo(self):
+        for bad in (
+            ["/etc/passwd"],
+            ["../outside"],
+            ["dir/../../x"],
+            [""],
+            ["app.txt", "app.txt"],
+        ):
+            error = self.scoped(*bad, output="tmp/peer-chat-bg/bad.json", status=2)[
+                "error"
+            ]
+            self.assertIn("path", error)
+            self.assertFalse((self.repo / "tmp/peer-chat-bg/bad.json").exists())
+
+    def test_each_scope_path_must_match_a_visible_file(self):
+        (self.repo / "ignored.txt").write_text("ignored\n")
+        (self.repo / ".gitignore").write_text("/tmp/peer-chat-bg/\n/ignored.txt\n")
+        for paths in (["app.txt", "future.txt"], ["ignored.txt"]):
+            error = self.scoped(*paths, output="tmp/peer-chat-bg/none.json", status=2)["error"]
+            self.assertIn(paths[-1] + " matches no visible file", error)
+            self.assertFalse((self.repo / "tmp/peer-chat-bg/none.json").exists())
+
+    def test_scoped_file_through_a_symlinked_parent_is_refused(self):
+        (self.repo / "src").mkdir()
+        (self.repo / "src/code.txt").write_text("lane\n")
+        subprocess.run(["git", "-C", str(self.repo), "add", "src/code.txt"], check=True)
+        target = self.scoped("src/code.txt")["target"]
+        outside = Path(self.temp.name + "-outside")
+        outside.mkdir()
+        self.addCleanup(shutil.rmtree, outside)
+        (outside / "code.txt").write_text("lane\n")
+        (self.repo / "src").rename(self.repo / "real-src")
+        (self.repo / "src").symlink_to(outside)
+        self.assertIn(
+            "symlinked directory", self.check(target=target, status=2)["error"]
+        )
+
+    def test_since_across_scopes_is_refused(self):
+        first = self.scoped("app.txt")["target"]
+        error = self.scoped(
+            "app.txt",
+            ".gitignore",
+            output="tmp/peer-chat-bg/s2.json",
+            since=first,
+            status=2,
+        )["error"]
+        self.assertIn("different scope", error)
+        self.assertIn(
+            "different scope",
+            self.call(
+                "target",
+                "--output",
+                "tmp/peer-chat-bg/s3.json",
+                "--since",
+                first,
+                status=2,
+            )["error"],
+        )
+        again = self.scoped("app.txt", output="tmp/peer-chat-bg/s4.json", since=first)
+        self.assertEqual(again["changed"], [])
+
+
 if __name__ == "__main__":
     unittest.main()

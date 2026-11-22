@@ -188,17 +188,23 @@ directly. Its receipts are evidence-backed records, not authentication or a sand
 ## 5. Close
 
 1. Required checks: `... check --name NAME --state passed|failed|incomplete --target TARGET
-   --evidence FILE`. First create a target with `... target --output <ignored-path>/target.json`;
-   use the returned `manifest:<path>#<sha256>` token. It covers every tracked and untracked
-   nonignored file, modes, deletions and HEAD. Alternatively `git:<full-sha>` requires that
-   HEAD and a clean worktree. Check/finalize revalidate actual files, not a caller label.
+   --evidence FILE`. First create a target with `... target --output <fresh-ignored-path>`.
+   Omit `--path` to cover the whole worktree or repeat it to select the build files and check
+   inputs, for example `--path src --path tests`. Use unique literal repository-relative paths
+   without a `..` segment. A directory covers tracked and nonignored untracked files beneath it.
+   A selected file reached through a symlinked directory is refused. Use the returned
+   `manifest:<path>#<sha256>` token, which binds the scope, file contents, modes, deletions and HEAD.
+   When re-freezing with `--since`, use the same scope as the previous manifest.
+   Alternatively, `git:<full-sha>` requires that HEAD and a clean worktree.
+   Check and finalize revalidate the target using the recorded scope.
    Checks for an older target do not prove the final tree.
 2. Resolve all questions and uncertain messages. Exchange the `🏁` closing messages FIRST,
    then finalize: a prepared message with a `🏁` line and no new `❓` keeps the other side's
    confirmation, while any other prepare, and every `check`, clears it. Each peer names the
    same unchanged final target and runs `... finalize --target TARGET --actor-id OWN_REAL_ID --evidence FILE`.
-   Evidence files must be nonempty, inside the consuming repo, and reflect the actual result;
-   the helper records their SHA256. Keep them ignored and owner-private.
+   Name the selected paths or whole worktree in each confirmation's evidence. Evidence files
+   must be nonempty, inside the consuming repo, and reflect the actual result. The helper records
+   their SHA256. Keep them ignored and owner-private.
 3. Report completion only when the helper reports `phase: finalized`, every required check is green,
    and both peers confirmed that target. Report files/commits, proof paths and any blocker.
    Missing physical/device/runtime checks are incomplete, never inferred from unit tests.

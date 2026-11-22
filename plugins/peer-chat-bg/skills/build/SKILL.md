@@ -100,8 +100,9 @@ until its owner accepts it.
   before any dependent edit; unrelated work continues meanwhile.
 - Self-check each lane with what the project has: typecheck, lint, the unit tests on its files.
 - Freeze a review target: the integrator commits it when the user's instructions and the project's
-  policy allow a commit now; otherwise the engine's `target --output <fresh path>`, with
-  `--since <previous token>` on a re-freeze so its `changed` list names the only files to re-read.
+  policy allow a commit now. Otherwise use the engine's `target --output <fresh ignored path>`.
+  Repeat `--path <repo-relative path>` to scope the manifest to literal files or directories.
+  On a re-freeze, use the same scope with `--since <previous token>` to list the changed files.
   Edits pause until the findings arrive. `🎯 lane <n> ready for review: <token>`.
 
 ## Phase 3: Cross-review
@@ -144,6 +145,8 @@ that could not run is `incomplete`, never green.
 - Both peers name the same final target: a validated `git:<full-sha>` token on a clean HEAD, or the `manifest:<path>#<sha256>` token returned by the engine's `target --output` command, unchanged since
   the last green check and both confirmations. A confirmation sent before the last green check,
   or before the last fix landed, does not count: confirm again on the final target.
+  Include the build files and check inputs in a scoped final manifest. Name the selected paths
+  or whole worktree in each confirmation's evidence (engine § 5 Close).
 - Commit and push only as the user's instructions and the project's policy allow, through the
   project's commit command or agent when one exists; the command grants no publish authority.
 - `🏁` from both sides: commits, proof paths, leftovers and why. Report to the user: lanes,
