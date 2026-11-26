@@ -797,3 +797,96 @@ assert_peer_forms() {
     [ "$(printf '%s' "$output" | jq -r '.values.peer_fallback')" = none ]
     [ ! -e "$TMP/calls.jsonl" ]
 }
+
+@test "topic grant: an embedded Codex launch gets --add-dir on the canonical default topic dir, created" {
+    run bash "$SPAWN" --topic-dir tmp/peer-chat/demo
+    assert_status 0
+    topic="$(pwd -P)/tmp/peer-chat/demo"
+    [ -d "$topic" ]
+    [ "$(jq -r 'index("--add-dir") as $i | .[$i + 1]' "$TMP/launch.json")" = "$topic" ]
+    [ "$(printf '%s' "$output" | jq -r '.topic_grant')" = "$topic" ]
+}
+
+@test "topic grant: a --state directory outside the repo is granted when it holds state.json" {
+    mkdir -p "$TMP/elsewhere/topic"
+    printf '{}' > "$TMP/elsewhere/topic/state.json"
+    run bash "$SPAWN" --topic-dir "$TMP/elsewhere/topic"
+    assert_status 0
+    [ "$(jq -r 'index("--add-dir") as $i | .[$i + 1]' "$TMP/launch.json")" = "$(cd "$TMP/elsewhere/topic" && pwd -P)" ]
+}
+
+@test "topic grant: a restart of an embedded Codex peer carries the grant" {
+    set_pair claude codex
+    run bash "$SPAWN" --restart --topic-dir tmp/peer-chat/demo
+    assert_status 0
+    assert_contains "$output" '"state":"restarted"'
+    assert_launch_arg "$(pwd -P)/tmp/peer-chat/demo"
+}
+
+@test "topic grant: daemon mode adds nothing and says so" {
+    export PEER_CHAT_CODEX_MODE=daemon
+    run bash "$SPAWN" --topic-dir tmp/peer-chat/demo
+    assert_status 0
+    assert_contains "$output" "no topic grant in daemon mode for $(pwd -P)/tmp/peer-chat/demo"
+    assert_not_contains "$output" 'cannot write'
+    jq -e 'index("--add-dir") == null' "$TMP/launch.json" >/dev/null
+    [ "$(printf '%s' "$output" | tail -1 | jq -r '.topic_grant')" = null ]
+}
+
+@test "topic grant: a Claude peer gets no grant" {
+    run bash "$SPAWN" claude --topic-dir tmp/peer-chat/demo
+    assert_status 0
+    jq -e 'index("--add-dir") == null' "$TMP/launch.json" >/dev/null
+    [ "$(printf '%s' "$output" | jq -r '.topic_grant')" = null ]
+}
+
+@test "topic grant: a reused peer types nothing and reports that no grant was applied" {
+    set_pair claude codex
+    run bash "$SPAWN" --topic-dir tmp/peer-chat/demo
+    assert_status 0
+    assert_contains "$output" 'existing thread; no new topic grant applied'
+    assert_contains "$output" '"state":"already"'
+    [ "$(printf '%s' "$output" | tail -1 | jq -r '.topic_grant')" = null ]
+    [ ! -e "$TMP/typed.jsonl" ]
+}
+
+@test "topic grant: symlinks and foreign directories are refused before any pane action" {
+    mkdir -p "$TMP/outside" "$TMP/tmp/peer-chat"
+    printf '{}' > "$TMP/outside/state.json"
+    ln -s "$TMP/outside" "$TMP/tmp/peer-chat/linked"
+    mkdir -p "$TMP/plain"
+    mkdir -p "$TMP/fake"
+    ln -s "$TMP/outside/state.json" "$TMP/fake/state.json"
+    for dir in tmp/peer-chat/linked plain fake tmp/peer-chat/bad/slug; do
+        run bash "$SPAWN" --topic-dir "$dir"
+        assert_status 2
+        assert_contains "$output" "--topic-dir $dir"
+    done
+    [ ! -e "$TMP/calls.jsonl" ]
+    [ ! -e "$TMP/typed.jsonl" ]
+}
+
+@test "topic grant: a default topic path whose tmp/peer-chat is redirected is refused even with a state.json" {
+    mkdir -p "$TMP/outside/demo" "$TMP/tmp"
+    printf '{}' > "$TMP/outside/demo/state.json"
+    ln -s "$TMP/outside" "$TMP/tmp/peer-chat"
+    for dir in tmp/peer-chat/demo "$TMP/tmp/peer-chat/demo"; do
+        run bash "$SPAWN" --topic-dir "$dir"
+        assert_status 2
+        assert_contains "$output" "--topic-dir $dir resolves outside <repo>/tmp/peer-chat"
+    done
+    run bash "$SPAWN" --topic-dir "$TMP/outside/demo"
+    assert_status 0
+    [ "$(printf '%s' "$output" | jq -r '.topic_grant')" = "$(cd "$TMP/outside/demo" && pwd -P)" ]
+}
+
+@test "topic grant: an alias followed by .. grants the directory the ledger path resolves to" {
+    mkdir -p "$TMP/external/sub" "$TMP/external/topic" "$TMP/local/topic"
+    printf '{}' > "$TMP/external/topic/state.json"
+    printf '{}' > "$TMP/local/topic/state.json"
+    ln -s "$TMP/external/sub" "$TMP/local/alias"
+    run bash "$SPAWN" --topic-dir "$TMP/local/alias/../topic"
+    assert_status 0
+    [ "$(printf '%s' "$output" | jq -r '.topic_grant')" = "$(cd -P "$TMP/local/alias/../topic" && pwd -P)" ]
+    [ "$(cd -P "$TMP/local/alias/../topic" && pwd -P)" = "$(cd "$TMP/external/topic" && pwd -P)" ]
+}

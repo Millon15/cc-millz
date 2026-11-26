@@ -99,6 +99,8 @@ ACCEPT_TIMEOUT = float(os.environ.get("PEER_CHAT_ACCEPT_TIMEOUT", "8"))
 PROBE = 0.15
 PROBE_CHARS = 48
 COLLAPSED_PASTE_MARKERS = ("[Pasted Content", "[Pasted text")
+CODEX_CONTEXT_FOOTER_RE = re.compile(r"(?:^| · )Context \d+% (?:used|left)(?: · |$)")
+CODEX_SHORTCUT_FOOTER_RE = re.compile(r"^ {2}(?:← for agents · )?\? for shortcuts(?: {2,}.*)?$")
 PASTE_START = "\x1b[200~"
 PASTE_END = "\x1b[201~"
 TARGETS = ("peer", "left", "right", "claude", "codex")
@@ -108,6 +110,7 @@ TURN_WORKING = "working"
 TURN_IDLE = "idle"
 TURN_UNKNOWN = "unknown"
 RECOVER_NOTHING = 3
+TOPIC_WRITE_BLOCKED = 3
 SESSION_ID_RE = re.compile(r"[A-Za-z0-9-]+")
 TIMER = r"\((?:\d+h\s)?(?:\d+m\s)?\d+s\s"
 # Claude Code mid-turn: a spinner line `✻ Pouncing… (5m 3s · ↓ 19.7k tokens)` (the glyph cycles and
@@ -151,6 +154,8 @@ COMPOSER_LACKS_MESSAGE = "the composer does not hold the message"
 NOTIFY_BODY = "message for {} held: the peer shows a dialog"
 LOCK_SYMLINK = "delivery lock path is a symlink; inspect it before any send"
 LOCK_FLAGS = os.O_WRONLY | os.O_CREAT | os.O_APPEND | os.O_NOFOLLOW | os.O_CLOEXEC
+NOTICE_WAIT_SECONDS = 1.0
+RECORDED_NOTICE_OUTCOMES = ("sent", "failed")
 
 
 class DeliveryHeld(StateError):
@@ -161,6 +166,12 @@ class NotSubmitted(Exception):
     """The paste landed, the submit key was not sent."""
 
 
+class TopicWriteBlocked(RuntimeError):
+    def __init__(self, directory: Path, error: PermissionError):
+        super().__init__(str(error))
+        self.directory = directory
+
+
 @dataclass(frozen=True)
 class Gate:
     """One wait budget shared by the composer checks before the paste and before the submit key."""
@@ -169,6 +180,7 @@ class Gate:
     deadline: float
     poll: float
     alert: Callable[[], None]
+    exact_message: bool = False
 
     def expired(self) -> bool:
         return time.monotonic() >= self.deadline
@@ -308,9 +320,31 @@ def codex_draft_text(t: dict[str, Any], screen: str, untouched: bool) -> str | N
     return "\n".join(part for part in (first, *(line.strip() for line in below)) if part)
 
 
-def composer_text(t: dict[str, Any], sid: str, profile: Any, window: str, untouched: bool = False) -> str | None:
+def before_codex_wrapped_footer(t: dict[str, Any], screen: str, *, untouched: bool) -> str | None:
+    lines = screen.rstrip().splitlines()[-t["BOX_LINES"]:]
+    if not lines or untouched and not CODEX_SHORTCUT_FOOTER_RE.fullmatch(lines[-1]):
+        return None
+    start = len(lines) - 1
+    while start and lines[start - 1].strip():
+        start -= 1
+    footer = lines[start:]
+    if not start or len(footer) < 2 or not t["CODEX_FOOTER_RE"].match(footer[0]):
+        return None
+    if not CODEX_CONTEXT_FOOTER_RE.search(footer[0].strip()):
+        return None
+    if any(not line.startswith("  ") or t["CODEX_CHOICE_RE"].match(line.strip()) for line in footer):
+        return None
+    return "\n".join(lines[:start])
+
+
+def composer_text(t: dict[str, Any], sid: str, profile: Any, window: str, untouched: bool = False,
+                  *, notice: bool = False) -> str | None:
     """The peer's live composer content, or None while a dialog or an unknown screen covers it."""
     screen = t["_pane_text_unchecked"](sid, profile, window)
+    if notice and profile.agent == "codex":
+        without_footer = before_codex_wrapped_footer(t, screen, untouched=untouched)
+        if without_footer is not None:
+            return codex_draft_text(t, without_footer, untouched)
     content = t["live_prompt_text"](profile, screen)
     if content is None and profile.agent == "codex":
         return codex_draft_text(t, screen, untouched)
@@ -321,7 +355,7 @@ def await_live_composer(t: dict[str, Any], sid: str, profile: Any, window: str, 
     """Gate A: hold the send, nothing prepared or typed, until the peer shows a live composer."""
     if not gate.enabled:
         return
-    while composer_text(t, sid, profile, window, untouched=True) is None:
+    while composer_text(t, sid, profile, window, untouched=True, notice=gate.exact_message) is None:
         if gate.expired():
             gate.alert()
             raise DeliveryHeld(HELD_NO_COMPOSER)
@@ -332,7 +366,7 @@ def submit_refusal(t: dict[str, Any], sid: str, profile: Any, window: str, messa
     """Gate B: why the submit key must not be sent, or None when the composer holds the message."""
     if not gate.enabled:
         return None
-    while (refusal := composer_refusal_now(t, sid, profile, window, message)) == NO_LIVE_COMPOSER:
+    while (refusal := composer_refusal_now(t, sid, profile, window, message, gate.exact_message)) == NO_LIVE_COMPOSER:
         if gate.expired():
             gate.alert()
             return NO_LIVE_COMPOSER
@@ -340,11 +374,14 @@ def submit_refusal(t: dict[str, Any], sid: str, profile: Any, window: str, messa
     return refusal
 
 
-def composer_refusal_now(t: dict[str, Any], sid: str, profile: Any, window: str, message: str) -> str | None:
+def composer_refusal_now(t: dict[str, Any], sid: str, profile: Any, window: str, message: str,
+                         exact_message: bool) -> str | None:
     """One composer read: None when it holds the message, else why the key must not be sent yet."""
-    content = composer_text(t, sid, profile, window)
+    content = composer_text(t, sid, profile, window, notice=exact_message)
     if content is None:
         return NO_LIVE_COMPOSER
+    if exact_message:
+        return None if without_whitespace(content) == without_whitespace(message) else COMPOSER_LACKS_MESSAGE
     return None if holds_message(content, message) else COMPOSER_LACKS_MESSAGE
 
 
@@ -360,7 +397,7 @@ def gated_submit_key(
         if not gate.enabled:
             return key
         time.sleep(PROBE)
-        second = composer_refusal_now(t, sid, profile, window, message)
+        second = composer_refusal_now(t, sid, profile, window, message, gate.exact_message)
         if second is None:
             return key
         if second == COMPOSER_LACKS_MESSAGE:
@@ -440,7 +477,8 @@ def topic_store(args: argparse.Namespace) -> Store | None:
         return None
     if args.slug and not re.fullmatch(r"[a-zA-Z0-9][a-zA-Z0-9_-]*", args.slug):
         raise StateError("slug must be a single topic name")
-    path = Path(args.state).expanduser().resolve() if args.state else repo_root() / "tmp/peer-chat" / args.slug / "state.json"
+    path = Path(args.state).expanduser() if args.state else repo_root() / "tmp/peer-chat" / args.slug / "state.json"
+    path = path.resolve()
     if path.name != "state.json":
         raise StateError("--state must name a topic's state.json")
     current = Store(path).read() if path.exists() else None
@@ -448,8 +486,32 @@ def topic_store(args: argparse.Namespace) -> Store | None:
     if not slug:
         raise StateError("a new topic requires --slug")
     coordinator = Path(current["repo"]) if current else repo_root().resolve()
-    return open_topic(path, transport="agterm", slug=slug, host="agterm", repo=coordinator,
-                      legacy_dir=path.parent)
+    with topic_write(path.parent):
+        return open_topic(path, transport="agterm", slug=slug, host="agterm", repo=coordinator,
+                          legacy_dir=path.parent)
+
+
+@contextmanager
+def topic_write(directory: Path):
+    try:
+        yield
+    except PermissionError as error:
+        if not topic_write_path(error.filename, directory):
+            raise
+        raise TopicWriteBlocked(directory, error) from error
+
+
+def topic_write_path(filename: str | None, directory: Path) -> bool:
+    if filename is None:
+        return False
+    path = Path(filename).absolute()
+    if path == directory:
+        return True
+    return path.parent == directory and (
+        path.name == "state.lock"
+        or path.name.endswith(".delivery.lock")
+        or path.name.startswith(".state-") and path.suffix == ".tmp"
+    )
 
 
 def coordinator_profile(repo: Path) -> dict[str, Any]:
@@ -565,8 +627,10 @@ def open_lock(path: Path) -> int:
 
 @contextmanager
 def delivery_lock(path: Path):
-    path.parent.mkdir(parents=True, exist_ok=True)
-    with os.fdopen(open_lock(path), "a") as handle:
+    with topic_write(path.parent):
+        path.parent.mkdir(parents=True, exist_ok=True)
+        fd = open_lock(path)
+    with os.fdopen(fd, "a") as handle:
         lock_within(handle, env_seconds("PEER_CHAT_LOCK_WAIT", DEFAULT_LOCK_SECONDS))
         try:
             yield
@@ -586,30 +650,110 @@ def send(t: dict[str, Any], args: argparse.Namespace, body: str) -> int:
     peer = t["resolve_peer"](
         args.to, args.session, args.window, args.target_command, args.queue
     )
-    store = topic_store(args)
-    if store is None:
-        return send_untracked(t, args, peer, body)
-    return send_tracked(t, args, peer, store, body)
+    try:
+        store = topic_store(args)
+        if store is None:
+            return send_untracked(t, args, peer, body)
+        return send_tracked(t, args, peer, store, body)
+    except TopicWriteBlocked as error:
+        return report_blocked_send(t, args, peer, body, error.directory)
 
 
-def send_untracked(t: dict[str, Any], args: argparse.Namespace, peer, body: str) -> int:
+def send_untracked(t: dict[str, Any], args: argparse.Namespace, peer, body: str, *, notice: bool = False) -> int:
     profile, window, sid = peer.profile, peer.window, peer.session
-    plan = plan_body(clean_lines(profile, body), peer.sender, None, now_utc())
+    plan = Plan(text=body) if notice else plan_body(clean_lines(profile, body), peer.sender, None, now_utc())
     for warning in plan.warnings:
         print(warning, file=sys.stderr)
     message = labelled(profile, plan.text)
-    gate = delivery_gate(t, args, coordinator_profile(repo_root()), peer)
+    gate = (notice_gate(args) if notice
+            else delivery_gate(t, args, coordinator_profile(repo_root()), peer))
     await_live_composer(t, sid, profile, window, gate)
     warn_if_mid_turn(peer_turn(t, sid, profile, window))
+    if notice:
+        content = composer_text(t, sid, profile, window, untouched=True, notice=True)
+        if content is None or content and not t["composer_is_empty"](profile, content):
+            raise DeliveryHeld("the blocked notice needs a live, empty composer")
     status = deliver(t, sid, profile, window, message, args.queue, gate)
-    if status == 0:
+    if status == 0 and not notice:
         report(message, plan)
     return status
 
 
+def notice_gate(args: argparse.Namespace) -> Gate:
+    wait = min(args.wait, NOTICE_WAIT_SECONDS) if args.wait is not None else NOTICE_WAIT_SECONDS
+    return Gate(True, time.monotonic() + wait, PROBE, lambda: None, exact_message=True)
+
+
+def report_blocked_send(t: dict[str, Any], args: argparse.Namespace, peer, body: str, directory: Path) -> int:
+    restored = restore_spool(t, args, body)
+    name = diagnostic_path(directory)
+    print(f"peer-chat-paste: blocked: cannot write {name}. "
+          "Restart an idle embedded Codex peer with --topic-dir if the user approves. "
+          "Otherwise use a topic directory writable by both peers.", file=sys.stderr)
+    notice = f"peer-chat: send blocked: cannot write {name}. Check the sending pane."
+    if restored is not None:
+        notice += f" reply kept at {diagnostic_path(restored)}"
+    outcome = blocked_notice(t, args, peer, body, directory, notice)
+    print(f"notice: {outcome}", file=sys.stderr)
+    return TOPIC_WRITE_BLOCKED
+
+
+def diagnostic_path(path: Path) -> str:
+    return json.dumps(str(path), ensure_ascii=True)[1:-1].replace("#", r"\u0023")
+
+
+def blocked_notice(t: dict[str, Any], args: argparse.Namespace, peer, body: str, directory: Path, notice: str) -> str:
+    identity = (peer.window, peer.session, peer.sender, peer.profile.pane, str(directory),
+                args.key, args.message_file, body)
+    digest = hashlib.sha256(json.dumps(identity).encode()).hexdigest()
+    try:
+        spool_fd = t["private_spool_fd"](create=True)
+        try:
+            return send_notice_once(t, args, peer, notice, spool_fd, f"blocked-notice-{digest}")
+        finally:
+            os.close(spool_fd)
+    except (OSError, RuntimeError, ValueError) as error:
+        print(f"peer-chat-paste: could not record blocked notice: {error}", file=sys.stderr)
+        return "failed"
+
+
+def send_notice_once(t: dict[str, Any], args: argparse.Namespace, peer, notice: str, spool_fd: int, name: str) -> str:
+    try:
+        fd = os.open(name, LOCK_FLAGS | os.O_EXCL, 0o600, dir_fd=spool_fd)
+    except FileExistsError:
+        return previous_notice_outcome(spool_fd, name)
+    with os.fdopen(fd, "w", encoding="ascii") as marker:
+        outcome = attempt_blocked_notice(t, args, peer, notice)
+        if outcome != "held":
+            marker.write(outcome + "\n")
+    if outcome == "held":
+        os.unlink(name, dir_fd=spool_fd)
+    return outcome
+
+
+def previous_notice_outcome(spool_fd: int, name: str) -> str:
+    fd = os.open(name, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK | os.O_CLOEXEC, dir_fd=spool_fd)
+    with os.fdopen(fd, "rb") as marker:
+        if not stat.S_ISREG(os.fstat(fd).st_mode):
+            return "failed (already attempted)"
+        outcome = marker.read(7).decode("ascii", errors="replace").strip()
+    return f"{outcome if outcome in RECORDED_NOTICE_OUTCOMES else 'failed'} (already attempted)"
+
+
+def attempt_blocked_notice(t: dict[str, Any], args: argparse.Namespace, peer, notice: str) -> str:
+    try:
+        return "sent" if send_untracked(t, args, peer, notice, notice=True) == 0 else "failed"
+    except DeliveryHeld:
+        return "held"
+    except (StateError, RuntimeError, ValueError, OSError, subprocess.CalledProcessError) as error:
+        print(f"peer-chat-paste: blocked notice failed: {error}", file=sys.stderr)
+        return "failed"
+
+
 def send_tracked(t: dict[str, Any], args: argparse.Namespace, peer, store: Store, body: str) -> int:
     profile, window, sid = peer.profile, peer.window, peer.session
-    bind_panes(t, store, peer)
+    with topic_write(store.path.parent):
+        bind_panes(t, store, peer)
     path = outbox_path(store.path.parent, sid, profile.pane)
     with delivery_lock(path.with_suffix(".delivery.lock")):
         require_reconciled(store, peer.sender, "")
@@ -626,8 +770,9 @@ def send_tracked(t: dict[str, Any], args: argparse.Namespace, peer, store: Store
 
 def claim_outbox(args: argparse.Namespace, store: Store, peer, body: str, path: Path) -> tuple[dict, str]:
     """Prepare and claim the message, then record the exact text for --recover-delivery."""
-    prepared = prepare_message(store, sender=peer.sender, lines=clean_lines(peer.profile, body),
-                               key=args.key or uuid.uuid4().hex, budgets=message_budgets(args, store), width=WRAP)
+    with topic_write(store.path.parent):
+        prepared = prepare_message(store, sender=peer.sender, lines=clean_lines(peer.profile, body),
+                                   key=args.key or uuid.uuid4().hex, budgets=message_budgets(args, store), width=WRAP)
     for warning in prepared["warnings"]:
         print(warning, file=sys.stderr)
     mid = prepared["message_id"]
@@ -754,13 +899,23 @@ def recover_locked(t: dict[str, Any], sid: str, profile: Any, window: str, path:
     return 0
 
 
-def restore_message_file(t: dict[str, Any], name: str, body: str) -> None:
+def restore_message_file(t: dict[str, Any], name: str, body: str) -> Path:
     path = t["prepare_message"](name)
     path.write_text(body, encoding="utf-8")
     print(
         f"message file restored: {name}; inspect the failure and peer screen before retrying",
         file=sys.stderr,
     )
+    return path
+
+
+def restore_spool(t: dict[str, Any], args: argparse.Namespace, body: str) -> Path | None:
+    if args.message_file and not is_message_path(args.message_file):
+        try:
+            return restore_message_file(t, args.message_file, body)
+        except (RuntimeError, ValueError, OSError) as error:
+            print(f"peer-chat-paste: could not restore message file: {error}", file=sys.stderr)
+    return None
 
 
 def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
@@ -821,11 +976,8 @@ def main() -> int:
     except (LedgerRefusal, RuntimeError, ValueError, OSError, subprocess.CalledProcessError) as err:
         print(f"peer-chat-paste: {err}", file=sys.stderr)
         status = 1
-    if status != 0 and args.message_file and not is_message_path(args.message_file):
-        try:
-            restore_message_file(transport, args.message_file, body)
-        except (RuntimeError, ValueError, OSError) as err:
-            print(f"peer-chat-paste: could not restore message file: {err}", file=sys.stderr)
+    if status not in (0, TOPIC_WRITE_BLOCKED):
+        restore_spool(transport, args, body)
     return status
 
 

@@ -43,7 +43,18 @@ bash "${CLAUDE_PLUGIN_ROOT}/scripts/peer-chat-spawn.sh"                     # th
 bash "${CLAUDE_PLUGIN_ROOT}/scripts/peer-chat-spawn.sh" claude              # a Claude peer, model from its own config
 bash "${CLAUDE_PLUGIN_ROOT}/scripts/peer-chat-spawn.sh" 'codex(gpt-5.6-sol)'   # a named model; same as codex:gpt-5.6-sol
 bash "${CLAUDE_PLUGIN_ROOT}/scripts/peer-chat-spawn.sh" --harness codex --model gpt-5.6-sol
+bash "${CLAUDE_PLUGIN_ROOT}/scripts/peer-chat-spawn.sh" --topic-dir tmp/peer-chat/<slug>   # grant the topic dir
 ```
+
+Pass `--topic-dir` with the directory of the `state.json` every send of the topic uses: the
+default `tmp/peer-chat/<slug>` of this repository (created when missing), or the directory of the
+coordinator's `--state`. A sandboxed Codex peer writes the ledger there on every send, and its
+workspace may not cover it (a topic in another repository). The script resolves the canonical
+path, refuses a symlinked directory or any other directory, and adds `--add-dir <dir>` to an
+embedded Codex launch or `--restart`; the result's `topic_grant` names it. Daemon mode has no
+per-thread grant: stderr says `no topic grant in daemon mode` and `topic_grant` is null. A Claude
+peer needs none. An `already` types nothing and says `existing thread; no new topic grant
+applied`: a peer started without the grant keeps lacking it until the user approves a restart.
 
 The user may name the peer when invoking this skill: `/peer-chat codex(astra)` or
 `/peer-chat claude(fable)`, a harness (`claude` or `codex`) with an optional model in
@@ -165,6 +176,7 @@ same pane waits up to 10 s for the first one's lock.
 | 2 | `held: an earlier send is waiting for the peer's composer …` | your earlier send holds the pane and owns the notice: rerun after it exits |
 | 2 | `delivery lock path is a symlink …` | nothing typed or recorded: do not rerun; tell the user, the link is theirs to inspect |
 | 1 | `pasted, not submitted: …` | the text is in the peer's composer or was lost, the ledger says `uncertain`: read the pane before any resend |
+| 3 | `peer-chat-paste: blocked: cannot write <dir>` | the sandbox refused the ledger before anything was claimed or typed: § A blocked ledger |
 
 After an exit 1 the text may still wait under the dialog. Once the dialog closes, the peer submits
 it with `--recover-delivery` from its own pane (§ A stalled ask) or the user presses Return; until
@@ -182,6 +194,29 @@ A send that would also be refused for a missing disposition (§ Asks) learns of 
 once the dialog closes. `PEER_CHAT_COMPOSER_GATE=off` skips both waits and makes every send say
 so on stderr. Only the user sets it, for a harness update that breaks composer detection; an agent
 never sets it, least of all to get a held send through.
+
+### A blocked ledger
+
+Exit 3 means the sender could not write the topic directory (`state.lock`, `state.json`) before
+anything was claimed or typed; the usual cause is a sandboxed Codex peer whose workspace does not
+cover the topic. The script restores the spool file and types one untracked line into the peer's
+composer, `peer-chat: send blocked: cannot write <dir>`, plus `reply kept at <spool>` when the
+restore worked. That line has no body, no ask and no disposition. stderr names the directory, the
+remedy and `notice: sent`, `held` or `failed`. A rerun of the same message retries only a `held`
+notice, which a dialog or a draft stopped before any pane input; a `sent` or `failed` one (a failure
+can come after the paste) is never typed again, and the rerun reports it as `(already attempted)`.
+
+- The sender stops and tells the user which directory is blocked. Never retype the reply as an
+  answer in your own pane and never route it around the ledger: a failed send stays failed. For
+  an idle embedded Codex peer the remedy is a `--restart --topic-dir <dir>`, and only the user
+  authorizes it, because a restart ends that peer's thread.
+- The receiver of `peer-chat: send blocked:` reads the bound peer pane once, bounded as in
+  § Recovering a stale session, to learn what the peer meant to send. That read informs the
+  discussion only: it never closes an ask, records a disposition or triggers a resend, and the
+  ledger keeps showing the ask open.
+
+A failure after the claim is not this case: a claim that typed nothing stays visible in `status`
+with no automatic retry, and a send that may have typed is the `uncertain` row above.
 
 Add `--state <coordinator topic>/state.json` when sending from another repository in the same
 build; the default is `tmp/peer-chat/<slug>/state.json` in this repository. Every send and freeze

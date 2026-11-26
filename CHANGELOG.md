@@ -1,5 +1,19 @@
 # Changelog
 
+## peer-chat v0.13.0 - 2026-11-25
+
+### Added
+
+- `peer-chat-spawn.sh --topic-dir <dir>` grants a topic directory to an embedded Codex peer with
+  `--add-dir`, so a sandboxed peer can write a ledger outside its workspace. The directory must hold
+  the topic's `state.json` or be this repository's `tmp/peer-chat/<slug>`; a symlink is refused.
+  Daemon mode and a reused peer get no grant, and stderr says so. The design and build skills pass
+  the flag when they spawn.
+- `peer-chat-paste.py` exits 3 when it cannot write the topic directory before anything is claimed
+  or typed. It restores the spool, types one untracked `peer-chat: send blocked:` line into the peer
+  pane, once per message, and reports the notice outcome on stderr. The skill tells the sender to
+  stop and tell the user, and the receiver to read the sender's pane without touching the ledger.
+
 ## peer-chat v0.12.1 - 2026-11-22
 
 ### Fixed

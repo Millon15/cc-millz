@@ -42,7 +42,12 @@ stub_agtermctl() {
 printf '%s\n' "\$*" >> "${TMP}/calls.log"
 state="\$(cat "${TMP}/state")"
 case "\$1 \$2" in
-    "window list") echo '{"result":{"windows":[{"id":"win-1","active":true,"open":true}]}}' ;;
+    "window list")
+        if [ -f "${TMP}/restore-conflict" ]; then
+            conflict="\$(cat "${TMP}/restore-conflict")"
+            [ -e "\$conflict" ] || printf 'replacement' > "\$conflict"
+        fi
+        echo '{"result":{"windows":[{"id":"win-1","active":true,"open":true}]}}' ;;
     "tree --json") cat "${TMP}/tree.json" ;;
     "surface cursor") [ ! -f "${TMP}/cursor-unavailable" ] || exit 9; echo 2 ;;
     "session text")
@@ -78,6 +83,10 @@ case "\$1 \$2" in
         end=\$'\\033[201~'
         case "\$payload" in
             "\$start"*"\$end")
+                [ ! -f "${TMP}/paste-fails" ] || exit 9
+                if [ -f "${TMP}/require-spool" ]; then
+                    [ -s "\$(cat "${TMP}/require-spool")" ] || exit 9
+                fi
                 printf '%s\n' "\$*" >> "${TMP}/paste-calls.log"
                 cp "${TMP}/typed-input" "${TMP}/paste-input"
                 payload="\${payload#"\$start"}"
@@ -561,6 +570,205 @@ seed_codex_ask() { # seed_codex_ask <disposition> <due> <reason>
     [ "$(jq '.messages | length' "${TMP}/${LEDGER}")" = 1 ]
     [ "$(jq -r '.messages[] | .state' "${TMP}/${LEDGER}")" = uncertain ]
     [ "$(jq '.timers | length' "${TMP}/${LEDGER}")" = 0 ]
+}
+
+blocked_spool() {
+    [ "$(id -u)" -ne 0 ] || skip 'file permission probe requires a non-root user'
+    export TMPDIR="${TMP}"
+    topic="$(pwd -P)/tmp/peer-chat/seatos"
+    mkdir -p "${topic}"
+    touch "${topic}/state.lock"
+    chmod a-w "${topic}/state.lock"
+    spool="$(python3 "${PLUGIN}/scripts/peer-chat.py" --prepare-message peer-chat-claude-blocked.txt | jq -r '.messageFile')"
+    printf '🎯 PRIVATE REPLY\n❓ PRIVATE QUESTION\n' > "${spool}"
+}
+
+send_blocked_spool() {
+    run python3 "${PASTE}" --to peer --message-file peer-chat-claude-blocked.txt --slug seatos
+}
+
+codex_wrapped_footer() {
+    printf '%s\n' ' ' \
+        '  GPT-6.2-Sol high · Context 0% used · weekly 78% left · 872K window · 11111111-1111-1111-' \
+        '  1111-111111111111 · 11111111-1111-1111-1111-111111111111' \
+        "${1:-  ← for agents · ? for shortcuts                                 ⚠ 1 warning · f2 to view}"
+}
+
+@test "blocked ledger: reports exit 3 and submits one diagnostic after the original spool is restored" {
+    blocked_spool
+    printf '%s\n' "${spool}" > "${TMP}/require-spool"
+    printf '❯ \n' > "${TMP}/composer"
+    AGTERM_PANE=right send_blocked_spool
+    assert_status 3
+    assert_contains "${output}" "peer-chat-paste: blocked: cannot write ${topic}"
+    assert_contains "${output}" 'notice: sent'
+    assert_not_contains "${output}" '"sent":'
+    [ "$(cat "${spool}")" = $'🎯 PRIVATE REPLY\n❓ PRIVATE QUESTION' ]
+    pasted="$(cat "${TMP}/pasted-first")"
+    [[ "${pasted}" = "Chat from codex (right): peer-chat: send blocked:"* ]]
+    assert_contains "${pasted}" "cannot write ${topic}"
+    assert_contains "${pasted}" "reply kept at ${spool}"
+    assert_not_contains "${pasted}" 'PRIVATE'
+    assert_not_contains "${pasted}" '❓'
+    assert_not_contains "${pasted}" '🎯'
+    [ "$(wc -l < "${TMP}/pasted-first")" -eq 0 ]
+    [ "$(wc -l < "${TMP}/typed.log")" -eq 1 ]
+
+    AGTERM_PANE=right send_blocked_spool
+    assert_status 3
+    assert_contains "${output}" 'notice: sent (already attempted)'
+    [ "$(paste_calls)" -eq 1 ]
+    [ "$(wc -l < "${TMP}/typed.log")" -eq 1 ]
+    [ ! -f "${TMP}/${LEDGER}" ]
+    [ "$(cat "${spool}")" = $'🎯 PRIVATE REPLY\n❓ PRIVATE QUESTION' ]
+}
+
+@test "blocked ledger: a dialog holds the diagnostic and preserves the spool" {
+    blocked_spool
+    dialog_before_paste codex-approval-modal.txt 9999
+    send_blocked_spool
+    assert_status 3
+    assert_contains "${output}" 'notice: held'
+    [ "$(paste_calls)" -eq 0 ]
+    [ ! -e "${TMP}/typed.log" ]
+    [ ! -f "${TMP}/${LEDGER}" ]
+    [ -s "${spool}" ]
+
+    printf '0\n' > "${TMP}/dialog-reads"
+    send_blocked_spool
+    assert_status 3
+    assert_contains "${output}" 'notice: sent'
+    assert_not_contains "${output}" '(already attempted)'
+    [ "$(paste_calls)" -eq 1 ]
+    [ "$(wc -l < "${TMP}/typed.log")" -eq 1 ]
+    [ ! -f "${TMP}/${LEDGER}" ]
+    [ -s "${spool}" ]
+}
+
+@test "blocked ledger: a diagnostic transport failure preserves exit 3 and the spool" {
+    blocked_spool
+    touch "${TMP}/paste-fails"
+    send_blocked_spool
+    assert_status 3
+    assert_contains "${output}" 'notice: failed'
+    assert_contains "${output}" 'blocked notice failed'
+    [ -f "${TMP}/typed-input" ]
+    [ ! -e "${TMP}/typed.log" ]
+    [ ! -f "${TMP}/${LEDGER}" ]
+    [ -s "${spool}" ]
+}
+
+@test "blocked ledger: a diagnostic that already reached paste is never typed again" {
+    blocked_spool
+    dialog_after_paste codex-approval-modal.txt 9999
+    send_blocked_spool
+    assert_status 3
+    assert_contains "${output}" 'notice: failed'
+    [ "$(paste_calls)" -eq 1 ]
+    [ ! -e "${TMP}/typed.log" ]
+
+    printf 'empty' > "${TMP}/state"
+    send_blocked_spool
+    assert_status 3
+    assert_contains "${output}" 'notice: failed (already attempted)'
+    [ "$(paste_calls)" -eq 1 ]
+    [ ! -e "${TMP}/typed.log" ]
+    [ ! -f "${TMP}/${LEDGER}" ]
+    [ -s "${spool}" ]
+}
+
+@test "blocked ledger: a draft holds the diagnostic without submitting the user's text" {
+    blocked_spool
+    printf '› a draft the user owns\n' > "${TMP}/composer"
+    send_blocked_spool
+    assert_status 3
+    assert_contains "${output}" 'notice: held'
+    [ "$(paste_calls)" -eq 0 ]
+    [ ! -e "${TMP}/typed.log" ]
+    [ "$(cat "${TMP}/composer")" = '› a draft the user owns' ]
+}
+
+@test "blocked ledger: an empty Codex prompt above a wrapped footer receives the notice" {
+    blocked_spool
+    {
+        printf '%s\n' '› Ask Codex to do anything'
+        codex_wrapped_footer
+    } > "${TMP}/composer"
+    {
+        printf '%s\n' '› Ask Codex to do anything'
+        codex_wrapped_footer '                                                                  ⚠ 1 warning · f2 to view'
+    } > "${TMP}/composer-after-paste"
+    send_blocked_spool
+    assert_status 3
+    assert_contains "${output}" 'notice: sent'
+    [ "$(paste_calls)" -eq 1 ]
+    [ "$(wc -l < "${TMP}/typed.log")" -eq 1 ]
+    [ -s "${spool}" ]
+}
+
+@test "blocked ledger: a Codex draft above a wrapped footer receives no notice" {
+    blocked_spool
+    {
+        printf '%s\n' '› Ask Codex to do anything' '' '  a draft continuation the user owns'
+        codex_wrapped_footer
+    } > "${TMP}/composer"
+    send_blocked_spool
+    assert_status 3
+    assert_contains "${output}" 'notice: held'
+    [ "$(paste_calls)" -eq 0 ]
+    [ ! -e "${TMP}/typed.log" ]
+    [ -s "${spool}" ]
+}
+
+@test "blocked ledger: a restore failure never reports that the reply was kept" {
+    blocked_spool
+    printf '%s\n' "${spool}" > "${TMP}/restore-conflict"
+    send_blocked_spool
+    assert_status 3
+    assert_contains "${output}" 'could not restore message file'
+    assert_contains "${output}" 'notice: sent'
+    assert_not_contains "$(cat "${TMP}/pasted-first")" 'reply kept at'
+    [ "$(cat "${spool}")" = 'replacement' ]
+}
+
+@test "blocked ledger: a retained path message is never described as a restored spool" {
+    blocked_spool
+    run python3 "${PASTE}" --to peer --message-file "${spool}" --slug seatos
+    assert_status 3
+    assert_contains "${output}" 'notice: sent'
+    assert_not_contains "$(cat "${TMP}/pasted-first")" 'reply kept at'
+    [ -s "${spool}" ]
+}
+
+@test "blocked ledger: a state read failure sends no diagnostic" {
+    [ "$(id -u)" -ne 0 ] || skip 'file permission probe requires a non-root user'
+    mkdir -p "${TMP}/tmp/peer-chat/seatos"
+    printf '{}' > "${TMP}/${LEDGER}"
+    chmod a-r "${TMP}/${LEDGER}"
+    printf '🎯 read denied\n' > "${TMP}/msg"
+    send_file "${TMP}/msg" --slug seatos
+    assert_status 1
+    assert_not_contains "${output}" 'notice:'
+    [ "$(paste_calls)" -eq 0 ]
+    [ ! -e "${TMP}/typed.log" ]
+}
+
+@test "blocked ledger: failure writing the outbox after claim leaves it unresolved and sends no notice" {
+    [ "$(id -u)" -ne 0 ] || skip 'file permission probe requires a non-root user'
+    mkdir -p "${TMP}/tmp/peer-chat/seatos"
+    pending="${TMP}/tmp/peer-chat/seatos/outbox-${SID}-right.tmp"
+    touch "${pending}"
+    chmod a-w "${pending}"
+    printf '🎯 claimed\n' > "${TMP}/msg"
+    send_file "${TMP}/msg" --slug seatos
+    assert_status 1
+    assert_not_contains "${output}" 'notice:'
+    jq -e '.messages | length == 1 and all(.[]; .claim != null and .state == "prepared")' "${TMP}/${LEDGER}" >/dev/null
+    send_file "${TMP}/msg" --slug seatos
+    assert_status 2
+    assert_contains "${output}" 'earlier delivery is unresolved'
+    [ "$(paste_calls)" -eq 0 ]
+    [ ! -e "${TMP}/typed.log" ]
 }
 
 @test "budgets: a blocking send stamps sources and arms only on submit_sent" {
@@ -1427,6 +1635,8 @@ chooser_holds_send() { # chooser_holds_send <fixture>
     send_file "${TMP}/msg" --slug seatos --wait 1s
     assert_status 1
     assert_contains "${output}" "${UNSUBMITTED_NO_COMPOSER}"
+    assert_not_contains "${output}" 'peer-chat: send blocked:'
+    [ "$(paste_calls)" -eq 1 ]
     [ ! -f "${TMP}/typed.log" ]
     [ "$(message_states)" = uncertain ]
     [ "$(notify_calls)" = 1 ]

@@ -138,7 +138,7 @@ def outputs():
             "peer-chat",
             "peer in the other pane",
             '1. `Skill(skill="peer-chat:peer-chat")`, then its Preflight.\n'
-            '2. Peer: the skill\'s spawn step with `<peer>`, its model mapped as the skill\'s § Bringing a peer in says. `"state":"already"` is fine, except for a model the user named: the skill\'s restart rule applies.',
+            '2. Peer: the skill\'s spawn step with `<peer>` and `--topic-dir <topic dir>`, the directory of the `state.json` every send of this topic uses, its model mapped as the skill\'s § Bringing a peer in says. `"state":"already"` is fine, except for a model the user named: the skill\'s restart rule applies. A reused peer gets no topic grant (§ A blocked ledger).',
             "Continue independent work after sending; otherwise end the turn and let the reply resume it. An ask the next step needs arms the skill's timer (§ A stalled ask); never poll a pane.",
         ),
         (

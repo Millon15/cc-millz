@@ -27,7 +27,7 @@ Agree on a design with the peer in the other pane and present it for the user's 
 Apply the topic setup below during preflight, before opening the conversation.
 
 1. `Skill(skill="peer-chat:peer-chat")`, then its Preflight.
-2. Peer: the skill's spawn step with `<peer>`, its model mapped as the skill's § Bringing a peer in says. `"state":"already"` is fine, except for a model the user named: the skill's restart rule applies.
+2. Peer: the skill's spawn step with `<peer>` and `--topic-dir <topic dir>`, the directory of the `state.json` every send of this topic uses, its model mapped as the skill's § Bringing a peer in says. `"state":"already"` is fine, except for a model the user named: the skill's restart rule applies. A reused peer gets no topic grant (§ A blocked ledger).
 
 Use the coordinator's `tmp/peer-chat/<slug>/` and verify Git ignores the directory and
 tracks no files there. When sending or reading status from another repo, pass the same

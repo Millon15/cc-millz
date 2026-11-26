@@ -71,6 +71,20 @@ setup() {
 @test "peer-chat build: takes an optional peer argument with a model in parentheses or after a colon" {
     assert_contains "${body}" 'argument-hint: "[<design file | ticket url or key>] [<harness>(<model>)] [--slug <topic>]"'
     assert_contains "${body}" '`^(claude|codex)(\(.+\)|:.+)?$`'
-    assert_contains "${body}" "spawn step with \`<peer>\`, its model mapped"
+    assert_contains "${body}" "spawn step with \`<peer>\` and \`--topic-dir <topic dir>\`"
+    assert_contains "${body}" "its model mapped"
     assert_contains "${body}" '`--peer=<value>` and the older `--peer <value>` accept the same forms.'
+}
+
+@test "peer-chat design and build: spawn grants the topic dir and say a reused peer gets none" {
+    for skill in build design; do
+        text="$(cat "${REPO_ROOT}/plugins/peer-chat/skills/${skill}/SKILL.md")"
+        assert_contains "${text}" '`--topic-dir <topic dir>`, the directory of the `state.json` every send of this topic uses'
+        assert_contains "${text}" 'A reused peer gets no topic grant (§ A blocked ledger).'
+    done
+    skill="$(cat "${REPO_ROOT}/plugins/peer-chat/skills/peer-chat/SKILL.md")"
+    assert_contains "${skill}" '### A blocked ledger'
+    assert_contains "${skill}" '| 3 | `peer-chat-paste: blocked: cannot write <dir>` |'
+    assert_contains "${skill}" 'Never retype the reply as an'
+    assert_contains "${skill}" 'it never closes an ask, records a disposition or triggers a resend'
 }

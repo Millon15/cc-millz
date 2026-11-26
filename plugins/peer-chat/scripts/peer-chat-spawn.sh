@@ -48,6 +48,7 @@ def arguments():
     parser.add_argument('--harness', choices=('claude', 'codex'))
     parser.add_argument('--model')
     parser.add_argument('--restart', action='store_true')
+    parser.add_argument('--topic-dir', help='topic directory an embedded Codex peer may write (--add-dir)')
     parser.add_argument('--explain', action='store_true')
     fallback = parser.add_mutually_exclusive_group()
     fallback.add_argument('--fallback', help=f'{PEER_FORMS} to start when the peer cannot; default: the other harness')
@@ -67,10 +68,13 @@ def arguments():
     return args
 
 
-def read_profile():
+def repo_root():
     probe = subprocess.run(['git', 'rev-parse', '--show-toplevel'], capture_output=True, text=True)
-    root = Path(probe.stdout.strip()) if probe.returncode == 0 else Path.cwd()
-    path = root / '.peer-chat.json'
+    return Path(probe.stdout.strip()) if probe.returncode == 0 else Path.cwd()
+
+
+def read_profile():
+    path = repo_root() / '.peer-chat.json'
     if not path.exists():
         return None, {}
     try:
@@ -198,6 +202,47 @@ def validate_config(values):
         raise Failure('claude_command and codex_command must identify different executables', 2)
 
 
+def topic_grant_dir(value):
+    """The canonical topic directory to grant, created when missing."""
+    path = Path(value).expanduser().absolute()
+    if path.is_symlink():
+        raise Failure(f'--topic-dir {value} is a symlink; pass the topic directory itself', 2)
+    canonical = path.resolve()
+    if names_default_topic(Path(os.path.normpath(path))):
+        if not is_default_topic(canonical):
+            raise Failure(f'--topic-dir {value} resolves outside <repo>/tmp/peer-chat', 2)
+    elif not holds_state(canonical):
+        raise Failure(f'--topic-dir {value} holds no state.json and is not <repo>/tmp/peer-chat/<slug>', 2)
+    canonical.mkdir(parents=True, exist_ok=True)
+    return canonical
+
+
+def names_default_topic(path):
+    """<repo>/tmp/peer-chat/<name> as written, with only the part above tmp/ resolved."""
+    return (path.parent.name == 'peer-chat' and path.parent.parent.name == 'tmp'
+            and path.parents[2].resolve() == repo_root().resolve())
+
+
+def holds_state(directory):
+    state = directory / 'state.json'
+    return state.is_file() and not state.is_symlink()
+
+
+def is_default_topic(directory):
+    return (directory.parent == repo_root().resolve() / 'tmp' / 'peer-chat'
+            and re.fullmatch(r'[a-zA-Z0-9][a-zA-Z0-9_-]*', directory.name) is not None)
+
+
+def topic_grant(values, topic):
+    """The directory to pass as --add-dir; only an embedded Codex peer can take one."""
+    if topic is None or values['peer_harness'] != 'codex':
+        return None
+    if '--no-daemon' in values['peer_args'] or values['codex_mode'] == 'embedded':
+        return topic
+    print(f'peer-chat-spawn: no topic grant in daemon mode for {topic}', file=sys.stderr)
+    return None
+
+
 def walk(value):
     if isinstance(value, dict):
         yield value
@@ -320,7 +365,7 @@ def claude_plugin_args(plugin_root):
         raise Failure(f'cannot verify Claude peer-chat install: {error}', 2) from error
 
 
-def launch_argv(config, terminal, plugin_root):
+def launch_argv(config, terminal, plugin_root, grant):
     values = config.values
     harness, model = values['peer_harness'], values['peer_model']
     context = {'AGTERM_ENABLED': '1', 'AGTERM_SESSION_ID': terminal.session, 'AGTERM_WINDOW_ID': terminal.window,
@@ -335,6 +380,8 @@ def launch_argv(config, terminal, plugin_root):
     if harness == 'claude':
         return [*env_prefix, *argv, *claude_plugin_args(plugin_root)]
     argv += codex_daemon_args(values)
+    if grant:
+        argv += ['--add-dir', str(grant)]
     # The process env reaches Codex hooks (the peer-mode hook reads PEER_CHAT_NAME); the
     # shell_environment_policy flags reach its shell tools.
     for key, value in context.items():
@@ -400,9 +447,9 @@ def require_tools(config):
                           recoverable=tool == config.values[f"{config.values['peer_harness']}_command"])
 
 
-def spawn(config, args, plugin_root):
+def spawn(config, args, plugin_root, topic):
     try:
-        return spawn_peer(config, args, plugin_root)
+        return spawn_peer(config, args, plugin_root, topic)
     except Failure as error:
         if not error.recoverable or config.values['peer_fallback'] == 'none':
             raise
@@ -410,7 +457,7 @@ def spawn(config, args, plugin_root):
     fallback = fallback_config(config)
     print(f"peer-chat-spawn: {config.values['peer_harness']} unavailable ({reason}); "
           f"falling back to {config.values['peer_fallback']}", file=sys.stderr)
-    result = spawn_peer(fallback, args, plugin_root)
+    result = spawn_peer(fallback, args, plugin_root, topic)
     result['fallback_from'] = config.values['peer_harness']
     return result
 
@@ -422,7 +469,7 @@ def fallback_config(config):
     return Config(config.profile_file, values, sources)
 
 
-def spawn_peer(config, args, plugin_root):
+def spawn_peer(config, args, plugin_root, topic):
     require_tools(config)
     terminal = Terminal(config)
     terminal.validate_caller()
@@ -440,8 +487,11 @@ def spawn_peer(config, args, plugin_root):
         if turn == 'working':
             print(f"peer-chat-spawn: the {terminal.peer_pane} pane's {running} is mid-turn; "
                   'a send queues behind its current task; --restart replaces it', file=sys.stderr)
-        return report('already', terminal, config, False, turn)
-    argv = launch_argv(config, terminal, plugin_root)
+        if topic:
+            print('peer-chat-spawn: existing thread; no new topic grant applied', file=sys.stderr)
+        return report('already', terminal, config, False, turn, None)
+    grant = topic_grant(config.values, topic)
+    argv = launch_argv(config, terminal, plugin_root, grant)
     terminal.show_split()
     if running:
         terminal.quit(running)
@@ -453,13 +503,13 @@ def spawn_peer(config, args, plugin_root):
                   recoverable=True)
     turn = terminal.turn(wanted, turn_state)
     terminal.ctl('session', 'focus', terminal.own_pane, '--target', terminal.session)
-    return report('restarted' if running else 'started', terminal, config, True, turn)
+    return report('restarted' if running else 'started', terminal, config, True, turn, grant)
 
 
-def report(state, terminal, config, launched, peer_turn):
+def report(state, terminal, config, launched, peer_turn, grant):
     return {'state': state, 'session': terminal.session, 'pane': terminal.peer_pane,
             'harness': config.values['peer_harness'], 'requested_model': config.values['peer_model'],
-            'launched': launched, 'peer_turn': peer_turn}
+            'launched': launched, 'peer_turn': peer_turn, 'topic_grant': str(grant) if grant else None}
 
 
 def main():
@@ -469,7 +519,8 @@ def main():
         result = {'plugin': 'peer-chat', 'profile_file': config.profile_file,
                   'values': config.values, 'sources': config.sources}
     else:
-        result = spawn(config, args, Path(sys.argv[1]).resolve().parent.parent)
+        topic = topic_grant_dir(args.topic_dir) if args.topic_dir else None
+        result = spawn(config, args, Path(sys.argv[1]).resolve().parent.parent, topic)
     print(json.dumps(result, separators=(',', ':')))
 
 
