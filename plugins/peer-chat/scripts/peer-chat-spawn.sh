@@ -11,6 +11,7 @@ import shlex
 import shutil
 import subprocess
 import sys
+import tempfile
 import time
 
 
@@ -539,18 +540,42 @@ def spawn_peer(config, args, plugin_root, topic):
         return report('already', terminal, config, False, turn, None)
     grant = topic_grant(config.values, topic)
     terminal.bind_peer()
-    argv = launch_argv(config, terminal, plugin_root, grant)
-    if running:
-        terminal.quit(running)
-    terminal.wait(lambda: bool(terminal.text().strip()), 5, 'the peer shell drew no prompt')
-    terminal.require_shell()
-    terminal.type(shlex.join(argv) + '\n')
-    terminal.wait(lambda: terminal.peer_harness() == wanted,
-                  config.values['start_timeout'], f'{wanted} did not appear in the {terminal.peer_pane} pane',
-                  recoverable=True)
+    launch_peer(terminal, config, running, launch_argv(config, terminal, plugin_root, grant))
     turn = terminal.turn(wanted, turn_state)
     terminal.ctl('session', 'focus', terminal.pane_role(terminal.node(), terminal.own_id), '--target', terminal.session)
     return report('restarted' if running else 'started', terminal, config, True, turn, grant)
+
+
+def launch_peer(terminal, config, running, argv):
+    wanted = config.values['peer_harness']
+    launcher = write_launcher(argv)
+    try:
+        line = shlex.join(['/bin/sh', str(launcher)]) + '\n'
+        if len(line.encode()) >= MAX_TYPED_LINE:
+            raise Failure(f'the launcher path {launcher} makes a typed line of {len(line.encode())} bytes, '
+                          f'over the {MAX_TYPED_LINE}-byte tty limit; set TMPDIR to a shorter directory', 2)
+        if running:
+            terminal.quit(running)
+        terminal.wait(lambda: bool(terminal.text().strip()), 5, 'the peer shell drew no prompt')
+        terminal.require_shell()
+        terminal.type(line)
+        terminal.wait(lambda: terminal.peer_harness() == wanted,
+                      config.values['start_timeout'], f'{wanted} did not appear in the {terminal.peer_pane} pane',
+                      recoverable=True)
+    finally:
+        launcher.unlink(missing_ok=True)
+
+
+# The pane gets one short line: macOS keeps only 1024 bytes (MAX_CANON) of a line typed
+# before the shell's line editor starts, and the full launch argv outgrows that.
+MAX_TYPED_LINE = 1024
+
+
+def write_launcher(argv):
+    fd, name = tempfile.mkstemp(prefix='peer-chat-launch-', suffix='.sh')
+    with os.fdopen(fd, 'w') as script:
+        script.write('exec ' + shlex.join(argv) + '\n')
+    return Path(name)
 
 
 def report(state, terminal, config, launched, peer_turn, grant):

@@ -87,8 +87,15 @@ elif args[:2] == ['session', 'type']:
         if not (root / 'never-quit').exists():
             state[pane], state['pending'] = [], ''
     else:
-        argv = shlex.split(body)
-        (root / 'launch.txt').write_text(body)
+        typed = shlex.split(body)
+        assert typed[0] == '/bin/sh' and len(typed) == 2, body
+        (root / 'launch-line.txt').write_text(body)
+        (root / 'launcher-path.txt').write_text(typed[1])
+        script = Path(typed[1]).read_text()
+        assert script.startswith('exec '), script
+        command = script[len('exec '):]
+        argv = shlex.split(command)
+        (root / 'launch.txt').write_text(command)
         (root / 'launch.json').write_text(json.dumps(argv))
         command_index = next(i for i in range(1, len(argv)) if '=' not in argv[i]) if argv[0] == 'env' else 0
         blocked = (root / 'never-start').read_text().strip() if (root / 'never-start').exists() else None
@@ -112,6 +119,36 @@ assert_launch_arg() {
     assert_launch_arg "AGTERM_SOCKET=$AGTERM_SOCKET"
     assert_launch_arg "AGTERM_PANE_ID=pane-right"
     jq -es --arg socket "$AGTERM_SOCKET" 'all(.[]; .[-2:] == ["--socket", $socket])' "$TMP/calls.jsonl"
+}
+
+@test "spawn: a launch argv past the 1024-byte tty line limit is typed as one short launcher line" {
+    export AGTERM_SOCKET="$TMP/Library/Application Support/agterm/agterm.sock"
+    export AGTERM_PANE_ID=pane-left
+    run bash "$SPAWN" 'codex(gpt-6.2-sol)' --topic-dir tmp/peer-chat/a-long-topic-slug-for-the-grant
+    assert_status 0
+    [ "$(LC_ALL=C wc -c < "$TMP/launch.txt")" -gt 1024 ]
+    [ "$(LC_ALL=C wc -c < "$TMP/launch-line.txt")" -lt 200 ]
+    [ ! -e "$(cat "$TMP/launcher-path.txt")" ]
+}
+
+@test "spawn: a launcher path too long for one typed line is refused before any pane input" {
+    long="$TMP"
+    for part in 1 2 3; do
+        long="$long/$(printf "q'%.0s" $(seq 1 100))"
+    done
+    mkdir -p "$long"
+    TMPDIR="$long" run bash "$SPAWN" codex
+    assert_status 2
+    assert_contains "$output" 'set TMPDIR to a shorter directory'
+    [ ! -e "$TMP/typed.jsonl" ]
+    [ -z "$(find "$long" -name 'peer-chat-launch-*.sh')" ]
+}
+
+@test "spawn: the launcher is removed when the peer never starts" {
+    echo codex > "$TMP/never-start"
+    run bash "$SPAWN" codex --no-fallback
+    assert_status 1
+    [ ! -e "$(cat "$TMP/launcher-path.txt")" ]
 }
 
 @test "spawn: all harness pairings work from both caller panes" {

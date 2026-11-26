@@ -1,5 +1,14 @@
 # Changelog
 
+## peer-chat v0.14.1 - 2026-11-26
+
+### Fixed
+
+- Start a Codex peer even when its launch command passes 1024 bytes. The spawn now writes the
+  command to a private launcher script and types only `/bin/sh <launcher>`. macOS drops a typed
+  line past 1024 bytes before the shell is ready, so 0.14.0's socket variables cut the line off,
+  the command never ran, and the fallback `claude` line landed inside its open quote.
+
 ## peer-chat v0.14.0 - 2026-11-25
 
 ### Fixed
