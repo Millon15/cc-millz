@@ -176,6 +176,7 @@ sys.path.insert(0, sys.argv[1])
 import peer_chat_state as state
 spec = importlib.util.spec_from_file_location('paste', pathlib.Path(sys.argv[1]) / 'peer-chat-paste.py')
 paste = importlib.util.module_from_spec(spec)
+sys.modules[spec.name] = paste
 spec.loader.exec_module(paste)
 paste.require_reconciled(state.Store(pathlib.Path(sys.argv[2])), 'left', '')
 PY
