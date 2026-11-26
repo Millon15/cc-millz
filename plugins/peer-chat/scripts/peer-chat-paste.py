@@ -341,6 +341,8 @@ def composer_text(t: dict[str, Any], sid: str, profile: Any, window: str, untouc
                   *, notice: bool = False) -> str | None:
     """The peer's live composer content, or None while a dialog or an unknown screen covers it."""
     screen = t["_pane_text_unchecked"](sid, profile, window)
+    if profile.agent == "codex" and t["codex_hooks_browser"](screen):
+        return None
     if notice and profile.agent == "codex":
         without_footer = before_codex_wrapped_footer(t, screen, untouched=untouched)
         if without_footer is not None:
@@ -538,7 +540,7 @@ def message_budgets(args: argparse.Namespace, store: Store):
 
 
 def bind_panes(t: dict[str, Any], store: Store, peer) -> None:
-    info = t["locate_session"](peer.session, peer.window)
+    info = peer.session_info
     for role in ("left", "right"):
         detected = t["detect_harness"](info, role)
         if not detected:
@@ -780,7 +782,7 @@ def claim_outbox(args: argparse.Namespace, store: Store, peer, body: str, path: 
         raise StateError("message already claimed; inspect its recorded delivery, never paste it again")
     message = labelled(peer.profile, prepared["text"])
     record_outbox(path, message)
-    metadata = json.dumps({"message_id": mid, "state": str(store.path),
+    metadata = json.dumps({"message_id": mid, "state": str(store.path), "pane_id": peer.profile.pane_id,
                            "sha256": hashlib.sha256(message.encode()).hexdigest()})
     record_outbox(path.with_suffix(".json"), metadata)
     return prepared, message
@@ -849,13 +851,13 @@ def composer_refusal(t: dict[str, Any], profile: Any, content: str | None, messa
 
 
 def own_target(t: dict[str, Any], args: argparse.Namespace) -> tuple[str, str, Any]:
-    own = t["own_pane"]()
-    detected = t["detect_harness"](t["locate_session"](args.session, args.window), own)
+    window, info = t["locate_session"](args.session, args.window)
+    own = t["own_pane"](info)
+    detected = t["detect_harness"](info, own)
     if detected is None:
         raise RuntimeError(f"the {own} pane runs no known harness; nothing to recover")
-    profile = t["Profile"](own, detected[0], detected[1], "", RETURN_KEY)
-    window, sid = t["resolve_target"](args.session, args.window, profile)
-    return window, sid, profile
+    profile = t["BoundProfile"](own, detected[0], detected[1], "", RETURN_KEY, t["pane_id"](info, own))
+    return window, str(info["id"]), profile
 
 
 def recover_result(recovered: bool, reason: str) -> None:
@@ -880,6 +882,8 @@ def recover_locked(t: dict[str, Any], sid: str, profile: Any, window: str, path:
     if metadata:
         if metadata.get("state") != str(store.path) or metadata.get("sha256") != hashlib.sha256(message.encode()).hexdigest():
             raise StateError("recorded outbox identity or bytes changed; inspect before recovery")
+        if metadata.get("pane_id", profile.pane_id) != profile.pane_id:
+            raise StateError("recorded outbox belongs to a different pane id; inspect before recovery")
         record = store.read()["messages"].get(metadata.get("message_id"))
         if not record or record["recipient"] != profile.pane:
             raise StateError("recorded outbox does not belong to this recipient")

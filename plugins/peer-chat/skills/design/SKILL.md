@@ -64,6 +64,8 @@ Continue independent work after sending; otherwise end the turn and let the repl
    intents. A declined requirement stays visible in the open choices. Present a draft if the gate
    cannot pass.
 4. Present the proposal verbatim with both closing message IDs and the digest as separate receipts.
+   If the user asks to open the proposal inside agterm, use `agtermctl session overlay open --markdown "<absolute proposal path>" --target "$AGTERM_SESSION_ID"`. Append `--socket "$AGTERM_SOCKET"` when `AGTERM_SOCKET` is set and nonempty.
+   Outside agterm, share the proposal path.
    Stop at presentation until the user explicitly authorizes implementation of that revision.
 
 ## Amend or hand off

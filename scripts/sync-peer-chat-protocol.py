@@ -69,6 +69,14 @@ DESIGN_HANDOFF = {
     ),
 }
 
+DESIGN_PRESENTATION = (
+    "If the user asks to open the proposal inside agterm, use "
+    '`agtermctl session overlay open --markdown "<absolute proposal path>" --target "$AGTERM_SESSION_ID"`. '
+    'Append `--socket "$AGTERM_SOCKET"` when `AGTERM_SOCKET` is set and nonempty.\n'
+    "   Outside agterm, share the proposal path.\n"
+    "   "
+)
+
 FREEZE = {
     "peer-chat": (
         "- Freeze a review target: the integrator commits it when the user's instructions and the project's\n"
@@ -210,6 +218,7 @@ def outputs():
             .replace("@DESIGN_TOPIC@", DESIGN_TOPIC[plugin])
             .replace("@ASK_STATE@", "state.json")
             .replace("@DESIGN_HANDOFF@", DESIGN_HANDOFF[plugin])
+            .replace("@DESIGN_PRESENTATION@", DESIGN_PRESENTATION if plugin == "peer-chat" else "")
         ).split("---\n", 2)[1:]
         yield (
             ROOT / f"plugins/{plugin}/skills/design/SKILL.md",

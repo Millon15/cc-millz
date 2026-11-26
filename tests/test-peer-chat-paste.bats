@@ -24,7 +24,7 @@ setup() {
     unset PEER_CHAT_NAME PEER_CHAT_CLAUDE_COMMAND PEER_CHAT_CODEX_COMMAND
     export PEER_CHAT_PASTE_TIMEOUT=1 PEER_CHAT_ACCEPT_TIMEOUT=1
     export PEER_CHAT_DELIVERY_POLL=0.1 PEER_CHAT_LOCK_WAIT=0.5
-    unset AGTERM_WINDOW_ID PEER_CHAT_DELIVERY_WAIT PEER_CHAT_COMPOSER_GATE
+    unset AGTERM_WINDOW_ID AGTERM_PANE_ID AGTERM_SOCKET PEER_CHAT_DELIVERY_WAIT PEER_CHAT_COMPOSER_GATE
     : > "${TMP}/paste-calls.log"
     printf 'empty' > "${TMP}/state"
     cp "${FIX}/tree-split-codex.json" "${TMP}/tree.json"
@@ -36,10 +36,50 @@ setup() {
 
 teardown() { teardown_tmp; }
 
+@test "routing: a supplied socket containing spaces reaches every agterm call" {
+    export AGTERM_SOCKET="$TMP/Application Support/agterm.sock"
+    run python3 "$PASTE" --to peer --stdin <<<"hello over the bound socket"
+    assert_status 0
+    [ -s "$TMP/paste-calls.log" ]
+}
+
+@test "routing: a bound pane that moves keeps both paste and submit" {
+    touch "$TMP/swap-on-read"
+    run python3 "$PASTE" --to peer --stdin <<<"follow the resolved pane"
+    assert_status 0
+    [ "$(jq -r '.workspaces[].sessions[].surfaces[] | select(.paneID == "pane-right").kind' "$TMP/tree.json")" = left ]
+    [ "$(grep -c '^session type --stdin --pane-id pane-right ' "$TMP/calls.log")" = 2 ]
+    [ -f "$TMP/typed.log" ]
+}
+
+@test "routing: replacement after the composer check receives zero pane input" {
+    touch "$TMP/replace-on-write"
+    run python3 "$PASTE" --to peer --stdin <<<"do not follow the pane role"
+    assert_status 1
+    assert_contains "$output" "unknown pane id: pane-right"
+    [ ! -e "$TMP/typed-input" ]
+}
+
 stub_agtermctl() {
     cat > "${STUB_BIN}/agtermctl" <<EOF
 #!/usr/bin/env bash
 printf '%s\n' "\$*" >> "${TMP}/calls.log"
+if [ -n "\${AGTERM_SOCKET:-}" ]; then
+    [ "\${@: -2:1}" = --socket ] && [ "\${@: -1}" = "\$AGTERM_SOCKET" ] || exit 8
+fi
+case "\$1 \$2" in
+    "session text"|"session type"|"surface cursor")
+        [ "\$*" != "\${*#*--pane }" ] && exit 8
+        token=""
+        for arg; do
+            if [ "\${previous:-}" = --pane-id ]; then token="\$arg"; break; fi
+            previous="\$arg"
+        done
+        jq -e --arg token "\$token" 'any(.. | objects | .paneID?; . == \$token)' "${TMP}/tree.json" >/dev/null || {
+            printf 'unknown pane id: %s\n' "\$token" >&2
+            exit 1
+        } ;;
+esac
 state="\$(cat "${TMP}/state")"
 case "\$1 \$2" in
     "window list")
@@ -51,6 +91,14 @@ case "\$1 \$2" in
     "tree --json") cat "${TMP}/tree.json" ;;
     "surface cursor") [ ! -f "${TMP}/cursor-unavailable" ] || exit 9; echo 2 ;;
     "session text")
+        if [ -f "${TMP}/swap-on-read" ]; then
+            rm "${TMP}/swap-on-read"
+            jq '.workspaces[].sessions[] |= (
+                .foreground as \$left | .foreground = .splitForeground | .splitForeground = \$left
+                | .surfaces[] |= (.kind = (if .kind == "left" then "right" else "left" end))
+            )' "${TMP}/tree.json" > "${TMP}/next.json"
+            mv "${TMP}/next.json" "${TMP}/tree.json"
+        fi
         screen="${TMP}/composer"
         [ -f "\$screen" ] || screen="${FIX}/codex-pane-empty.txt"
         left="\$(cat "${TMP}/dialog-reads" 2>/dev/null || echo 0)"
@@ -77,6 +125,13 @@ case "\$1 \$2" in
             *) cat "\$screen" ;;
         esac ;;
     "session type")
+        if [ -f "${TMP}/replace-on-write" ]; then
+            jq '(.workspaces[].sessions[].surfaces[] | select(.kind == "right").paneID) = "replacement"' \
+                "${TMP}/tree.json" > "${TMP}/next.json"
+            mv "${TMP}/next.json" "${TMP}/tree.json"
+            printf 'unknown pane id: %s\n' "\$token" >&2
+            exit 1
+        fi
         cat > "${TMP}/typed-input"
         payload="\$(cat "${TMP}/typed-input")"
         start=\$'\\033[200~'
@@ -128,7 +183,7 @@ send_file() { # send_file <message-file> [extra args]
     [ "$(paste_calls)" = 1 ]
     [ ! -e "${TMP}/clipboard-calls" ]
     assert_not_contains "$(cat "${TMP}/calls.log")" "session paste"
-    assert_contains "$(cat "${TMP}/paste-calls.log")" "session type --stdin --pane right --target ${SID}"
+    assert_contains "$(cat "${TMP}/paste-calls.log")" "session type --stdin --pane-id pane-right --target ${SID}"
     cmp <(printf '\n') "${TMP}/typed.log"
     [ "$(cat "${TMP}/state")" = submitted ]
     [ "$(message_states)" = submit_sent ]
@@ -184,7 +239,7 @@ composer_matrix() {
             AGTERM_PANE="$sender" run python3 "${PASTE}" --to peer --stdin < "${TMP}/msg"
             assert_status 0
             assert_contains "$(cat "${TMP}/pasted-body")" "$expected_label"
-            assert_contains "$(cat "${TMP}/paste-calls.log")" "session type --stdin --pane ${pane} --target ${SID}"
+            assert_contains "$(cat "${TMP}/paste-calls.log")" "session type --stdin --pane-id pane-${pane} --target ${SID}"
             [ "$(wc -l < "${TMP}/typed.log")" -eq 1 ]
             assert_not_contains "$(cat "${TMP}/calls.log")" 'surface cursor'
             assert_not_contains "$output" 'composer is not empty'
@@ -274,7 +329,7 @@ PY
     send_file "${TMP}/msg"
     assert_status 0
     assert_contains "${output}" "peer-chat-paste: the peer is mid-turn; this send queues behind its current task"
-    assert_contains "$(cat "${TMP}/paste-calls.log")" "session type --stdin --pane right --target ${SID}"
+    assert_contains "$(cat "${TMP}/paste-calls.log")" "session type --stdin --pane-id pane-right --target ${SID}"
     [ "$(wc -l < "${TMP}/typed.log")" -eq 1 ]
 }
 
@@ -285,7 +340,7 @@ PY
     send_file "${TMP}/msg"
     assert_status 0
     assert_contains "${output}" "the peer is mid-turn"
-    assert_contains "$(cat "${TMP}/paste-calls.log")" "session type --stdin --pane right --target ${SID}"
+    assert_contains "$(cat "${TMP}/paste-calls.log")" "session type --stdin --pane-id pane-right --target ${SID}"
 }
 
 @test "busy peer: an idle or unknown screen prints no warning" {
@@ -324,7 +379,7 @@ typed_keys() { od -An -c "${TMP}/typed.log" | tr -d ' \n'; }
     send_file "${TMP}/msg" --queue --slug seatos
     assert_status 0
     assert_contains "${output}" "queues behind its current task"
-    assert_contains "$(cat "${TMP}/paste-calls.log")" "session type --stdin --pane right --target ${SID}"
+    assert_contains "$(cat "${TMP}/paste-calls.log")" "session type --stdin --pane-id pane-right --target ${SID}"
     [ "$(typed_keys)" = '\t' ]
 }
 
@@ -373,7 +428,7 @@ typed_keys() { od -An -c "${TMP}/typed.log" | tr -d ' \n'; }
     run python3 "${PLUGIN}/scripts/peer-chat.py" --to peer --slug seatos --stdin < "${TMP}/msg"
     assert_status 0
     assert_contains "${output}" '"asks": ["#left-001"]'
-    assert_contains "$(cat "${TMP}/paste-calls.log")" "session type --stdin --pane right --target ${SID}"
+    assert_contains "$(cat "${TMP}/paste-calls.log")" "session type --stdin --pane-id pane-right --target ${SID}"
     assert_contains "$(ledger_rows)" $'left-001\tleft\t'
     assert_not_contains "${output}" "unrecognized arguments"
 }
@@ -912,7 +967,7 @@ PY
     send_file "${TMP}/msg"
     assert_status 0
     [ "$(cat "${TMP}/pasted-first")" = "Chat from claude (left): 🎯 same harness on both sides" ]
-    assert_contains "$(cat "${TMP}/paste-calls.log")" "session type --stdin --pane right --target ${SID}"
+    assert_contains "$(cat "${TMP}/paste-calls.log")" "session type --stdin --pane-id pane-right --target ${SID}"
 }
 
 @test "pair: codex+codex, right sends to left with the Codex protocol" {
@@ -921,7 +976,7 @@ PY
     AGTERM_PANE=right send_file "${TMP}/msg"
     assert_status 0
     [ "$(cat "${TMP}/pasted-first")" = "Chat from codex (right): 🎯 codex to codex" ]
-    assert_contains "$(cat "${TMP}/paste-calls.log")" "session type --stdin --pane left --target ${SID}"
+    assert_contains "$(cat "${TMP}/paste-calls.log")" "session type --stdin --pane-id pane-left --target ${SID}"
 }
 
 @test "pair: PEER_CHAT_NAME names the sender in the label" {
@@ -997,7 +1052,7 @@ PY
     [ ! -e "${spool}" ]
     [ "$(wc -l < "${TMP}/typed.log")" -eq 1 ]
     assert_contains "$(cat "${TMP}/pasted-body")" 'recovered conversation'
-    assert_contains "$(cat "${TMP}/paste-calls.log")" "session type --stdin --pane right --target ${SID} --window win-1"
+    assert_contains "$(cat "${TMP}/paste-calls.log")" "session type --stdin --pane-id pane-right --target ${SID} --window win-1"
 }
 
 @test "recovery: ambiguous selector preserves spool and never chooses the active pane" {
@@ -1077,7 +1132,7 @@ recover() { run python3 "${PASTE}" --to peer --recover-delivery --slug t; }
     recover
     assert_status 0
     assert_contains "${output}" '"recovered": true'
-    assert_contains "$(cat "${TMP}/calls.log")" 'session type --stdin --pane left'
+    assert_contains "$(cat "${TMP}/calls.log")" 'session type --stdin --pane-id pane-left'
     [ "$(wc -l < "${TMP}/typed.log")" -eq 1 ]
     [ -f "$(outbox left.recovered)" ]
     [ ! -f "$(outbox left.msg)" ]
@@ -1610,8 +1665,7 @@ symlinked_lock() { # symlinked_lock <topic> <pane> <target>
 
 # ------------------------------------------------- real Codex choosers --
 
-chooser_holds_send() { # chooser_holds_send <fixture>
-    dialog_before_paste "$1" 9999
+assert_chooser_holds_send() {
     printf '🎯 x\n' > "${TMP}/msg"
     send_file "${TMP}/msg" --slug seatos --wait 1s
     assert_status 2
@@ -1621,12 +1675,51 @@ chooser_holds_send() { # chooser_holds_send <fixture>
     nothing_recorded
 }
 
+chooser_holds_send() { # chooser_holds_send <fixture>
+    dialog_before_paste "$1" 9999
+    assert_chooser_holds_send
+}
+
+clip_hooks_scroll_indicator() {
+    sed '/^↓$/d' "$TMP/dialog" > "$TMP/next-dialog"
+    mv "$TMP/next-dialog" "$TMP/dialog"
+}
+
 @test "gate: the Codex folder-trust chooser, captured live, holds the send" {
     chooser_holds_send codex-trust-chooser.txt
 }
 
 @test "gate: the Codex hooks-review chooser, captured live, holds the send" {
     chooser_holds_send codex-hooks-chooser.txt
+}
+
+@test "gate: the real Codex /hooks event table holds the send" {
+    chooser_holds_send codex-hooks-browser-narrow.txt
+}
+
+@test "gate: the Codex /hooks table holds when the scroll indicator is clipped" {
+    dialog_before_paste codex-hooks-browser-narrow.txt 9999
+    clip_hooks_scroll_indicator
+    assert_chooser_holds_send
+}
+
+@test "gate: the real narrow Codex composer still accepts a paste" {
+    cp "$FIX/codex-pane-empty-narrow.txt" "$TMP/composer"
+    run python3 "$PASTE" --to peer --stdin <<<"a note to the narrow composer"
+    assert_status 0
+    [ "$(paste_calls)" -eq 1 ]
+    [ "$(typed_keys)" = '\n' ]
+}
+
+@test "gate: the Codex /hooks table opening after paste gets no Return" {
+    dialog_after_paste codex-hooks-browser-narrow.txt 9999
+    clip_hooks_scroll_indicator
+    printf '🎯 x\n' > "$TMP/msg"
+    send_file "$TMP/msg" --slug seatos --wait 1s
+    assert_status 1
+    assert_contains "$output" "$UNSUBMITTED_NO_COMPOSER"
+    [ "$(paste_calls)" -eq 1 ]
+    [ ! -f "$TMP/typed.log" ]
 }
 
 @test "gate: the Codex hooks-review chooser opening after the paste gets no Return" {

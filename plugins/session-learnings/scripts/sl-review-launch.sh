@@ -73,15 +73,24 @@ count_lines() {
 	sed '/^$/d' | wc -l | tr -d ' '
 }
 
+# agtermctl never reads AGTERM_SOCKET itself; launchd runs this without one, so auto-resolve stays the default.
+agterm() {
+	if [ -n "${AGTERM_SOCKET:-}" ]; then
+		agtermctl "$@" --socket "$AGTERM_SOCKET"
+	else
+		agtermctl "$@"
+	fi
+}
+
 agterm_reachable() {
-	command -v agtermctl >/dev/null 2>&1 && agtermctl window list --json >/dev/null 2>&1
+	command -v agtermctl >/dev/null 2>&1 && agterm window list --json >/dev/null 2>&1
 }
 
 # agterm-lanes renames a session once claude starts, so the open review is found by its argv, not its name.
 open_review_session() {
 	local window
 	for window in $(open_windows); do
-		agtermctl tree --json --window "$window" | jq -r --arg prompt "$REVIEW_PROMPT" '
+		agterm tree --json --window "$window" | jq -r --arg prompt "$REVIEW_PROMPT" '
 			.result.tree.workspaces[]?.sessions[]?
 			| select((.foreground // []) | index($prompt))
 			| .id'
@@ -89,17 +98,19 @@ open_review_session() {
 }
 
 open_windows() {
-	agtermctl window list --json | jq -r '.result.windows[] | select(.open) | .id'
+	agterm window list --json | jq -r '.result.windows[] | select(.open) | .id'
 }
 
 launch_review() {
-	local cmd=(agtermctl session new --cwd "$REVIEW_CWD" --workspace-name "$WORKSPACE" --create-workspace
+	local cmd=(session new --cwd "$REVIEW_CWD" --workspace-name "$WORKSPACE" --create-workspace
 		--name "$SESSION_NAME" --no-select --command "/bin/zsh -lc 'claude \"$REVIEW_PROMPT\"'")
-	[ "$DRY_RUN" -eq 1 ] && finish "dry-run: ${cmd[*]}"
+	[ "$DRY_RUN" -eq 1 ] && finish "dry-run: agtermctl ${cmd[*]}"
 	local id
-	id="$("${cmd[@]}")"
-	agtermctl session status blocked --target "$id" >/dev/null ||
+	id="$(agterm "${cmd[@]}")"
+	agterm session status blocked --target "$id" >/dev/null ||
 		echo "sl-review-launch: could not flag session $id" >&2
+	agterm session context "weekly session-learnings review: $REVIEW_PROMPT" --target "$id" >/dev/null ||
+		echo "sl-review-launch: could not set context on $id" >&2
 	notify "weekly review open in agterm workspace $WORKSPACE" || echo "sl-review-launch: notification failed" >&2
 	finish "launched $id"
 }

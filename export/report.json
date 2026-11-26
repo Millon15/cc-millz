@@ -3,7 +3,7 @@
   "packages": [
     {
       "name": "agterm-lanes",
-      "version": "0.2.0",
+      "version": "0.3.0",
       "included": [],
       "skipped": [],
       "note": "No portable skills; no package emitted. Hooks and registered agents are not exported."
@@ -163,7 +163,7 @@
     },
     {
       "name": "peer-chat",
-      "version": "0.13.0",
+      "version": "0.14.0",
       "included": [],
       "skipped": [
         {
@@ -304,7 +304,7 @@
     },
     {
       "name": "session-learnings",
-      "version": "0.4.1",
+      "version": "0.4.2",
       "included": [],
       "skipped": [
         {
@@ -411,7 +411,7 @@
     },
     {
       "name": "voice-call",
-      "version": "0.1.6",
+      "version": "0.1.7",
       "included": [],
       "skipped": [],
       "note": "No portable skills; no package emitted. Hooks and registered agents are not exported."

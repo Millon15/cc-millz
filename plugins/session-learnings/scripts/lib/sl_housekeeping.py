@@ -123,7 +123,8 @@ def notify(body):
     if override:
         return deliver([override, body])
     agterm = shutil.which("agtermctl")
-    if agterm and deliver([agterm, "notify", body, "--title", "session-learnings"]):
+    socket = os.environ.get("AGTERM_SOCKET")
+    if agterm and deliver([agterm, "notify", body, "--title", "session-learnings", *(["--socket", socket] if socket else [])]):
         return True
     osascript = shutil.which("osascript")
     return bool(osascript) and deliver([

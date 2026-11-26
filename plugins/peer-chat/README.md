@@ -6,7 +6,7 @@
 
 Two coding agents hold a conversation in one agterm split, each typing into the other's composer: Claude Code and Codex, two Claudes, or two Codexes, any model on either side. You read both halves without relaying anything by hand. The value is disagreement: a second agent with its own context attacks the first one's reasoning, and what comes back is a located disagreement or a checked fact.
 
-⚠️ **Requires** the [agterm](https://agterm.com/) terminal 0.24.0+ (macOS), `python3` 3.10+, `jq`, and the `claude` or `codex` CLI for each side. Outside agterm nothing is typed: sends and the spawn refuse, while `peer-chat-spawn.sh --explain` and the installer still work.
+⚠️ **Requires** the [agterm](https://agterm.com/) terminal 0.44.1+ (macOS), `python3` 3.10+, `jq`, and the `claude` or `codex` CLI for each side. Outside agterm nothing is typed: sends and the spawn refuse, while `peer-chat-spawn.sh --explain` and the installer still work.
 
 ## Core ideas
 
@@ -103,7 +103,7 @@ The harness and the model resolve as one pair:
 - Codex peers default to embedded mode with `--no-daemon`, including when `peer_args` contains other options. Pane variables are passed twice: as an `env K=V` prefix on the launch line, which Codex hooks read, and as per-thread `-c` overrides, which its shell tools read.
 - Set `codex_mode` to `daemon` in `.peer-chat.json`, or set `PEER_CHAT_CODEX_MODE=daemon`, to use the shared local daemon. The launcher starts it, connects through its Unix socket, and passes the caller's working directory. Explicit `--no-daemon` in `peer_args` overrides daemon mode.
 - `--profile`, `--oss`, `--strict-config`, and `--dangerously-bypass-hook-trust` require embedded mode. Peer-chat selects the runtime, so `--remote` in `peer_args` is rejected. A daemon-mode Codex wrapper must accept `app-server daemon start`; a failed or timed-out start follows the configured harness fallback.
-- The peer is addressed by pane slot. After a promote or re-split puts a different agent of the same harness into that slot, the foreground check cannot tell them apart.
+- Each send resolves a stable agterm pane token and uses it through submission. Promotion keeps the same recipient. A pane replacement during the send makes the old token fail. When supplied, `AGTERM_SOCKET` selects the app for every call.
 - A model name reaches the harness verbatim; an unknown one fails inside the harness, not before the launch.
 - `peer_turn` and the mid-turn warning come from screen text, matched against the markers Claude Code and Codex draw today (a spinner line with a timer, `Working (… esc to interrupt)`); a harness that redraws them reads as `unknown`, which never warns and never blocks.
 - The peer-mode hook's parent-process check can miss a nested agent and never invents one. A harness whose process shows under another name (`node` for an npm-installed CLI, a wrapper not named in `PEER_CHAT_*_COMMAND`) is not counted, and a headless run started from it gets the directive. The cost is one paragraph of context: the hook opens no pane.

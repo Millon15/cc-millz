@@ -1,0 +1,5 @@
+› Ask Codex to do anything
+
+  GPT-6.2-Sol default · ~/tmp/codex-hooks-
+  fixture.rmwBll/work
+  ← for agents · ? for shortcuts

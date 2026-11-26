@@ -39,6 +39,13 @@ setup() {
     grep -qF 'Carry any explicit `--state <path>` in the resume line' "$PANE/build/SKILL.md"
 }
 
+@test "design: only the pane skill offers the requested Markdown overlay" {
+    grep -qF 'If the user asks to open the proposal inside agterm' "$PANE/design/SKILL.md"
+    grep -qF 'agtermctl session overlay open --markdown' "$PANE/design/SKILL.md"
+    grep -qF -- '--socket "$AGTERM_SOCKET"' "$PANE/design/SKILL.md"
+    ! grep -qF -- '--markdown' "$BG/design/SKILL.md"
+}
+
 @test "design: background handoff reuses its native run and reserved checks" {
     grep -qF 'peer-chat-bg:peer-chat' "$BG/design/SKILL.md"
     grep -qF '/peer-chat-bg:build <absolute proposal path> --slug <same slug>' "$BG/design/SKILL.md"

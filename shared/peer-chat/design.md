@@ -59,7 +59,7 @@ Apply the topic setup below during preflight, before opening the conversation.
    intents. A declined requirement stays visible in the open choices. Present a draft if the gate
    cannot pass.
 4. Present the proposal verbatim with both closing message IDs and the digest as separate receipts.
-   Stop at presentation until the user explicitly authorizes implementation of that revision.
+   @DESIGN_PRESENTATION@Stop at presentation until the user explicitly authorizes implementation of that revision.
 
 ## Amend or hand off
 

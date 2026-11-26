@@ -28,6 +28,7 @@ import argparse
 import importlib.util
 import json
 import os
+import re
 import subprocess
 import sys
 from dataclasses import dataclass
@@ -72,11 +73,103 @@ engine = load_engine()
 class Peer:
     window: str
     session: str
-    profile: Any
+    profile: BoundProfile
     sender: str
+    session_info: dict[str, Any]
 
 
-def own_pane() -> str:
+@dataclass(frozen=True)
+class BoundProfile(engine.Profile):
+    pane_id: str
+
+
+def agterm_ctl(*args: str, input_text: str | None = None) -> str:
+    socket = os.environ.get("AGTERM_SOCKET")
+    return upstream_ctl(*args, *(("--socket", socket) if socket else ()), input_text=input_text)
+
+
+def pane_id(info: dict[str, Any], role: str) -> str:
+    for surface in info.get("surfaces", []):
+        if surface.get("kind") == role and surface.get("paneID"):
+            return surface["paneID"]
+    raise RuntimeError(f"the {role} pane has no live pane id")
+
+
+def pane_role(info: dict[str, Any], token: str) -> str:
+    for surface in info.get("surfaces", []):
+        if surface.get("paneID") == token and surface.get("kind") in PANES:
+            return surface["kind"]
+    raise RuntimeError(f"unknown pane id: {token}")
+
+
+def require_bound_target(sid: str, profile: BoundProfile, window: str | None = None) -> str:
+    info = engine.find_node(sid, window)
+    role = pane_role(info, profile.pane_id)
+    if not engine.runs(pane_foreground(info, role), profile.command):
+        raise RuntimeError(f"the bound {profile.agent} pane is not running {profile.command!r}")
+    return str(info["id"])
+
+
+def bound_text(sid: str, profile: BoundProfile, window: str | None = None) -> str:
+    return agterm_ctl("session", "text", "--pane-id", profile.pane_id, "--target", sid,
+                      "--lines", str(engine.BOX_LINES), *engine.window_option(window))
+
+
+def bound_cursor(sid: str, profile: BoundProfile, window: str | None = None) -> int:
+    value = agterm_ctl("surface", "cursor", "--pane-id", profile.pane_id, "--target", sid,
+                       *engine.window_option(window)).strip()
+    try:
+        return int(value)
+    except ValueError as error:
+        raise RuntimeError(f"surface cursor returned {value!r}") from error
+
+
+def bound_type(sid: str, profile: BoundProfile, text: str, window: str | None = None) -> None:
+    require_bound_target(sid, profile, window)
+    agterm_ctl("session", "type", "--stdin", "--pane-id", profile.pane_id, "--target", sid,
+               *engine.window_option(window), input_text=text)
+
+
+CODEX_HOOK_EVENT_HEADER = re.compile(r"^\s*Event\s+(?:Active/Installed|Installed\s+Active)\b")
+CODEX_HOOK_EVENT_ROW = re.compile(r"^\S+\s{2,}\d+(?:/|\s|$)")
+CODEX_HOOK_HANDLER_ROW = re.compile(r"^\[[ x!]\]\s+\d+\s{2,}")
+CODEX_HOOK_HANDLER_FOOTER = re.compile(r"(?:^| · )\S+ back\s*$")
+
+
+def codex_hooks_browser(screen: str) -> bool:
+    """The /hooks table prefixes its selected row with the composer glyph."""
+    lines = screen.rstrip().splitlines()[-engine.BOX_LINES:]
+    for index in range(len(lines) - 1, -1, -1):
+        selected = engine.CODEX_PROMPT_RE.match(lines[index])
+        if selected:
+            row = selected.group(1)
+            if CODEX_HOOK_EVENT_ROW.match(row):
+                return any(CODEX_HOOK_EVENT_HEADER.match(line) for line in lines[:index])
+            return bool(CODEX_HOOK_HANDLER_ROW.match(row) and CODEX_HOOK_HANDLER_FOOTER.search(lines[-1].strip()))
+    return False
+
+
+def live_prompt_text(profile: BoundProfile, screen: str) -> str | None:
+    if profile.agent == "codex" and codex_hooks_browser(screen):
+        return None
+    return upstream_live_prompt_text(profile, screen)
+
+
+# The vendored composer protocol uses the adapter's routing at its I/O boundaries.
+upstream_ctl = engine.ctl
+upstream_live_prompt_text = engine.live_prompt_text
+engine.ctl = agterm_ctl
+engine.require_target = require_bound_target
+engine._pane_text_unchecked = bound_text
+engine._cursor_column_unchecked = bound_cursor
+engine.type_text = bound_type
+engine.live_prompt_text = live_prompt_text
+
+
+def own_pane(info: dict[str, Any]) -> str:
+    token = os.environ.get("AGTERM_PANE_ID")
+    if token and str(info["id"]).lower() == os.environ.get("AGTERM_SESSION_ID", "").lower():
+        return pane_role(info, token)
     pane = os.environ.get("AGTERM_PANE", "")
     if pane not in PANES:
         raise RuntimeError(
@@ -116,7 +209,7 @@ def candidate_windows(session: str | None, window: str | None) -> list[str]:
     return [engine.resolve_window(window)] if pinned else engine.open_window_ids()
 
 
-def locate_session(session: str | None, window: str | None) -> dict[str, Any]:
+def locate_session(session: str | None, window: str | None) -> tuple[str, dict[str, Any]]:
     selector = engine.configured_selector(session, "AGTERM_SESSION_ID", "session")
     if not selector:
         raise RuntimeError(
@@ -124,7 +217,7 @@ def locate_session(session: str | None, window: str | None) -> dict[str, Any]:
         )
     needle = selector.lower()
     matches = [
-        info
+        (candidate, info)
         for candidate in candidate_windows(session, window)
         for info in engine.walk(engine.tree(candidate))
         if str(info.get("id", "")).lower().startswith(needle)
@@ -132,9 +225,10 @@ def locate_session(session: str | None, window: str | None) -> dict[str, Any]:
     if len(matches) != 1:
         detail = "ambiguous" if matches else "not found"
         raise RuntimeError(f"agterm session {selector!r} is {detail}")
-    if not matches[0].get("hasSplit"):
+    resolved_window, info = matches[0]
+    if not info.get("hasSplit"):
         raise RuntimeError(f"session {selector} has no split, so there is no peer pane")
-    return matches[0]
+    return resolved_window, info
 
 
 def target_pane(to: str, info: dict[str, Any], own: str, command: str | None) -> str:
@@ -179,8 +273,8 @@ def resolve_peer(
     command: str | None,
     queue: bool,
 ) -> Peer:
-    own = own_pane()
-    info = locate_session(session, window)
+    resolved_window, info = locate_session(session, window)
+    own = own_pane(info)
     pane = target_pane(to, info, own, command)
     if pane == own:
         raise RuntimeError(
@@ -190,9 +284,8 @@ def resolve_peer(
     if queue and harness != "codex":
         raise RuntimeError("--queue works only when the recipient runs codex")
     label = f"Chat from {sender_name(info, own)}: "
-    profile = engine.Profile(pane, harness, executable, label, "\t" if queue else "\n")
-    resolved_window, sid = engine.resolve_target(session, window, profile)
-    return Peer(resolved_window, sid, profile, own)
+    profile = BoundProfile(pane, harness, executable, label, "\t" if queue else "\n", pane_id(info, pane))
+    return Peer(resolved_window, str(info["id"]), profile, own, info)
 
 
 def parse_args(argv: list[str] | None = None) -> argparse.Namespace:

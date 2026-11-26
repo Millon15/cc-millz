@@ -216,15 +216,38 @@ def resolve_pane(tree, requested):
     raise CallError("no_claude_pane", "Select a Claude pane or its Codex sibling", 409)
 
 
-async def agterm_tree():
-    windows = await command_json("agtermctl", "window", "list", "--json")
+# The daemon starts with AGTERM_* and AGT_* scrubbed, so the socket of the caller whose pin was accepted is
+# the one its agtermctl calls use; a pin without one goes back to auto-resolve.
+pinned_socket = ""
+
+
+def caller_socket():
+    return os.environ.get("AGTERM_SOCKET") or os.environ.get("AGT_SOCKET") or ""
+
+
+def agtermctl_argv(*args, socket=None):
+    socket = (pinned_socket or caller_socket()) if socket is None else socket
+    return ["agtermctl", *args, *(["--socket", socket] if socket else [])]
+
+
+def requested_socket(body):
+    return text_field(body, "agterm_socket", 1024, empty=True) if "agterm_socket" in body else ""
+
+
+def adopt_pinned_socket(socket):
+    global pinned_socket
+    pinned_socket = socket
+
+
+async def agterm_tree(socket=None):
+    windows = await command_json(*agtermctl_argv("window", "list", "--json", socket=socket))
     entries = windows.get("result", {}).get("windows", [])
     trees = []
     for window in entries:
         if window.get("open") is False or window.get("closed"):
             continue
-        trees.append(await command_json("agtermctl", "tree", "--json", "--window", window["id"]))
-    return trees or [await command_json("agtermctl", "tree", "--json")]
+        trees.append(await command_json(*agtermctl_argv("tree", "--json", "--window", window["id"], socket=socket)))
+    return trees or [await command_json(*agtermctl_argv("tree", "--json", socket=socket))]
 
 
 async def command_json(*argv):
@@ -250,7 +273,7 @@ def hidden_band_at_prompt(text):
 
 
 async def agterm_request(*args, data=None):
-    process = await asyncio.create_subprocess_exec("agtermctl", *args, "--json",
+    process = await asyncio.create_subprocess_exec(*agtermctl_argv(*args, "--json"),
         stdin=asyncio.subprocess.PIPE if data is not None else asyncio.subprocess.DEVNULL,
         stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE)
     try:
@@ -952,10 +975,12 @@ class Daemon:
 
     async def pin(self, body):
         requested = Pane.parse(body)
-        pane = resolve_pane(await self.tree_provider(), requested)
+        socket = requested_socket(body)
+        pane = resolve_pane(await self.tree_provider(socket), requested)
         async with self.lifecycle:
             if pane not in self.registered:
                 raise CallError("not_registered", "Claude has not registered; enable the voice-call mod and retry", 409)
+            adopt_pinned_socket(socket)
             if pane == self.pinned and self.call == "live":
                 await self.bus.emit(pane, dict(kind="show"))
                 self.schedule_band_expansion()
@@ -1333,7 +1358,7 @@ def request(method, path, body=None, timeout=50):
 def start_detached():
     directory = state_dir()
     directory.mkdir(mode=0o700, parents=True, exist_ok=True)
-    environment = {key: value for key, value in os.environ.items() if not key.startswith("AGTERM_")}
+    environment = {key: value for key, value in os.environ.items() if not key.startswith(("AGTERM_", "AGT_"))}
     output = (directory / "daemon.log").open("a")
     os.chmod(directory / "daemon.log", 0o600)
     entry = Path(__file__).resolve().with_name("voice-call")
@@ -1353,13 +1378,13 @@ def start_detached():
 
 def show_hud(session, message):
     with suppress(OSError, subprocess.TimeoutExpired):
-        subprocess.run(["agtermctl", "session", "hud", message[:256], "--target", session], capture_output=True, timeout=3)
+        subprocess.run(agtermctl_argv("session", "hud", message[:256], "--target", session), capture_output=True, timeout=3)
         subprocess.Popen([sys.executable, str(Path(__file__).resolve()), "_close-hud", session],
                          stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, start_new_session=True)
 
 
 def active_session():
-    tree = subprocess.run(["agtermctl", "tree", "--json"], capture_output=True, text=True, timeout=5)
+    tree = subprocess.run(agtermctl_argv("tree", "--json"), capture_output=True, text=True, timeout=5)
     if tree.returncode:
         raise CallError("no_active_session", "Cannot resolve the active agterm session", 409)
     found = [session for session in all_sessions(json.loads(tree.stdout)) if session.get("active")]
@@ -1372,7 +1397,7 @@ def pin_with_retry(session, pane):
     deadline = time.monotonic() + 8
     while True:
         try:
-            return request("POST", "/pin", dict(agterm_session=session, pane=pane))
+            return request("POST", "/pin", dict(agterm_session=session, pane=pane, agterm_socket=caller_socket()))
         except CallError as exc:
             if exc.code != "not_registered" or time.monotonic() >= deadline:
                 raise
@@ -1413,7 +1438,7 @@ def install(link_only=False):
         snippet = entry.with_name("keymap.conf.snippet").read_text().replace("@VOICE_CALL@", shlex.quote(str(link)))
         with keymap.open("a") as output:
             output.write("\n" + snippet + "\n")
-    result = subprocess.run(["agtermctl", "keymap", "reload"], capture_output=True, text=True)
+    result = subprocess.run(agtermctl_argv("keymap", "reload"), capture_output=True, text=True)
     if result.returncode:
         raise CallError("keymap_reload_failed", "Installed files; agterm keymap reload failed")
     print("Installed voice-call and agterm hotkeys")
@@ -1444,7 +1469,7 @@ def main(argv=None):
     argv = sys.argv[1:] if argv is None else argv
     if argv[:1] == ["_close-hud"] and len(argv) == 2:
         time.sleep(3)
-        subprocess.run(["agtermctl", "session", "hud", "close", "--target", argv[1]], capture_output=True)
+        subprocess.run(agtermctl_argv("session", "hud", "close", "--target", argv[1]), capture_output=True)
         return 0
     args = parser().parse_args(argv)
     try:

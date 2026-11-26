@@ -62,7 +62,9 @@ class DaemonTests(unittest.IsolatedAsyncioTestCase):
         self.rules_type.return_value.catalog.return_value = {"files": [], "truncated": False}
         self.tokenizer_mock = patch.object(vc, "load_tokenizer", return_value=None)
         self.tokenizer_mock.start()
-        async def provider():
+        self.tree_sockets = []
+        async def provider(socket=None):
+            self.tree_sockets.append(socket)
             return tree()
         self.daemon = vc.Daemon(dict(vc.DEFAULTS, backend="fake"), self.temp.name, provider)
         self.daemon.band_expander = Mock()
@@ -420,9 +422,29 @@ class DaemonTests(unittest.IsolatedAsyncioTestCase):
             await self.pin()
         self.assertIsNone(self.daemon.pinned)
 
+    async def test_pin_adopts_the_callers_socket_and_a_bare_pin_drops_it(self):
+        self.addCleanup(setattr, vc, "pinned_socket", "")
+        socket = "/tmp/Application Support/agterm.sock"
+        with patch.dict(os.environ, {"AGTERM_SOCKET": "", "AGT_SOCKET": ""}):
+            await self.daemon.pin(dict(agterm_session="s1", pane="right", agterm_socket=socket))
+            self.assertEqual(vc.agtermctl_argv("tree", "--json")[-2:], ["--socket", socket])
+            await self.pin()
+            self.assertEqual(vc.agtermctl_argv("tree", "--json"), ["agtermctl", "tree", "--json"])
+
+    async def test_rejected_pin_reads_its_own_socket_and_keeps_the_live_calls(self):
+        self.addCleanup(setattr, vc, "pinned_socket", "")
+        with patch.dict(os.environ, {"AGTERM_SOCKET": "", "AGT_SOCKET": ""}):
+            await self.daemon.pin(dict(agterm_session="s1", pane="right", agterm_socket="/tmp/first.sock"))
+            with self.assertRaises(vc.CallError):
+                await self.daemon.pin(dict(agterm_session="gone", pane="left", agterm_socket="/tmp/second.sock"))
+            self.assertEqual(self.tree_sockets[-1], "/tmp/second.sock")
+            self.assertEqual(self.daemon.call, "live")
+            self.assertEqual(vc.agtermctl_argv("tree", "--json")[-1], "/tmp/first.sock")
+
     async def test_agterm_tree_skips_saved_closed_windows(self):
         windows = {"result":{"windows":[{"id":"open-window","open":True},{"id":"closed-window","open":False}]}}
-        with patch.object(vc, "command_json", new=AsyncMock(side_effect=[windows, tree()])) as command:
+        with patch.object(vc, "command_json", new=AsyncMock(side_effect=[windows, tree()])) as command, \
+                patch.dict(os.environ, {"AGTERM_SOCKET": "", "AGT_SOCKET": ""}):
             result = await vc.agterm_tree()
             self.assertEqual(len(result), 1)
             self.assertEqual(command.await_count, 2)
@@ -1213,11 +1235,32 @@ class ProcessTests(unittest.TestCase):
 
     def test_detached_spawn_scrubs_all_agterm_variables(self):
         with tempfile.TemporaryDirectory() as folder, patch.dict(os.environ, {
-            "VOICE_CALL_STATE_DIR":folder, "AGTERM_SESSION_ID":"old", "AGTERM_PANE":"right", "AGTERM_NEW_FIELD":"old"}):
+            "VOICE_CALL_STATE_DIR":folder, "AGTERM_SESSION_ID":"old", "AGTERM_PANE":"right", "AGTERM_NEW_FIELD":"old", "AGT_SOCKET":"old"}):
             with patch.object(vc.subprocess, "Popen") as spawn, patch.object(vc, "request", return_value={"running":True}):
                 vc.start_detached()
-                self.assertFalse(any(key.startswith("AGTERM_") for key in spawn.call_args.kwargs["env"]))
+                self.assertFalse(any(key.startswith(("AGTERM_", "AGT_")) for key in spawn.call_args.kwargs["env"]))
                 self.assertTrue(spawn.call_args.kwargs["start_new_session"])
+
+
+class AgtermSocketTests(unittest.TestCase):
+    def test_supplied_socket_is_appended_and_absent_one_adds_nothing(self):
+        socket = "/tmp/Application Support/agterm.sock"
+        with patch.dict(os.environ, {"AGTERM_SOCKET": socket, "AGT_SOCKET": "/other.sock"}):
+            self.assertEqual(vc.agtermctl_argv("tree", "--json"), ["agtermctl", "tree", "--json", "--socket", socket])
+        with patch.dict(os.environ, {"AGTERM_SOCKET": "", "AGT_SOCKET": ""}):
+            self.assertEqual(vc.agtermctl_argv("keymap", "reload"), ["agtermctl", "keymap", "reload"])
+        with patch.dict(os.environ):
+            os.environ.pop("AGTERM_SOCKET", None)
+            os.environ.pop("AGT_SOCKET", None)
+            self.assertEqual(vc.agtermctl_argv("tree", "--json"), ["agtermctl", "tree", "--json"])
+
+    def test_keymap_child_socket_is_used_and_sent_with_the_pin(self):
+        socket = "/tmp/Application Support/agterm.sock"
+        with patch.dict(os.environ, {"AGTERM_SOCKET": "", "AGT_SOCKET": socket}), \
+                patch.object(vc, "request", return_value={"ok": True}) as send:
+            self.assertEqual(vc.agtermctl_argv("session", "hud", "close")[-2:], ["--socket", socket])
+            vc.pin_with_retry("s1", "left")
+            self.assertEqual(send.call_args.args[2], dict(agterm_session="s1", pane="left", agterm_socket=socket))
 
 
 if __name__ == "__main__":

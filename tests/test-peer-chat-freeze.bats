@@ -99,6 +99,47 @@ freeze() { (cd "${REPO}" && python3 "${FREEZE}" --slug topic "$@"); }
 
 @test "fresh: submits each line with a separate Return keystroke" {
     body="$(cat "${FRESH}")"
-    assert_contains "${body}" "pane \"\$pane\" \"\$1\" >/dev/null"
-    assert_contains "${body}" "pane \"\$pane\" \$'\\n' >/dev/null"
+    assert_contains "$body" 'type_line "type $1" "$2"'
+    assert_contains "$body" "type_line \"submit \$1\" \$'\\n'"
+}
+
+run_fresh_watcher() {
+    export FRESH_TEST_FAILURE="$1" FRESH_TEST_TRANSCRIPT="$TMP/claude/projects/p/probe-session.jsonl"
+    mkdir -p "$TMP/claude/projects/p"
+    : > "$FRESH_TEST_TRANSCRIPT"
+    stub sleep
+    stub agtermctl '
+        case "$1 $2" in
+            "session text")
+                printf "read\n" >> "$TMP/agterm-reads"
+                if [ "$FRESH_TEST_FAILURE" != read ]; then printf "❯ \n"; exit 0; fi ;;
+            "session type")
+                printf "%q\n" "$7" >> "$TMP/agterm-writes"
+                if [ "$7" != "resume me" ]; then
+                    printf "{\"subtype\":\"compact_boundary\"}\n" >> "$FRESH_TEST_TRANSCRIPT"
+                    exit 0
+                fi ;;
+        esac
+        echo "error: unknown pane id" >&2
+        exit 1
+    '
+    TMPDIR="$TMP" CLAUDE_CONFIG_DIR="$TMP/claude" AGTERM_SOCKET= \
+        run bash "$FRESH" --foreground --focus f --resume "resume me" \
+        --session S1 --pane-id gone-token --claude-session probe-session
+}
+
+@test "fresh: a failed pane read logs the step and stops without retrying or typing" {
+    run_fresh_watcher read
+    assert_status 1
+    grep -q 'could not read pane before /compact: error: unknown pane id' "$TMP/peer-chat-fresh.probe-session.log"
+    [ "$(wc -l < "$TMP/agterm-reads")" -eq 1 ]
+    [ ! -f "$TMP/agterm-writes" ]
+}
+
+@test "fresh: a failed resume write logs the step and sends no further Return" {
+    run_fresh_watcher resume
+    assert_status 1
+    grep -q 'could not type the resume line: error: unknown pane id' "$TMP/peer-chat-fresh.probe-session.log"
+    [ "$(wc -l < "$TMP/agterm-writes")" -eq 3 ]
+    [ "$(tail -1 "$TMP/agterm-writes")" = "$(printf '%q' "resume me")" ]
 }

@@ -1,5 +1,55 @@
 # Changelog
 
+## peer-chat v0.14.0 - 2026-11-25
+
+### Fixed
+
+- Hold a peer send when Codex's `/hooks` browser is open. If it opens after the paste, hold the
+  submit key until the composer returns.
+- Pass the explicit agterm socket when supplied. Keep each bound pane's stable token through
+  delivery so promotion preserves routing and a replacement cannot receive the old send.
+
+### Added
+
+- `/peer-chat:design` can open the proposal in agterm's Markdown overlay on request.
+
+### Changed
+
+- Require agterm 0.44.1 or later for stable pane routing.
+
+## agterm-lanes v0.3.0 - 2026-11-25
+
+### Changed
+
+- The plugin no longer writes agent status. agterm's own Claude adapter (Help > Install Agent Status
+  Hooks, five entries in `~/.claude/settings.json`) is the one writer; with both installed every
+  status fired twice and raced. The `UserPromptSubmit`, `PostToolUse` and `Notification` hooks, the
+  `Stop` status call and `agterm-status.sh` are removed.
+- Role shows as the emoji and a sidebar name colour (`session tint <colour> --on name`) instead of a
+  glyph silhouette, so the per-pane `shape-<id>` file is no longer written.
+
+### Fixed
+
+- Naming a lane on its first `Stop` no longer repaints the finished turn as active: the async
+  naming hook sent `session status active` after the turn had completed.
+
+## session-learnings v0.4.2 - 2026-11-25
+
+### Changed
+
+- `sl-review-launch.sh` and the default notifier pass `--socket "$AGTERM_SOCKET"` to every agtermctl
+  call when the variable is set; the launchd run, which has none, keeps auto-resolve. The review
+  session it opens gets a title-bar context line (`session context`).
+
+## voice-call v0.1.7 - 2026-11-25
+
+### Changed
+
+- Every agtermctl call passes the caller's socket: `$AGTERM_SOCKET` from a shell, `$AGT_SOCKET` from
+  the agterm hotkey. `voice-call bind` sends it with the pin, and the daemon, which starts with every
+  `AGTERM_*` and `AGT_*` variable removed, uses it for that pinned call. A pin without one keeps
+  auto-resolve.
+
 ## peer-chat v0.13.0 - 2026-11-25
 
 ### Added

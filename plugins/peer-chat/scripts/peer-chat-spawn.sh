@@ -259,16 +259,19 @@ class Terminal:
         self.session = os.environ.get('AGTERM_SESSION_ID', '')
         self.window = os.environ.get('AGTERM_WINDOW_ID', '')
         self.own_pane = os.environ.get('AGTERM_PANE', '')
+        self.own_id = os.environ.get('AGTERM_PANE_ID', '')
+        self.socket = os.environ.get('AGTERM_SOCKET', '')
         if os.environ.get('AGTERM_ENABLED') != '1':
             raise Failure('not inside agterm (AGTERM_ENABLED unset)', 4)
         if not self.session or self.own_pane not in ('left', 'right'):
             raise Failure('AGTERM_SESSION_ID and AGTERM_PANE=left|right are required', 4)
-        self.peer_pane = 'right' if self.own_pane == 'left' else 'left'
 
     def ctl(self, *args, text=None):
         argv = ['agtermctl', *args]
         if self.window:
             argv += ['--window', self.window]
+        if self.socket:
+            argv += ['--socket', self.socket]
         result = subprocess.run(argv, input=text, capture_output=True, text=True)
         if result.returncode:
             raise Failure(f'agtermctl {args[0]} failed: {result.stderr.strip()}')
@@ -284,6 +287,16 @@ class Terminal:
     def foreground(self, node, pane):
         return node.get('foreground' if pane == 'left' else 'splitForeground', [])
 
+    def pane_id(self, node, pane):
+        return next((surface.get('paneID') for surface in node.get('surfaces', [])
+                     if surface.get('kind') == pane), None)
+
+    def pane_role(self, node, token):
+        for pane in ('left', 'right'):
+            if self.pane_id(node, pane) == token:
+                return pane
+        raise Failure(f'unknown pane id: {token}')
+
     def harness(self, node, pane):
         foreground = self.foreground(node, pane)
         if not isinstance(foreground, list):
@@ -297,13 +310,43 @@ class Terminal:
 
     def validate_caller(self):
         node = self.node()
+        if self.own_id:
+            self.own_pane = self.pane_role(node, self.own_id)
         if self.own_pane == 'right' and not node.get('hasSplit'):
             raise Failure('the caller right pane no longer exists', 4)
         if not self.harness(node, self.own_pane):
             raise Failure(f'the caller {self.own_pane} pane is not a known harness', 4)
+        self.own_id = self.pane_id(node, self.own_pane)
+        if not self.own_id:
+            raise Failure(f'the caller {self.own_pane} pane has no live pane id', 4)
+        self.peer_pane = 'right' if self.own_pane == 'left' else 'left'
+        self.peer_id = self.pane_id(node, self.peer_pane)
+        return node
+
+    def bind_peer(self):
+        self.show_split()
+        if not self.peer_id:
+            deadline = time.monotonic() + 5
+            while time.monotonic() < deadline:
+                node = self.node()
+                if self.pane_role(node, self.own_id) != self.own_pane:
+                    raise Failure('the caller moved before the peer pane was bound')
+                self.peer_id = self.pane_id(node, self.peer_pane)
+                if self.peer_id:
+                    return
+                time.sleep(0.1)
+            raise Failure(f'the peer {self.peer_pane} pane has no live pane id')
+
+    def peer_foreground(self):
+        node = self.node()
+        return self.foreground(node, self.pane_role(node, self.peer_id))
+
+    def peer_harness(self):
+        node = self.node()
+        return self.harness(node, self.pane_role(node, self.peer_id))
 
     def text(self):
-        return self.ctl('session', 'text', '--pane', self.peer_pane, '--target', self.session)
+        return self.ctl('session', 'text', '--pane-id', self.peer_id, '--target', self.session)
 
     def turn(self, harness, turn_state):
         try:
@@ -312,7 +355,7 @@ class Terminal:
             return 'unknown'
 
     def type(self, text):
-        self.ctl('session', 'type', '--stdin', '--pane', self.peer_pane, '--target', self.session, text=text)
+        self.ctl('session', 'type', '--stdin', '--pane-id', self.peer_id, '--target', self.session, text=text)
 
     def show_split(self):
         node = self.node()
@@ -325,11 +368,14 @@ class Terminal:
             if predicate():
                 return
             time.sleep(0.1)
-        hint = f'agtermctl session text --pane {self.peer_pane} --target {self.session}'
+        hint = ['agtermctl', 'session', 'text', '--pane-id', self.peer_id, '--target', self.session]
+        if self.socket:
+            hint += ['--socket', self.socket]
+        hint = shlex.join(hint)
         raise Failure(f'{failure}; read it with: {hint}', recoverable=recoverable)
 
     def require_shell(self):
-        if self.foreground(self.node(), self.peer_pane):
+        if self.peer_foreground():
             raise Failure(f'the {self.peer_pane} pane became busy; nothing launched')
 
     def quit(self, harness):
@@ -340,10 +386,10 @@ class Terminal:
             self.type(command)
         self.wait(visible, float(os.environ.get('PEER_CHAT_QUIT_SETTLE', '3')),
                   f'{command} did not appear; no Return sent')
-        if self.harness(self.node(), self.peer_pane) != harness:
+        if self.peer_harness() != harness:
             raise Failure('target harness changed before restart Return')
         self.type('\n')
-        self.wait(lambda: not self.foreground(self.node(), self.peer_pane), self.config['start_timeout'],
+        self.wait(lambda: not self.peer_foreground(), self.config['start_timeout'],
                   f'the {self.peer_pane} pane did not return to a shell after {command}')
 
 
@@ -369,10 +415,12 @@ def launch_argv(config, terminal, plugin_root, grant):
     values = config.values
     harness, model = values['peer_harness'], values['peer_model']
     context = {'AGTERM_ENABLED': '1', 'AGTERM_SESSION_ID': terminal.session, 'AGTERM_WINDOW_ID': terminal.window,
-               'AGTERM_PANE': terminal.peer_pane,
+               'AGTERM_PANE': terminal.peer_pane, 'AGTERM_PANE_ID': terminal.peer_id,
                'PEER_CHAT_NAME': ' '.join(value for value in (harness, model) if value),
                'PEER_CHAT_CLAUDE_COMMAND': values['claude_command'],
                'PEER_CHAT_CODEX_COMMAND': values['codex_command']}
+    if terminal.socket:
+        context['AGTERM_SOCKET'] = terminal.socket
     argv = [values[f'{harness}_command'], *values['peer_args']]
     if model:
         argv += ['--model', model]
@@ -472,8 +520,7 @@ def fallback_config(config):
 def spawn_peer(config, args, plugin_root, topic):
     require_tools(config)
     terminal = Terminal(config)
-    terminal.validate_caller()
-    node = terminal.node()
+    node = terminal.validate_caller()
     running = terminal.harness(node, terminal.peer_pane)
     if terminal.foreground(node, terminal.peer_pane) and not running:
         raise Failure(f'the {terminal.peer_pane} pane is busy with an unknown program')
@@ -482,7 +529,7 @@ def spawn_peer(config, args, plugin_root, topic):
     if running and not args.restart:
         if running != wanted:
             raise Failure(f'the peer runs {running}; use --restart to replace it with {wanted}', recoverable=True)
-        terminal.show_split()
+        terminal.bind_peer()
         turn = terminal.turn(running, turn_state)
         if turn == 'working':
             print(f"peer-chat-spawn: the {terminal.peer_pane} pane's {running} is mid-turn; "
@@ -491,18 +538,18 @@ def spawn_peer(config, args, plugin_root, topic):
             print('peer-chat-spawn: existing thread; no new topic grant applied', file=sys.stderr)
         return report('already', terminal, config, False, turn, None)
     grant = topic_grant(config.values, topic)
+    terminal.bind_peer()
     argv = launch_argv(config, terminal, plugin_root, grant)
-    terminal.show_split()
     if running:
         terminal.quit(running)
     terminal.wait(lambda: bool(terminal.text().strip()), 5, 'the peer shell drew no prompt')
     terminal.require_shell()
     terminal.type(shlex.join(argv) + '\n')
-    terminal.wait(lambda: terminal.harness(terminal.node(), terminal.peer_pane) == wanted,
+    terminal.wait(lambda: terminal.peer_harness() == wanted,
                   config.values['start_timeout'], f'{wanted} did not appear in the {terminal.peer_pane} pane',
                   recoverable=True)
     turn = terminal.turn(wanted, turn_state)
-    terminal.ctl('session', 'focus', terminal.own_pane, '--target', terminal.session)
+    terminal.ctl('session', 'focus', terminal.pane_role(terminal.node(), terminal.own_id), '--target', terminal.session)
     return report('restarted' if running else 'started', terminal, config, True, turn, grant)
 
 

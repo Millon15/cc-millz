@@ -12,11 +12,10 @@
 #
 # Load-bearing constraints, each learned the hard way:
 #
-#   `--shape` rides ONE status call and reverts on the next without it, so it cannot just be set
-#   here. It is persisted per pane and replayed by agterm-status.sh on every status it sets.
-#
-#   Role owns the glyph SILHOUETTE, never its hue: hue is the state palette
-#   (active/blocked/completed). If role took both channels, turn state would have no signal left.
+#   This hook never writes agent status. agterm's own Claude adapter (Help > Install Agent Status
+#   Hooks) is the one status writer; a second writer here raced it and an async Stop repainted a
+#   finished turn as active. Role rides the name instead: the emoji and a name tint, never the
+#   glyph, whose hue is the state palette (active/blocked/completed).
 #
 #   `session type` sends a REAL Return, and Stop fires exactly when a follow-up may be half-typed —
 #   hence the idle guard. On the PreToolUse path a question dialog is on screen and a keystroke
@@ -172,21 +171,20 @@ infer_role() {
 	esac
 }
 
-# Tints are dark but genuinely chromatic (~10% luminance) so the hue reads without hurting terminal
-# text contrast. Six silhouettes cover nine roles, so shapes group by class rather than map 1:1:
-# triangle = can break prod · diamond = verification · square = hygiene · capsule = information.
-# `star` is left unassigned, free to mark a lane by hand.
+# Pane tints are dark but genuinely chromatic (~10% luminance) so the hue reads without hurting
+# terminal text contrast. The name colour is one of agterm's named sidebar colours, so the row label
+# carries the role at a glance and the status glyph stays free for turn state.
 role_style() {
 	case "$1" in
-	bug) emoji="🐛" tint="#3b1218" shape="triangle" ;;
-	deploy) emoji="🚀" tint="#45101c" shape="triangle" ;;
-	review) emoji="🔍" tint="#3a2a0d" shape="diamond" ;;
-	test) emoji="🧪" tint="#0d2f33" shape="diamond" ;;
-	refactor) emoji="🧹" tint="#2a1140" shape="square" ;;
-	config) emoji="🔧" tint="#10233f" shape="square" ;;
-	data) emoji="📊" tint="#10321f" shape="capsule" ;;
-	docs) emoji="📝" tint="#33113a" shape="capsule" ;;
-	*) emoji="💬" tint="#1c1c22" shape="circle" ;;
+	bug) emoji="🐛" tint="#3b1218" label_tint="red" ;;
+	deploy) emoji="🚀" tint="#45101c" label_tint="orange" ;;
+	review) emoji="🔍" tint="#3a2a0d" label_tint="yellow" ;;
+	test) emoji="🧪" tint="#0d2f33" label_tint="teal" ;;
+	refactor) emoji="🧹" tint="#2a1140" label_tint="purple" ;;
+	config) emoji="🔧" tint="#10233f" label_tint="blue" ;;
+	data) emoji="📊" tint="#10321f" label_tint="green" ;;
+	docs) emoji="📝" tint="#33113a" label_tint="pink" ;;
+	*) emoji="💬" tint="#1c1c22" label_tint="gray" ;;
 	esac
 }
 
@@ -195,9 +193,9 @@ apply_lane() {
 	rc_name=$?
 	ctl session background color "$tint" --target "$AGTERM_SESSION_ID" >/dev/null 2>&1
 	rc_bg=$?
-	printf '%s\n' "$shape" >"$LANE_STATE_DIR/shape-$AGTERM_SESSION_ID" 2>/dev/null
-	ctl session status active --shape "$shape" --target "$AGTERM_SESSION_ID" >/dev/null 2>&1
-	log "$emoji $1 [$tint $shape] rename=$rc_name bg=$rc_bg"
+	ctl session tint "$label_tint" --on name --target "$AGTERM_SESSION_ID" >/dev/null 2>&1
+	rc_tint=$?
+	log "$emoji $1 [$tint $label_tint] rename=$rc_name bg=$rc_bg tint=$rc_tint"
 }
 
 # A slash command lands in the transcript as `<command-name>/rename</command-name> …

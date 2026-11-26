@@ -14,6 +14,7 @@ setup() {
     unset PEER_CHAT_CODEX_MODE PEER_CHAT_PEER_FALLBACK
     unset PEER_CHAT_PEER_HARNESS PEER_CHAT_PEER_MODEL PEER_CHAT_PEER_ARGS
     unset PEER_CHAT_CODEX_ARGS PEER_CHAT_CODEX_COMMAND PEER_CHAT_CLAUDE_COMMAND
+    unset AGTERM_PANE_ID AGTERM_SOCKET
     stub codex 'printf "%s\n" "$*" >> "$TMP/daemon-calls.txt"'
     stub claude
     stub peer-chat.py
@@ -50,10 +51,18 @@ args = sys.argv[1:]
 with (root / 'calls.jsonl').open('a') as log:
     log.write(json.dumps(args) + '\n')
 state = json.loads((root / 'tree.json').read_text())
-pane = args[args.index('--pane') + 1] if '--pane' in args else 'right'
+surfaces = [{'kind': 'left', 'paneID': 'pane-left'}]
+if state['hasSplit']:
+    surfaces.append({'kind': 'right', 'paneID': 'pane-right'})
+if args[:2] in (['session', 'text'], ['session', 'type']):
+    assert '--pane' not in args
+    token = args[args.index('--pane-id') + 1]
+    pane = next((item['kind'] for item in surfaces if item['paneID'] == token), None)
+    if pane is None:
+        raise SystemExit(f'unknown pane id: {token}')
 if args[0] == 'tree':
     print(json.dumps({'sessions':[dict(id=os.environ['SID'], hasSplit=state['hasSplit'],
-        split=state['split'], foreground=state['left'], splitForeground=state['right'])]}))
+        split=state['split'], foreground=state['left'], splitForeground=state['right'], surfaces=surfaces)]}))
 elif args[:2] == ['session', 'split']:
     state.update(hasSplit=True, split=True)
 elif args[:2] == ['session', 'text']:
@@ -94,6 +103,15 @@ PY
 
 assert_launch_arg() {
     jq -e --arg expected "$1" 'index($expected) != null' "$TMP/launch.json" >/dev/null
+}
+
+@test "spawn: routes through the supplied socket and passes the peer token to Codex" {
+    export AGTERM_SOCKET="$TMP/Application Support/agterm.sock"
+    run bash "$SPAWN" codex
+    assert_status 0
+    assert_launch_arg "AGTERM_SOCKET=$AGTERM_SOCKET"
+    assert_launch_arg "AGTERM_PANE_ID=pane-right"
+    jq -es --arg socket "$AGTERM_SOCKET" 'all(.[]; .[-2:] == ["--socket", $socket])' "$TMP/calls.jsonl"
 }
 
 @test "spawn: all harness pairings work from both caller panes" {
@@ -424,7 +442,7 @@ assert_launch_arg() {
     run bash "$SPAWN"
     assert_status 1
     assert_contains "$output" 'codex did not appear'
-    assert_contains "$output" "session text --pane right --target $SID"
+    assert_contains "$output" "session text --pane-id pane-right --target $SID"
 }
 
 @test "restart: both harnesses quit with their own command before a separate Return" {

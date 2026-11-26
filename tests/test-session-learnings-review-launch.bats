@@ -12,7 +12,7 @@ setup() {
 	LAUNCH="$SCRIPTS/sl-review-launch.sh"
 	export SESSION_LEARNINGS_HOME="$TMP/store" SESSION_LEARNINGS_REVIEW_CWD="$TMP/project"
 	export SESSION_LEARNINGS_NOTIFY="$STUB_BIN/notifier"
-	unset CLAUDE_LEARN_SKIP
+	unset CLAUDE_LEARN_SKIP AGTERM_SOCKET
 	stub_stats
 	stub_ledger
 	stub_agtermctl
@@ -85,6 +85,7 @@ launched() {
 	assert_contains "$new" "--no-select"
 	assert_contains "$new" "claude \"/session-learnings:review\""
 	grep -q '^session status blocked --target NEW-SESSION-ID$' "$TMP/agterm.log"
+	grep -q "^session context weekly session-learnings review: /session-learnings:review --target NEW-SESSION-ID\$" "$TMP/agterm.log"
 	grep -q 'weekly review open' "$TMP/notify.log"
 }
 
@@ -149,4 +150,25 @@ launched() {
 	assert_status 0
 	[ -z "$output" ]
 	[ ! -e "$TMP/stats.log" ]
+}
+
+@test "a supplied AGTERM_SOCKET reaches every agtermctl call, an absent one adds nothing" {
+	open_proposal
+	AGTERM_SOCKET="$TMP/Application Support/agterm.sock" run "$LAUNCH"
+	assert_status 0
+	[ "$output" = "launched NEW-SESSION-ID" ]
+	[ "$(grep -c . "$TMP/agterm.log")" = "$(grep -c -- "--socket $TMP/Application Support/agterm.sock\$" "$TMP/agterm.log")" ]
+	: >"$TMP/agterm.log"
+	run "$LAUNCH"
+	! grep -q -- '--socket' "$TMP/agterm.log"
+}
+
+@test "the default notifier forwards a supplied AGTERM_SOCKET and adds nothing without one" {
+	unset SESSION_LEARNINGS_NOTIFY
+	AGTERM_SOCKET="$TMP/Application Support/agterm.sock" run python3 "$SCRIPTS/lib/sl_housekeeping.py" notify --store="$TMP/store" --body="review due"
+	assert_status 0
+	grep -qx "notify review due --title session-learnings --socket $TMP/Application Support/agterm.sock" "$TMP/agterm.log"
+	: >"$TMP/agterm.log"
+	run python3 "$SCRIPTS/lib/sl_housekeeping.py" notify --store="$TMP/store" --body="review due"
+	grep -qx "notify review due --title session-learnings" "$TMP/agterm.log"
 }

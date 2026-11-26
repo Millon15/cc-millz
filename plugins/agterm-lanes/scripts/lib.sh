@@ -11,7 +11,7 @@
 AGTERMCTL=${AGTERMCTL:-/Applications/agterm.app/Contents/MacOS/agtermctl}
 [ -x "$AGTERMCTL" ] || AGTERMCTL=agtermctl
 
-# Sentinels and glyph records outlive the plugin: ${CLAUDE_PLUGIN_ROOT} is a cache directory that is
+# Sentinels outlive the plugin: ${CLAUDE_PLUGIN_ROOT} is a cache directory that is
 # wiped and re-copied on every version bump, which would re-name every open lane after an update.
 # shellcheck disable=SC2034  # read by the sourcing hook, not here
 LANE_STATE_DIR=${AGTERM_LANE_STATE_DIR:-$HOME/.claude/agterm-lanes}
