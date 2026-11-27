@@ -163,7 +163,7 @@
     },
     {
       "name": "peer-chat",
-      "version": "0.14.1",
+      "version": "0.15.0",
       "included": [],
       "skipped": [
         {
@@ -172,7 +172,7 @@
         },
         {
           "source": "skills/design/SKILL.md",
-          "reason": "referenced skill peer-chat:build was skipped: relative dependency escapes the skill directory"
+          "reason": "_plugin/scripts/peer-chat-spawn.sh: installed-plugin registry or cache dependency"
         },
         {
           "source": "skills/peer-chat/SKILL.md",

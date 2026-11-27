@@ -37,6 +37,7 @@ own configuration.
 | script | `scripts/peer-chat.py` | 📨 the adapter: resolves the peer pane and its harness, labels the sender, hands delivery to the engine; one line; a send with `--slug` or `--queue` goes to the paste sender instead |
 | script | `scripts/vendor/peer-chat.py` | 🧱 the vendored engine: composer and caret checks, 197-byte marked events, submit confirmation |
 | script | `scripts/peer-chat-paste.py` | 📄 the multi-line send: resolves the peer, enforces the ask ledger (`--slug`), waits out a dialog in the peer pane (`--wait`, exit 2 and one notice when it outlasts the budget), wraps prose, bracketed paste, confirms the tail in the composer, submits |
+| script | `scripts/peer-chat-review-page.py` | 💬 render a `proposal-vN.md` as a commentable agterm page (`peer-chat-review-page.html`), wait until the user sends, save `NN-user-comments-vN.json` in the topic dir; exit 3 when the page closes unsent |
 | script | `scripts/peer-chat-spawn.sh` | 🪟 open the other pane and start any harness + model; falls back to the other harness when the requested one cannot start (`--fallback`, `--no-fallback`); `--restart` relaunches the peer after an update; `--explain` prints the resolved config |
 | script | `scripts/peer-chat-install.sh` | 🔧 copy the adapter, engine and paste sender onto PATH and write the three Codex approval rules; `--check` reports |
 | script | `scripts/sync-upstream.sh` | 🔄 re-vendor from umputun/agterm, re-pin the sha256 and stage upstream's skill files for a hand merge |

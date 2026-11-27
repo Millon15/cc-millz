@@ -64,8 +64,11 @@ Continue independent work after sending; otherwise end the turn and let the repl
    intents. A declined requirement stays visible in the open choices. Present a draft if the gate
    cannot pass.
 4. Present the proposal verbatim with both closing message IDs and the digest as separate receipts.
-   If the user asks to open the proposal inside agterm, use `agtermctl session overlay open --markdown "<absolute proposal path>" --target "$AGTERM_SESSION_ID"`. Append `--socket "$AGTERM_SOCKET"` when `AGTERM_SOCKET` is set and nonempty.
-   Outside agterm, share the proposal path.
+   Inside agterm, open it for the user's comments: `python3 "${CLAUDE_PLUGIN_ROOT}/scripts/peer-chat-review-page.py" --proposal "<absolute proposal path>" --topic-dir "<topic dir>" --pane <your pane>`.
+   The page renders the proposal with a comment box on every block, waits until the user sends, saves
+   `NN-user-comments-vN.json` in the topic directory and prints its path. Exit 3 means the page closed
+   unsent: ask whether to reopen it. Every comment is material input (§ Amend or hand off): send it to
+   the peer and write the next revision. Outside agterm, share the proposal path.
    Stop at presentation until the user explicitly authorizes implementation of that revision.
 
 ## Amend or hand off

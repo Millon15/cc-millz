@@ -1,0 +1,259 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>__TITLE__</title>
+<style>
+  :root { color-scheme: light dark; }
+  body {
+    margin: 0;
+    background: var(--agterm-background, Canvas);
+    color: var(--agterm-foreground, CanvasText);
+    font: 15px/1.55 -apple-system, "SF Pro Text", system-ui, sans-serif;
+  }
+  .page {
+    --fg: var(--agterm-foreground, CanvasText);
+    --accent: var(--agterm-color-4, #2f6fdf);
+    --note: var(--agterm-color-3, #b58900);
+    --line: color-mix(in srgb, var(--fg) 14%, transparent);
+    --soft: color-mix(in srgb, var(--fg) 5%, transparent);
+    --muted: color-mix(in srgb, var(--fg) 60%, transparent);
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) 300px;
+    gap: 28px;
+    max-width: 1280px;
+    margin: 0 auto;
+    padding: 24px 28px 80px;
+  }
+  main { min-width: 0; max-width: 92ch; }
+  h1 { font-size: 24px; line-height: 1.25; margin: 0 0 12px; }
+  h2 { font-size: 19px; margin: 30px 0 8px; padding-top: 10px; border-top: 1px solid var(--line); }
+  h3 { font-size: 16px; margin: 22px 0 6px; }
+  p, li { margin: 0; }
+  ol, ul { margin: 0; padding-left: 26px; }
+  code {
+    font: 13px/1.4 "SF Mono", ui-monospace, Menlo, monospace;
+    background: var(--soft);
+    padding: 1px 4px;
+    border-radius: 3px;
+  }
+  pre { margin: 0; padding: 10px 12px; background: var(--soft); border-radius: 6px; overflow-x: auto; }
+  pre code { background: none; padding: 0; }
+  table { border-collapse: collapse; width: 100%; font-size: 14px; }
+  th, td { border: 1px solid var(--line); padding: 5px 8px; text-align: left; vertical-align: top; }
+  th { background: var(--soft); }
+  a { color: var(--accent); }
+
+  .block { position: relative; padding: 6px 10px 6px 12px; margin: 2px 0; border-left: 3px solid transparent; }
+  .block:hover { background: var(--soft); }
+  .block.has-note { border-left-color: var(--note); }
+  .add {
+    position: absolute; top: 4px; right: 4px;
+    font: 12px system-ui; color: var(--muted);
+    background: var(--agterm-background, Canvas);
+    border: 1px solid var(--line); border-radius: 5px;
+    padding: 1px 7px; cursor: pointer; opacity: 0;
+  }
+  .block:hover .add, .add:focus-visible { opacity: 1; }
+  .editor { margin: 8px 0 4px; }
+  .editor textarea {
+    width: 100%; box-sizing: border-box; min-height: 70px;
+    font: 14px/1.45 system-ui; color: inherit;
+    background: var(--agterm-background, Canvas);
+    border: 1px solid var(--note); border-radius: 6px; padding: 7px 9px;
+  }
+  .editor .row { display: flex; gap: 8px; margin-top: 5px; }
+  button {
+    font: 13px system-ui; color: inherit; cursor: pointer;
+    background: var(--soft); border: 1px solid var(--line); border-radius: 6px; padding: 4px 12px;
+  }
+  button.primary { background: var(--accent); border-color: var(--accent); color: var(--agterm-background, Canvas); }
+  button:focus-visible, textarea:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+
+  aside { position: sticky; top: 16px; align-self: start; max-height: calc(100vh - 32px); overflow: auto; }
+  aside h2 { border: 0; margin: 0 0 6px; padding: 0; font-size: 15px; }
+  .hint { color: var(--muted); font-size: 13px; margin-bottom: 12px; }
+  .general { width: 100%; box-sizing: border-box; min-height: 70px; font: 14px/1.45 system-ui; color: inherit;
+    background: var(--agterm-background, Canvas); border: 1px solid var(--line); border-radius: 6px; padding: 7px 9px; }
+  .notes { list-style: none; padding: 0; margin: 12px 0; }
+  .notes li { padding: 6px 0; border-bottom: 1px solid var(--line); font-size: 13px; cursor: pointer; }
+  .notes .where { color: var(--muted); display: block; }
+  .actions { display: flex; flex-direction: column; gap: 8px; }
+  #status { font-size: 13px; color: var(--muted); }
+  @media (max-width: 900px) { .page { grid-template-columns: 1fr; } aside { position: static; max-height: none; } }
+</style>
+</head>
+<body>
+<div class="page">
+  <main id="doc"></main>
+  <aside>
+    <h2>Your comments</h2>
+    <p class="hint">Hover a block and choose Comment. Send them all when you are done; the open page is the only copy.</p>
+    <label for="general" class="hint">Overall comment</label>
+    <textarea id="general" class="general" placeholder="Anything that is not about one block"></textarea>
+    <ul class="notes" id="notes"></ul>
+    <div class="actions">
+      <button type="button" class="primary" id="send">Send comments</button>
+      <span id="status">No comments yet.</span>
+    </div>
+  </aside>
+</div>
+<script type="text/plain" id="md">__MARKDOWN__</script>
+<script>
+(function () {
+  const esc = s => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+
+  function inline(text) {
+    const parts = text.split(/(`[^`]*`)/);
+    return parts.map(p => {
+      if (p.startsWith("`") && p.endsWith("`") && p.length > 1) return "<code>" + esc(p.slice(1, -1)) + "</code>";
+      let h = esc(p);
+      h = h.replace(/\*\*([^*]+)\*\*/g, "<strong>$1</strong>");
+      h = h.replace(/(^|[^*])\*([^*\s][^*]*)\*/g, "$1<em>$2</em>");
+      h = h.replace(/\[([^\]]+)\]\((https?:[^)\s]+)\)/g, '<a href="$2">$1</a>');
+      return h;
+    }).join("");
+  }
+
+  function parse(md) {
+    const lines = md.replace(/\r/g, "").split("\n");
+    const blocks = [];
+    let i = 0;
+    while (i < lines.length) {
+      const line = lines[i];
+      if (!line.trim()) { i++; continue; }
+      let m;
+      if ((m = line.match(/^(#{1,3})\s+(.*)$/))) {
+        blocks.push({ kind: "h", level: m[1].length, text: m[2], src: line }); i++; continue;
+      }
+      if (line.startsWith("```")) {
+        const body = []; i++;
+        while (i < lines.length && !lines[i].startsWith("```")) body.push(lines[i++]);
+        i++;
+        blocks.push({ kind: "code", text: body.join("\n"), src: body.join("\n") }); continue;
+      }
+      if (line.trim().startsWith("|")) {
+        const rows = [];
+        while (i < lines.length && lines[i].trim().startsWith("|")) rows.push(lines[i++]);
+        blocks.push({ kind: "table", rows, src: rows.join("\n") }); continue;
+      }
+      if ((m = line.match(/^(\d+)\.\s+(.*)$/)) || (m = line.match(/^[-*]\s+(.*)$/))) {
+        const ordered = /^\d+\./.test(line);
+        const items = [];
+        while (i < lines.length) {
+          const l = lines[i];
+          const om = l.match(/^(\d+)\.\s+(.*)$/), um = l.match(/^[-*]\s+(.*)$/);
+          if ((ordered && om) || (!ordered && um)) { items.push({ n: om ? om[1] : null, text: om ? om[2] : um[1] }); i++; continue; }
+          if (l.trim() && /^\s+\S/.test(l) && items.length) { items[items.length - 1].text += " " + l.trim(); i++; continue; }
+          break;
+        }
+        items.forEach(it => blocks.push({ kind: "li", ordered, n: it.n, text: it.text, src: it.text }));
+        continue;
+      }
+      const para = [];
+      while (i < lines.length && lines[i].trim() && !/^(#{1,3}\s|```|\||\d+\.\s|[-*]\s)/.test(lines[i])) para.push(lines[i++].trim());
+      blocks.push({ kind: "p", text: para.join(" "), src: para.join(" ") });
+    }
+    return blocks;
+  }
+
+  function renderTable(rows) {
+    const cells = r => r.trim().replace(/^\||\|$/g, "").split("|").map(c => c.trim());
+    const head = cells(rows[0]);
+    const body = rows.slice(2).map(cells);
+    return "<table><thead><tr>" + head.map(c => "<th>" + inline(c) + "</th>").join("") + "</tr></thead><tbody>" +
+      body.map(r => "<tr>" + r.map(c => "<td>" + inline(c) + "</td>").join("") + "</tr>").join("") + "</tbody></table>";
+  }
+
+  function renderBlock(b) {
+    switch (b.kind) {
+      case "h": return "<h" + b.level + ">" + inline(b.text) + "</h" + b.level + ">";
+      case "code": return "<pre><code>" + esc(b.text) + "</code></pre>";
+      case "table": return renderTable(b.rows);
+      case "li": {
+        const tag = b.ordered ? "ol" : "ul";
+        const start = b.ordered && b.n ? ' start="' + esc(b.n) + '"' : "";
+        return "<" + tag + start + "><li>" + inline(b.text) + "</li></" + tag + ">";
+      }
+      default: return "<p>" + inline(b.text) + "</p>";
+    }
+  }
+
+  const md = document.getElementById("md").textContent;
+  const blocks = parse(md);
+  const doc = document.getElementById("doc");
+  const notes = new Map();
+  let section = "";
+
+  blocks.forEach((b, idx) => {
+    if (b.kind === "h") section = b.text;
+    b.section = section;
+    b.label = b.kind === "li" && b.ordered && b.n ? section + ", item " + b.n : section;
+    const wrap = document.createElement("div");
+    wrap.className = "block";
+    wrap.dataset.idx = idx;
+    wrap.innerHTML = renderBlock(b);
+    const add = document.createElement("button");
+    add.type = "button"; add.className = "add"; add.textContent = "Comment";
+    add.addEventListener("click", () => openEditor(wrap, b, idx));
+    wrap.appendChild(add);
+    doc.appendChild(wrap);
+  });
+
+  function openEditor(wrap, b, idx) {
+    let ed = wrap.querySelector(".editor");
+    if (ed) { ed.querySelector("textarea").focus(); return; }
+    ed = document.createElement("div");
+    ed.className = "editor";
+    ed.innerHTML = '<textarea aria-label="Comment on this block"></textarea>' +
+      '<div class="row"><button type="button" class="primary save">Save comment</button>' +
+      '<button type="button" class="remove">Remove</button></div>';
+    const ta = ed.querySelector("textarea");
+    ta.value = notes.has(idx) ? notes.get(idx).comment : "";
+    ed.querySelector(".save").addEventListener("click", () => {
+      const text = ta.value.trim();
+      if (text) notes.set(idx, { idx, where: b.label, quote: b.src.slice(0, 160), comment: text });
+      else notes.delete(idx);
+      wrap.classList.toggle("has-note", notes.has(idx));
+      ed.remove(); refresh();
+    });
+    ed.querySelector(".remove").addEventListener("click", () => {
+      notes.delete(idx); wrap.classList.remove("has-note"); ed.remove(); refresh();
+    });
+    wrap.appendChild(ed);
+    ta.focus();
+  }
+
+  function refresh() {
+    const list = document.getElementById("notes");
+    list.innerHTML = "";
+    [...notes.values()].sort((a, b) => a.idx - b.idx).forEach(n => {
+      const li = document.createElement("li");
+      li.innerHTML = '<span class="where">' + esc(n.where || "Top") + "</span>" + esc(n.comment);
+      li.addEventListener("click", () => doc.querySelector('[data-idx="' + n.idx + '"]').scrollIntoView({ block: "center" }));
+      list.appendChild(li);
+    });
+    const count = notes.size;
+    document.getElementById("status").textContent =
+      count ? count + (count === 1 ? " comment ready." : " comments ready.") : "No comments yet.";
+  }
+
+  document.getElementById("send").addEventListener("click", async () => {
+    const payload = {
+      document: document.title,
+      general: document.getElementById("general").value.trim(),
+      comments: [...notes.values()].sort((a, b) => a.idx - b.idx)
+    };
+    const status = document.getElementById("status");
+    try {
+      await agterm.request("session.overlay.submit", { args: { value: JSON.stringify(payload) } });
+      status.textContent = "Sent.";
+    } catch (e) {
+      status.textContent = "Not sent: " + (e && e.message ? e.message : e);
+    }
+  });
+})();
+</script>
+</body>
+</html>

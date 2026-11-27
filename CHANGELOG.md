@@ -1,5 +1,14 @@
 # Changelog
 
+## peer-chat v0.15.0 - 2026-11-26
+
+### Added
+
+- `/peer-chat:design` opens the converged proposal inside agterm as a commentable page:
+  `scripts/peer-chat-review-page.py` renders `proposal-vN.md` with a comment box on every
+  block, blocks until the user sends, and saves the comments as `NN-user-comments-vN.json`
+  in the topic directory for the next revision. Outside agterm the skill still shares the path.
+
 ## peer-chat v0.14.1 - 2026-11-26
 
 ### Fixed

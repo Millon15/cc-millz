@@ -70,10 +70,13 @@ DESIGN_HANDOFF = {
 }
 
 DESIGN_PRESENTATION = (
-    "If the user asks to open the proposal inside agterm, use "
-    '`agtermctl session overlay open --markdown "<absolute proposal path>" --target "$AGTERM_SESSION_ID"`. '
-    'Append `--socket "$AGTERM_SOCKET"` when `AGTERM_SOCKET` is set and nonempty.\n'
-    "   Outside agterm, share the proposal path.\n"
+    "Inside agterm, open it for the user's comments: "
+    '`python3 "${CLAUDE_PLUGIN_ROOT}/scripts/peer-chat-review-page.py" --proposal "<absolute proposal path>" '
+    '--topic-dir "<topic dir>" --pane <your pane>`.\n'
+    "   The page renders the proposal with a comment box on every block, waits until the user sends, saves\n"
+    "   `NN-user-comments-vN.json` in the topic directory and prints its path. Exit 3 means the page closed\n"
+    "   unsent: ask whether to reopen it. Every comment is material input (§ Amend or hand off): send it to\n"
+    "   the peer and write the next revision. Outside agterm, share the proposal path.\n"
     "   "
 )
 

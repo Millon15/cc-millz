@@ -39,11 +39,13 @@ setup() {
     grep -qF 'Carry any explicit `--state <path>` in the resume line' "$PANE/build/SKILL.md"
 }
 
-@test "design: only the pane skill offers the requested Markdown overlay" {
-    grep -qF 'If the user asks to open the proposal inside agterm' "$PANE/design/SKILL.md"
-    grep -qF 'agtermctl session overlay open --markdown' "$PANE/design/SKILL.md"
-    grep -qF -- '--socket "$AGTERM_SOCKET"' "$PANE/design/SKILL.md"
-    ! grep -qF -- '--markdown' "$BG/design/SKILL.md"
+@test "design: only the pane skill opens the commentable review page" {
+    grep -qF 'Inside agterm, open it for the user' "$PANE/design/SKILL.md"
+    grep -qF 'scripts/peer-chat-review-page.py" --proposal' "$PANE/design/SKILL.md"
+    grep -qF 'NN-user-comments-vN.json' "$PANE/design/SKILL.md"
+    grep -qF 'Exit 3 means the page closed' "$PANE/design/SKILL.md"
+    [ -f "${REPO_ROOT}/plugins/peer-chat/scripts/peer-chat-review-page.html" ]
+    ! grep -qF 'review-page' "$BG/design/SKILL.md"
 }
 
 @test "design: background handoff reuses its native run and reserved checks" {
