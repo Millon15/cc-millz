@@ -3,6 +3,7 @@
 
 import json
 import os
+import shutil
 import stat
 import subprocess
 import tempfile
@@ -49,6 +50,25 @@ class ReviewPageTests(unittest.TestCase):
         self.assertIn("<title>proposal-v2 review</title>", html)
         self.assertNotIn("__MARKDOWN__", html)
         self.assertEqual(stat.S_IMODE(page.stat().st_mode), 0o600)
+
+    def test_page_keeps_the_hover_comment_and_sidebar_layout(self):
+        html = SCRIPT.with_suffix(".html").read_text()
+        for marker in ('add.className = "add"', ".block:hover .add", "<h2>Your comments</h2>", 'id="general"',
+                       'id="send"', 'session.overlay.submit', "grid-template-columns: minmax(0, 1fr) 300px"):
+            self.assertIn(marker, html)
+        self.assertNotIn("<textarea placeholder=\"Your comment on this block\"", html)
+
+    @unittest.skipUnless(shutil.which("node"), "node not installed")
+    def test_bold_spans_a_code_span(self):
+        html = SCRIPT.with_suffix(".html").read_text()
+        source = html[html.index("  const esc ="):html.index("  function parse(")]
+        probe = source + "console.log(inline(process.argv[1]));"
+        line = "**Stack: Bun, one compose project `uch` on the VPS.** Then *a `b*c` d*."
+        result = subprocess.run(["node", "-e", probe, line], capture_output=True, text=True)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(result.stdout.strip(),
+                         "<strong>Stack: Bun, one compose project <code>uch</code> on the VPS.</strong>"
+                         " Then <em>a <code>b*c</code> d</em>.")
 
     def test_script_end_tag_in_the_proposal_is_refused(self):
         self.proposal.write_text("bad </SCRIPT> tag\n")

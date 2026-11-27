@@ -1,5 +1,15 @@
 # Changelog
 
+## peer-chat v0.15.1 - 2026-11-26
+
+### Fixed
+
+- `/peer-chat:design` names the review page's layout (plain Markdown, a hover Comment button per block,
+  a comments sidebar) and opens it only through `peer-chat-review-page.py`, so a session on an older
+  install updates the plugin instead of hand-building a different page; a test locks that layout.
+- The review page renders bold that wraps a code span (``**one project `uch` on the VPS.**``) as bold;
+  it printed the asterisks before.
+
 ## peer-chat v0.15.0 - 2026-11-26
 
 ### Added

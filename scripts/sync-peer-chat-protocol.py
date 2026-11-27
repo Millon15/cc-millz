@@ -73,10 +73,13 @@ DESIGN_PRESENTATION = (
     "Inside agterm, open it for the user's comments: "
     '`python3 "${CLAUDE_PLUGIN_ROOT}/scripts/peer-chat-review-page.py" --proposal "<absolute proposal path>" '
     '--topic-dir "<topic dir>" --pane <your pane>`.\n'
-    "   The page renders the proposal with a comment box on every block, waits until the user sends, saves\n"
+    "   The page renders the proposal as plain Markdown with a hover Comment button on every block and a\n"
+    "   comments sidebar, waits until the user sends, saves\n"
     "   `NN-user-comments-vN.json` in the topic directory and prints its path. Exit 3 means the page closed\n"
     "   unsent: ask whether to reopen it. Every comment is material input (§ Amend or hand off): send it to\n"
-    "   the peer and write the next revision. Outside agterm, share the proposal path.\n"
+    "   the peer and write the next revision. Open the page only through this script, so every topic gets\n"
+    "   the same layout; a script missing from the plugin means the plugin needs an update. Outside agterm,\n"
+    "   share the proposal path.\n"
     "   "
 )
 

@@ -65,10 +65,13 @@ Continue independent work after sending; otherwise end the turn and let the repl
    cannot pass.
 4. Present the proposal verbatim with both closing message IDs and the digest as separate receipts.
    Inside agterm, open it for the user's comments: `python3 "${CLAUDE_PLUGIN_ROOT}/scripts/peer-chat-review-page.py" --proposal "<absolute proposal path>" --topic-dir "<topic dir>" --pane <your pane>`.
-   The page renders the proposal with a comment box on every block, waits until the user sends, saves
+   The page renders the proposal as plain Markdown with a hover Comment button on every block and a
+   comments sidebar, waits until the user sends, saves
    `NN-user-comments-vN.json` in the topic directory and prints its path. Exit 3 means the page closed
    unsent: ask whether to reopen it. Every comment is material input (§ Amend or hand off): send it to
-   the peer and write the next revision. Outside agterm, share the proposal path.
+   the peer and write the next revision. Open the page only through this script, so every topic gets
+   the same layout; a script missing from the plugin means the plugin needs an update. Outside agterm,
+   share the proposal path.
    Stop at presentation until the user explicitly authorizes implementation of that revision.
 
 ## Amend or hand off

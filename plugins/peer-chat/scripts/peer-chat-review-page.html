@@ -105,15 +105,12 @@
   const esc = s => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
 
   function inline(text) {
-    const parts = text.split(/(`[^`]*`)/);
-    return parts.map(p => {
-      if (p.startsWith("`") && p.endsWith("`") && p.length > 1) return "<code>" + esc(p.slice(1, -1)) + "</code>";
-      let h = esc(p);
-      h = h.replace(/\*\*([^*]+)\*\*/g, "<strong>$1</strong>");
-      h = h.replace(/(^|[^*])\*([^*\s][^*]*)\*/g, "$1<em>$2</em>");
-      h = h.replace(/\[([^\]]+)\]\((https?:[^)\s]+)\)/g, '<a href="$2">$1</a>');
-      return h;
-    }).join("");
+    const spans = [];
+    let h = esc(text.replace(/`([^`]+)`/g, (_, code) => "\u0000" + (spans.push(code) - 1) + "\u0000"));
+    h = h.replace(/\*\*([^*]+)\*\*/g, "<strong>$1</strong>");
+    h = h.replace(/(^|[^*])\*([^*\s][^*]*)\*/g, "$1<em>$2</em>");
+    h = h.replace(/\[([^\]]+)\]\((https?:[^)\s]+)\)/g, '<a href="$2">$1</a>');
+    return h.replace(/\u0000(\d+)\u0000/g, (_, n) => "<code>" + esc(spans[n]) + "</code>");
   }
 
   function parse(md) {
