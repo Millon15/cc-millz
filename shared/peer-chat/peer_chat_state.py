@@ -9,6 +9,7 @@ import math
 import os
 import re
 import subprocess
+import tempfile
 import uuid
 from contextlib import contextmanager
 from dataclasses import dataclass
@@ -35,6 +36,7 @@ from peer_chat_core import (
 SCHEMA = 2
 TRANSPORTS = ("agterm", "bg")
 ROLES = ("left", "right")
+EVIDENCE_DIR = "evidence"
 CLOSED = ("answered", "declined", "withdrawn")
 BUDGET_FIELDS = ("deadline", "grace", "wake")
 ENV_NAMES = {
@@ -793,24 +795,113 @@ def observe(
             state,
             message(state, message_id),
             event,
-            evidence_record(state, evidence),
+            evidence_record(state, evidence, store.path.parent),
             actor,
             now or now_utc(),
         )
 
 
-def evidence_record(state: dict, value: Path | str | None) -> dict | None:
+def evidence_record(state: dict, value: Path | str | None, topic: Path) -> dict | None:
+    """`path` names a write-once copy of the bytes, so a later send or rerun that rewrites `source` cannot void the proof."""
     if value is None:
         return None
+    repo = Path(state["repo"]).resolve()
+    source, data = read_evidence(repo, value)
+    return stored_evidence(repo, topic, source, data)
+
+
+def read_evidence(repo: Path, value: Path | str) -> tuple[Path, bytes]:
     path = Path(value)
     if not path.is_absolute():
-        path = Path(state["repo"]) / path
+        path = repo / path
     path = path.resolve()
-    require(path.is_relative_to(Path(state["repo"])), f"evidence must be inside the project: {path}")
+    require(path.is_relative_to(repo), f"evidence must be inside the project: {path}")
     require(path.is_file(), f"evidence is not a file: {path}")
     data = path.read_bytes()
     require(data, f"evidence file is empty: {path}")
-    return {"path": str(path), "sha256": sha256_bytes(data)}
+    return path, data
+
+
+def stored_evidence(repo: Path, topic: Path, source: Path, data: bytes) -> dict:
+    digest = sha256_bytes(data)
+    directory = Path(topic).resolve() / EVIDENCE_DIR
+    require(directory.is_relative_to(repo.resolve()), f"the evidence store must be inside the project: {directory}")
+    if not directory.exists() and not directory.is_symlink():
+        directory.mkdir(mode=0o700)
+    require(directory.is_dir() and not directory.is_symlink(), f"the evidence store is not a plain directory: {directory}")
+    blob = directory / digest
+    if not os.path.lexists(blob):
+        publish_blob(directory, blob, data)
+    require(
+        blob.is_file() and not blob.is_symlink() and sha256_bytes(blob.read_bytes()) == digest,
+        f"the evidence store holds different bytes for {digest}: {blob}",
+    )
+    return {"path": str(blob), "source": str(source), "sha256": digest}
+
+
+def publish_blob(directory: Path, blob: Path, data: bytes) -> None:
+    """Fully written before it appears, and never replaces a blob a concurrent writer published first."""
+    descriptor, temporary = tempfile.mkstemp(dir=directory, prefix=".incoming-")
+    try:
+        with os.fdopen(descriptor, "wb") as handle:
+            handle.write(data)
+            handle.flush()
+            os.fsync(handle.fileno())
+        os.chmod(temporary, 0o400)
+        try:
+            os.link(temporary, blob)
+        except FileExistsError:
+            pass
+    finally:
+        os.unlink(temporary)
+
+
+def proof_of(event: dict) -> dict | None:
+    """An event's evidence, or its latest exact-byte relocation once the original file was lost."""
+    moves = event.get("relocations") or []
+    return moves[-1]["evidence"] if moves else event.get("evidence")
+
+
+def evidence_intact(repo: Path, proof: dict) -> bool:
+    path = Path(proof["path"]).resolve()
+    return path.is_relative_to(repo.resolve()) and path.is_file() and sha256_bytes(path.read_bytes()) == proof["sha256"]
+
+
+def relocate(
+    store: Store, message_id: str, event_index: int, *, actor: str, evidence: Path, reason: str, now=None
+) -> dict:
+    """Points a lost peer receipt at a stored copy of the very same bytes.
+
+    The original path and hash stay in the event. A file with any other digest is refused:
+    a new file plus a reason could otherwise stand in for any proof nobody can check anymore.
+    """
+    require(str(reason).strip(), "a relocation needs a reason")
+    with store.mutate() as state:
+        require(state["phase"] == "active", "topic is finalized")
+        record = message(state, message_id)
+        require(0 <= event_index < len(record["events"]), f"message {message_id} has no event {event_index}")
+        event = record["events"][event_index]
+        require(event["event"] in PEER_EVENTS and event.get("evidence"), "only a peer receipt with evidence can be relocated")
+        recipient = state["participants"][record["recipient"]] or {}
+        require(
+            actor == event["actor"] == recipient.get("agent_id"),
+            "only the bound recipient who recorded the receipt may relocate it",
+        )
+        repo = Path(state["repo"]).resolve()
+        require(not evidence_intact(repo, proof_of(event)), "the recorded evidence is intact; nothing to relocate")
+        source, data = read_evidence(repo, evidence)
+        require(
+            sha256_bytes(data) == event["evidence"]["sha256"],
+            "a relocation needs the exact original bytes; a different file cannot replace a lost proof",
+        )
+        entry = {
+            "at": stamp(now or now_utc()),
+            "actor": actor,
+            "reason": reason.strip(),
+            "evidence": stored_evidence(repo, store.path.parent, source, data),
+        }
+        event.setdefault("relocations", []).append(entry)
+        return {"message_id": message_id, "event_index": event_index, **entry}
 
 
 def observe_in(
@@ -861,10 +952,15 @@ def replayed_event(
     if not same:
         return None
     require(
-        any(e["actor"] == actor and e["evidence"] == proof for e in same),
+        any(e["actor"] == actor and same_bytes(e["evidence"], proof) for e in same),
         "same-state receipt differs from the recorded one",
     )
     return {**record, "replayed": True}
+
+
+def same_bytes(recorded: dict | None, offered: dict | None) -> bool:
+    """A replay matches on the evidence digest; records from before the store held only a live path."""
+    return (recorded or {}).get("sha256") == (offered or {}).get("sha256")
 
 
 def apply_event(state: dict, record: dict, event: str, moment: datetime) -> None:
@@ -1154,7 +1250,7 @@ def withdraw(store: Store, ask_id: str, *, actor: str, reason: str, evidence: Pa
         require(row["disposition"] in ("", "deferred"), f"ask already closed: {ask_id}")
         asker = state["participants"][row["asked_by"]] or {}
         require(actor == asker.get("agent_id"), f"only the asker ({row['asked_by']}) may withdraw {ask_id}")
-        proof = evidence_record(state, evidence)
+        proof = evidence_record(state, evidence, store.path.parent)
         require(proof, "a withdrawal needs an evidence file")
         dispose(state, row, Disposition(ask_id, "withdrawn", reason.strip()), "")
         row["withdrawal"] = {"at": stamp(moment), "actor": actor, "evidence": proof}
@@ -1171,7 +1267,7 @@ def release(store: Store, ask_id: str, evidence: Path, now=None) -> dict:
         )
         timer["release"] = {
             "at": stamp(moment),
-            "evidence": evidence_record(state, evidence),
+            "evidence": evidence_record(state, evidence, store.path.parent),
         }
         timer["phase"] = "released"
         return dict(timer)

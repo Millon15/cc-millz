@@ -1,5 +1,32 @@
 # Changelog
 
+## peer-chat v0.16.0 - 2026-11-26
+
+### Fixed
+
+- Every evidence file (peer receipts, checks, confirmations, withdrawals, releases) is copied once into
+  `<topic dir>/evidence/<sha256>`, written in full before it appears and never replaced, and the gate
+  checks that copy. A send that rewrites the outbox spool, or a rerun that rewrites a `.out`, no longer
+  blocks `confirm` and `finalize` forever; tampering with the stored copy still does.
+- A replayed receipt matches the recorded one by digest, so a receipt recorded before the store exists
+  still replays.
+- The skill tells the recipient to save the text it observed in a file of its own, never the outbox spool.
+
+### Added
+
+- `peer-chat-state.py relocate --message-id <id> --event-index <n> --actor-id <id> --reason <why>
+  --evidence <file>` repairs a receipt recorded before the store whose file was rewritten. Only the
+  bound recipient who recorded it may run it, only while its evidence is broken, and only with a file
+  of the original SHA-256. The event keeps its original path and hash, and the relocation records
+  actor, time, reason and the stored copy.
+
+## peer-chat-bg v0.5.1 - 2026-11-26
+
+### Fixed
+
+- Job evidence, checks and confirmations are stored as write-once copies under the topic's evidence
+  directory, the same store `peer-chat` uses, so a rewritten source file no longer voids them.
+
 ## peer-chat v0.15.1 - 2026-11-26
 
 ### Fixed

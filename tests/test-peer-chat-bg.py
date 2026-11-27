@@ -416,10 +416,14 @@ class ProtocolTests(ProtocolFixture):
         (self.repo / "app.txt").write_text("hidden modification")
         self.assertIn("bytes changed", self.finalize("parent-real-id", target=target, status=2)["error"])
 
-    def test_mutated_check_evidence_blocks_finalization(self):
+    def test_rewritten_source_keeps_the_stored_check_proof_but_a_changed_copy_blocks_finalization(self):
         self.exchange()
-        self.check()
-        self.proof.write_text("different check output")
+        stored = Path(self.check()["evidence"]["path"])
+        self.assertEqual(stored.parent.name, "evidence")
+        self.proof.write_text("a later run rewrote the source")
+        self.finalize("parent-real-id")
+        stored.chmod(0o600)
+        stored.write_text("forged check output")
         self.assertIn("evidence changed", self.finalize("parent-real-id", status=2)["error"])
 
     def test_ack_only_cannot_close_without_a_peer_origin_reply(self):

@@ -17,7 +17,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 from peer_chat_core import now_utc, repo_root, stamp
 from peer_chat_state import (
     CLOSED, PEER_EVENTS, TERMINAL_MESSAGES, StateError, Store, begin, due, evidence_record,
-    finish, next_wake, nudge_submitted, observe, release, status, unresolved_timers, withdraw,
+    finish, next_wake, nudge_submitted, observe, proof_of, relocate, release, status, unresolved_timers, withdraw,
 )
 
 
@@ -63,6 +63,12 @@ def parser() -> argparse.ArgumentParser:
     command.add_argument("--event", choices=("submit_sent", "acknowledged", "answered", "failed", "cancelled", "uncertain"), required=True)
     command.add_argument("--evidence", type=Path, required=True)
     command.add_argument("--actor-id", required=True)
+    command = commands.add_parser("relocate")
+    command.add_argument("--message-id", required=True)
+    command.add_argument("--event-index", type=int, required=True)
+    command.add_argument("--actor-id", required=True)
+    command.add_argument("--reason", required=True)
+    command.add_argument("--evidence", type=Path, required=True)
     command = commands.add_parser("withdraw")
     command.add_argument("--ask-id", required=True)
     command.add_argument("--actor-id", required=True)
@@ -226,7 +232,7 @@ def record_check(args: argparse.Namespace, store: Store) -> dict:
         name = str(worktree_root(args.repo))
         require(name in target["repos"] and args.name in target["repos"][name]["required_checks"], "check was not declared")
         record = {"state": args.check_state, "target_set": args.target_set,
-                  "evidence": evidence_record(state, args.evidence), "at": stamp(now_utc())}
+                  "evidence": evidence_record(state, args.evidence, store.path.parent), "at": stamp(now_utc())}
         state["checks"][name][args.name] = record
         state["confirmations"] = {}
         return record
@@ -245,8 +251,8 @@ def peer_exchange(state: dict) -> None:
         for event in message["events"]:
             if event["event"] in PEER_EVENTS:
                 recipient = state["participants"][message["recipient"]]
-                require(event["actor"] == recipient["agent_id"] and event["evidence"], "peer receipt has no bound recipient evidence")
-                validate_evidence(state, event["evidence"])
+                require(event["actor"] == recipient["agent_id"] and proof_of(event), "peer receipt has no bound recipient evidence")
+                validate_evidence(state, proof_of(event))
                 exchanged.add(message["sender"])
     require(exchanged == {"left", "right"}, "need a genuine two-way recipient-evidenced exchange")
 
@@ -254,8 +260,8 @@ def peer_exchange(state: dict) -> None:
 def validate_supporting_evidence(state: dict) -> None:
     for message in state["messages"].values():
         for event in message["events"]:
-            if event.get("evidence"):
-                validate_evidence(state, event["evidence"])
+            if proof_of(event):
+                validate_evidence(state, proof_of(event))
     for row in state["asks"]:
         if row.get("withdrawal"):
             validate_evidence(state, row["withdrawal"]["evidence"])
@@ -285,7 +291,7 @@ def gate_action(args: argparse.Namespace, store: Store) -> dict:
             participant = state["participants"][role]
             state["confirmations"][role] = {"target_set": target["id"], "actor_id": args.actor_id,
                                              "generation": participant["generation"],
-                                             "evidence": evidence_record(state, args.evidence), "at": stamp(now_utc())}
+                                             "evidence": evidence_record(state, args.evidence, store.path.parent), "at": stamp(now_utc())}
         else:
             require(set(state["confirmations"]) == {"left", "right"}, "both peers must confirm this target set")
         for who, record in state["confirmations"].items():
@@ -328,6 +334,9 @@ def run(args: argparse.Namespace, store: Store):
         return {"grace_expires_at": nudge_submitted(store, args.token)}
     if args.command == "release":
         return release(store, args.ask_id, args.evidence)
+    if args.command == "relocate":
+        return relocate(store, args.message_id, args.event_index, actor=args.actor_id, reason=args.reason,
+                        evidence=args.evidence)
     if args.command == "withdraw":
         return withdraw(store, args.ask_id, actor=args.actor_id, reason=args.reason, evidence=args.evidence)
     return observe(store, args.message_id, args.event, evidence=args.evidence, actor=args.actor_id)

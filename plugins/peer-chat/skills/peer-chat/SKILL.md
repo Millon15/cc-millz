@@ -374,6 +374,12 @@ Save the actual received peer text as evidence inside the coordinator repository
 --event acknowledged|answered --actor-id <own bound identity> --evidence <path>` to record it.
 The identity is the observed `window/session/pane` composite shown by `status`; a sender cannot
 acknowledge its own message. Evidence paths resolve against the coordinator repository.
+Write the text you actually observed to a file of its own. Never cite an outbox spool: the next
+send overwrites it. The ledger stores a write-once copy of every evidence file under
+`<topic dir>/evidence/<sha256>` and checks that copy. A receipt recorded before that store existed,
+whose file was rewritten, can only be repaired by its recipient with
+`peer-chat-state.py ... relocate --message-id <id> --event-index <n> --actor-id <own identity>
+--reason <why> --evidence <file>`, and only when the file has the original SHA-256.
 For an ambiguous send keep `uncertain`. Only actual proof of non-delivery permits a sender's
 `observe --event failed`; a cancelled unsent draft uses `cancelled`, both with the sender's
 actor ID and nonempty evidence. A timeout alone proves neither failure nor cancellation.

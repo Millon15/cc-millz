@@ -85,7 +85,8 @@ def config(repo):
             "profile": {key: values[key] for key in values if key != "state_dir"}}
 
 
-def evidence(repo, value):
+def evidence(repo, value, store):
+    """The proof points at a write-once copy in the topic's evidence store, never at the live file."""
     require(bool(value), "this receipt requires --evidence FILE from the actual tool/peer result")
     path = Path(value)
     if not path.is_absolute():
@@ -94,7 +95,7 @@ def evidence(repo, value):
     require(path.is_file() and path.is_relative_to(repo), "evidence must be an existing file inside the project")
     data = path.read_bytes()
     require(bool(data), "evidence file is empty")
-    return {"path": str(path), "sha256": digest(data)}
+    return ps.stored_evidence(repo, store.path.parent, path, data)
 
 
 def git(repo, *args):
@@ -342,7 +343,7 @@ def receipt(args, store, repo):
             record["recipient"] if args.state in ps.PEER_EVENTS else record["sender"]
         )
         require(role == desired, "receipt actor is not the " + desired + " peer")
-        proof = None if args.state == "dispatching" else evidence(repo, args.evidence)
+        proof = None if args.state == "dispatching" else evidence(repo, args.evidence, store)
         before = record["claim"]
         result = ps.observe_in(
             state, record, args.state, proof, args.actor_id, now_utc()
@@ -360,7 +361,7 @@ def check(args, store, repo):
         state["checks"][args.name] = {
             "state": args.state,
             "target": args.target,
-            "evidence": evidence(repo, args.evidence),
+            "evidence": evidence(repo, args.evidence, store),
             "at": stamp(now_utc()),
         }
         state["confirmations"] = {}
@@ -380,7 +381,7 @@ def finalize(args, store, repo):
         state["confirmations"][role] = {
             "target": args.target,
             "actor_id": args.actor_id,
-            "evidence": evidence(repo, args.evidence),
+            "evidence": evidence(repo, args.evidence, store),
             "at": stamp(now_utc()),
         }
         if len(state["confirmations"]) == 2:
@@ -460,11 +461,11 @@ def timer_command(args, store, repo):
         return {"grace_expires_at": ps.nudge_submitted(store, token_arg(args.token))}
     if args.command == "withdraw":
         return {"ask": ps.withdraw(store, args.ask_id, actor=args.actor_id, reason=args.reason,
-                                   evidence=Path(evidence(repo, args.evidence)["path"]))}
+                                   evidence=Path(evidence(repo, args.evidence, store)["source"]))}
     if args.command == "release":
         return {
             "timer": ps.release(
-                store, args.ask_id, Path(evidence(repo, args.evidence)["path"])
+                store, args.ask_id, Path(evidence(repo, args.evidence, store)["source"])
             )
         }
     raise Refusal("unknown command")

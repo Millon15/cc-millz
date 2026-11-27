@@ -306,17 +306,36 @@ gate_confirm() {
     [ "$(jq -r --arg repo "${COORD}" '.checks[$repo].security.state' "${STATE}")" = incomplete ]
 }
 
-@test "P2 gate: changed peer or check evidence prevents finalization" {
+@test "P2 gate: a rewritten source keeps the stored proof; a changed stored copy prevents finalization" {
     gate_fixture
     gate_checks
     gate_confirm left
     [ "$status" = 0 ]
     gate_confirm right
     [ "$status" = 0 ]
+    blob="$(jq -r --arg repo "${COORD}" '.checks[$repo].suite.evidence.path' "${STATE}")"
+    [ "$(basename "$(dirname "${blob}")")" = evidence ]
     printf 'different evidence\n' > "${COORD}/tmp/topic/proof.out"
+    chmod u+w "${blob}"
+    printf 'forged evidence\n' > "${blob}"
     run python3 "${CLI}" --slug topic --state "${STATE}" finalize --target-set "${target}" --actor-id left
     [ "$status" = 2 ]
     [[ "$output" == *"evidence changed or disappeared"* ]]
+}
+
+@test "P2 gate: deleting every evidence source still finalizes from the stored copies" {
+    gate_fixture
+    gate_checks
+    gate_confirm left
+    [ "$status" = 0 ]
+    gate_confirm right
+    [ "$status" = 0 ]
+    trash_dir="${BATS_TEST_TMPDIR}/moved"
+    mkdir -p "${trash_dir}"
+    mv "${COORD}/tmp/topic/proof.out" "${trash_dir}/"
+    run python3 "${CLI}" --slug topic --state "${STATE}" finalize --target-set "${target}" --actor-id left
+    [ "$status" = 0 ]
+    [ "$(jq -r .phase "${STATE}")" = finalized ]
 }
 
 @test "P2 gate: actual bytes hidden by assume-unchanged still invalidate the set" {

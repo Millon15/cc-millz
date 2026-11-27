@@ -59,7 +59,7 @@ class StateCase(unittest.TestCase):
         self.repo = self.dir / "repo"
         self.repo.mkdir()
         self.store = ps.open_topic(
-            self.dir / "topic/state.json",
+            self.repo / "tmp/peer-chat/topic/state.json",
             transport="agterm",
             slug="topic",
             host="claude",
@@ -254,6 +254,67 @@ class MessageAndTimerTests(StateCase):
         prepared = self.deliver("left", ["hi"], "k")
         with self.assertRaisesRegex(ps.StateError, "needs peer evidence"):
             ps.observe(self.store, prepared["message_id"], "answered")
+
+    def test_evidence_is_a_write_once_copy_that_a_rewritten_source_cannot_change(self):
+        prepared = self.deliver("left", ["hi"], "k")
+        spool = self.repo / "outbox.msg"
+        spool.write_text("the text the peer received\n")
+        result = ps.observe(self.store, prepared["message_id"], "answered", evidence=spool, actor="child-id")
+        proof = result["events"][-1]["evidence"]
+        blob = Path(proof["path"])
+        self.assertEqual((blob.parent.name, blob.name), ("evidence", proof["sha256"]))
+        self.assertEqual(proof["source"], str(spool.resolve()))
+        self.assertEqual(blob.stat().st_mode & 0o777, 0o400)
+        spool.write_text("the next send overwrote the spool\n")
+        self.assertEqual(blob.read_text(), "the text the peer received\n")
+        self.assertTrue(ps.evidence_intact(self.repo, proof))
+        copy = self.repo / "same-bytes.txt"
+        copy.write_text("the text the peer received\n")
+        replay = ps.observe(self.store, prepared["message_id"], "answered", evidence=copy, actor="child-id")
+        self.assertTrue(replay["replayed"])
+
+    def test_replay_matches_a_pre_store_record_by_digest(self):
+        prepared = self.deliver("left", ["hi"], "k")
+        reply = self.repo / "reply.txt"
+        reply.write_text("reply\n")
+        self.legacy_answer(prepared["message_id"], reply)
+        replay = ps.observe(self.store, prepared["message_id"], "answered", evidence=reply, actor="child-id")
+        self.assertTrue(replay["replayed"])
+
+    def test_relocation_accepts_only_the_recipient_and_the_exact_original_bytes(self):
+        prepared = self.deliver("left", ["hi"], "k")
+        spool = self.repo / "outbox.msg"
+        spool.write_text("the text the peer received\n")
+        original = self.legacy_answer(prepared["message_id"], spool)
+        recovered = self.repo / "recovered.txt"
+        recovered.write_text("the text the peer received\n")
+        relocate = lambda actor="child-id", evidence=recovered: ps.relocate(
+            self.store, prepared["message_id"], 2, actor=actor, evidence=evidence, reason="spool overwritten")
+        with self.assertRaisesRegex(ps.StateError, "intact; nothing to relocate"):
+            relocate()
+        spool.write_text("the next send overwrote the spool\n")
+        with self.assertRaisesRegex(ps.StateError, "bound recipient who recorded"):
+            relocate(actor="parent-id")
+        forged = self.repo / "forged.txt"
+        forged.write_text("a plausible reconstruction\n")
+        with self.assertRaisesRegex(ps.StateError, "exact original bytes"):
+            relocate(evidence=forged)
+        with self.assertRaisesRegex(ps.StateError, "not a peer receipt|only a peer receipt"):
+            ps.relocate(self.store, prepared["message_id"], 0, actor="child-id", evidence=recovered, reason="x")
+        moved = relocate()
+        event = self.store.read()["messages"][prepared["message_id"]]["events"][2]
+        self.assertEqual(event["evidence"], original)
+        self.assertEqual(ps.proof_of(event), moved["evidence"])
+        self.assertEqual(event["relocations"][0]["reason"], "spool overwritten")
+        self.assertTrue(ps.evidence_intact(self.repo, ps.proof_of(event)))
+
+    def legacy_answer(self, message_id: str, path: Path) -> dict:
+        """An answered receipt as recorded before the evidence store: a bare live path and its digest."""
+        ps.observe(self.store, message_id, "answered", evidence=path, actor="child-id")
+        legacy = {"path": str(path.resolve()), "sha256": hashlib.sha256(path.read_bytes()).hexdigest()}
+        with self.store.mutate() as state:
+            state["messages"][message_id]["events"][-1]["evidence"] = legacy
+        return legacy
 
     def test_blocking_ask_needs_a_bound_recipient(self):
         store = ps.open_topic(
