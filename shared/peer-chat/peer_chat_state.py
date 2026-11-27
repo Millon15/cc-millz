@@ -826,10 +826,11 @@ def stored_evidence(repo: Path, topic: Path, source: Path, data: bytes) -> dict:
     digest = sha256_bytes(data)
     directory = Path(topic).resolve() / EVIDENCE_DIR
     require(directory.is_relative_to(repo.resolve()), f"the evidence store must be inside the project: {directory}")
+    blob = directory / digest
+    require_hidden_from_git(repo.resolve(), blob)
     if not directory.exists() and not directory.is_symlink():
         directory.mkdir(mode=0o700)
     require(directory.is_dir() and not directory.is_symlink(), f"the evidence store is not a plain directory: {directory}")
-    blob = directory / digest
     if not os.path.lexists(blob):
         publish_blob(directory, blob, data)
     require(
@@ -837,6 +838,19 @@ def stored_evidence(repo: Path, topic: Path, source: Path, data: bytes) -> dict:
         f"the evidence store holds different bytes for {digest}: {blob}",
     )
     return {"path": str(blob), "source": str(source), "sha256": digest}
+
+
+def require_hidden_from_git(repo: Path, path: Path) -> None:
+    """A proof copy must never become a visible change in the worktree it proves; outside Git there is nothing to hide from."""
+    relative = str(path.relative_to(repo))
+    ignored = subprocess.run(["git", "-C", str(repo), "check-ignore", "-q", "--", relative], capture_output=True)
+    if ignored.returncode == 128:
+        return
+    tracked = subprocess.run(["git", "-C", str(repo), "ls-files", "--", relative], capture_output=True, text=True)
+    require(
+        ignored.returncode == 0 and tracked.returncode == 0 and not tracked.stdout,
+        f"the evidence store must be Git-ignored and untracked: {relative}; ignore the whole topic directory, not only state.json",
+    )
 
 
 def publish_blob(directory: Path, blob: Path, data: bytes) -> None:
@@ -862,7 +876,9 @@ def proof_of(event: dict) -> dict | None:
     return moves[-1]["evidence"] if moves else event.get("evidence")
 
 
-def evidence_intact(repo: Path, proof: dict) -> bool:
+def evidence_intact(repo: Path, proof: dict | None) -> bool:
+    if not proof:
+        return False
     path = Path(proof["path"]).resolve()
     return path.is_relative_to(repo.resolve()) and path.is_file() and sha256_bytes(path.read_bytes()) == proof["sha256"]
 

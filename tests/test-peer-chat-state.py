@@ -308,6 +308,19 @@ class MessageAndTimerTests(StateCase):
         self.assertEqual(event["relocations"][0]["reason"], "spool overwritten")
         self.assertTrue(ps.evidence_intact(self.repo, ps.proof_of(event)))
 
+    def test_a_proof_copy_git_would_show_is_refused_before_anything_is_written(self):
+        subprocess.run(["git", "init", "-q", str(self.repo)], check=True)
+        (self.repo / ".gitignore").write_text("/tmp/peer-chat/topic/state.json\n/tmp/peer-chat/topic/state.lock\n")
+        prepared = self.deliver("left", ["hi"], "k")
+        reply = self.repo / "reply.txt"
+        reply.write_text("reply\n")
+        with self.assertRaisesRegex(ps.StateError, "must be Git-ignored and untracked.*not only state.json"):
+            ps.observe(self.store, prepared["message_id"], "answered", evidence=reply, actor="child-id")
+        self.assertFalse((self.store.path.parent / ps.EVIDENCE_DIR).exists())
+        (self.repo / ".gitignore").write_text("/tmp/\n")
+        result = ps.observe(self.store, prepared["message_id"], "answered", evidence=reply, actor="child-id")
+        self.assertEqual(result["state"], "answered")
+
     def legacy_answer(self, message_id: str, path: Path) -> dict:
         """An answered receipt as recorded before the evidence store: a bare live path and its digest."""
         ps.observe(self.store, message_id, "answered", evidence=path, actor="child-id")

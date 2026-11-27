@@ -16,7 +16,8 @@ import sys
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from peer_chat_core import now_utc, repo_root, stamp
 from peer_chat_state import (
-    CLOSED, PEER_EVENTS, TERMINAL_MESSAGES, StateError, Store, begin, due, evidence_record,
+    CLOSED, EVIDENCE_DIR, PEER_EVENTS, TERMINAL_MESSAGES, StateError, Store, begin, due, evidence_record,
+    require_hidden_from_git,
     finish, next_wake, nudge_submitted, observe, proof_of, relocate, release, status, unresolved_timers, withdraw,
 )
 
@@ -181,6 +182,7 @@ def validate_state_location(store: Store, coordinator: Path) -> None:
     relative = str(path.relative_to(coordinator))
     ignored = subprocess.run(["git", "-C", str(coordinator), "check-ignore", "-q", "--", relative]).returncode == 0
     require(ignored and not git(coordinator, "ls-files", "--", relative), "topic state must be Git-ignored and untracked")
+    require_hidden_from_git(coordinator, path.parent / EVIDENCE_DIR / ("0" * 64))
 
 
 def capture_target(args: argparse.Namespace, store: Store) -> dict:

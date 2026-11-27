@@ -85,6 +85,12 @@ def config(repo):
             "profile": {key: values[key] for key in values if key != "state_dir"}}
 
 
+def evidence_argument(args):
+    """The shared operation reads and stores the file once, after its own actor and timer checks."""
+    require(bool(args.evidence), "this receipt requires --evidence FILE from the actual tool/peer result")
+    return Path(args.evidence)
+
+
 def evidence(repo, value, store):
     """The proof points at a write-once copy in the topic's evidence store, never at the live file."""
     require(bool(value), "this receipt requires --evidence FILE from the actual tool/peer result")
@@ -442,7 +448,7 @@ def token_arg(value):
     return token
 
 
-def timer_command(args, store, repo):
+def timer_command(args, store):
     if args.command == "wake":
         return {"due": ps.due(store), "status": "read-only"}
     if args.command == "begin":
@@ -461,11 +467,11 @@ def timer_command(args, store, repo):
         return {"grace_expires_at": ps.nudge_submitted(store, token_arg(args.token))}
     if args.command == "withdraw":
         return {"ask": ps.withdraw(store, args.ask_id, actor=args.actor_id, reason=args.reason,
-                                   evidence=Path(evidence(repo, args.evidence, store)["source"]))}
+                                   evidence=evidence_argument(args))}
     if args.command == "release":
         return {
             "timer": ps.release(
-                store, args.ask_id, Path(evidence(repo, args.evidence, store)["source"])
+                store, args.ask_id, evidence_argument(args)
             )
         }
     raise Refusal("unknown command")
@@ -489,7 +495,7 @@ def mutate(args, store, repo, profile):
         return check(args, store, repo)
     if args.command == "finalize":
         return finalize(args, store, repo)
-    return timer_command(args, store, repo)
+    return timer_command(args, store)
 
 
 def add_budget_flags(q):
@@ -615,6 +621,7 @@ def run(args):
         not git(repo, "ls-files", "--", str(root.relative_to(repo))),
         "state directory contains tracked files",
     )
+    ps.require_hidden_from_git(repo, root / ps.EVIDENCE_DIR / ("0" * 64))
     if args.command == "init":
         return init(args, repo, path)
     require(path.is_file(), "topic does not exist; init first")

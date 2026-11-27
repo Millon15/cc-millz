@@ -8,6 +8,9 @@
   `<topic dir>/evidence/<sha256>`, written in full before it appears and never replaced, and the gate
   checks that copy. A send that rewrites the outbox spool, or a rerun that rewrites a `.out`, no longer
   blocks `confirm` and `finalize` forever; tampering with the stored copy still does.
+- The whole topic directory must now be Git-ignored, not only `state.json`: target capture, the
+  background topic check and every proof write refuse a store Git would show, before writing
+  anything, so a proof copy never turns up as a change in the target it proves.
 - A replayed receipt matches the recorded one by digest, so a receipt recorded before the store exists
   still replays.
 - The skill tells the recipient to save the text it observed in a file of its own, never the outbox spool.
